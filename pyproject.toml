@@ -10,17 +10,19 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 authors = [{name = "polmon contributors"}]
 dependencies = [
-  "fastapi==0.115.6",
-  "pydantic==2.10.4",
-  "PyYAML==6.0.2",
-  "uvicorn==0.34.0",
+  "fastapi==0.141.1",
+  "pydantic==2.13.5",
+  "PyYAML==6.0.3",
+  # Transitive via FastAPI; pinned explicitly so the audited version is visible (see SECURITY.md).
+  "starlette==1.7.0",
+  "uvicorn==0.54.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "httpx==0.28.1",
-  "pytest==8.3.4",
-  "pytest-cov==6.0.0",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
   "ruff==0.8.6",
 ]
 build = ["pyinstaller==6.11.1"]

@@ -4,6 +4,15 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Security
+
+- Dependency audit (`pip-audit`) found 8 advisories in the pinned starlette 0.41.3 (multipart
+  spooling, `FileResponse` Range, Host/path URL reconstruction, `StaticFiles`, `HTTPEndpoint`,
+  urlencoded form limits) and one in pytest 8.3.4. polmon uses none of the affected starlette
+  features, but the stack is upgraded anyway: FastAPI 0.141.1, starlette 1.7.0 (now pinned
+  explicitly), uvicorn 0.54.0, pydantic 2.13.5, PyYAML 6.0.3, pytest 9.1.1, pytest-cov 7.1.0.
+  `pip-audit` reports no known vulnerabilities afterwards.
+
 ### Fixed
 
 - Scenario `initial_conditions` were parsed but never checked, so a scenario declaring
