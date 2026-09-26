@@ -4,6 +4,18 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Portable Windows client `polmon-<version>-windows-x64-portable.zip` (one-folder build) next to
+  the one-file EXE: it does not unpack itself on every launch, so it starts much faster. Built,
+  smoke-tested, re-verified on a fresh runner, released and verified after publication like the
+  EXE; `scripts/verify-release.sh` requires it from v0.2.1.
+
+### Changed
+
+- The Linux bundle is stripped of debug symbols; the hosted runners' Python ships `libpython`
+  with debug information (28.7 MB instead of 8.6 MB).
+
 ## [0.2.0] - 2026-09-26
 
 Phase II: a Qt desktop client for Windows and Linux, and a CI/CD pipeline that tests, packages,

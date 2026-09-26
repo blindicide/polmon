@@ -17,9 +17,13 @@ version="${version%%+*}"
 
 expected=("polmon-${version}-windows-x64.exe")
 IFS=. read -r major minor _ <<< "$version"
+IFS=. read -r _ _ patch <<< "$version"
 if (( major > 0 || minor >= 2 )); then
   expected+=("polmon-${version}-linux-x64.tar.gz" "polmon-${version}-py3-none-any.whl"
              "polmon-backend.service")
+fi
+if (( major > 0 || minor > 2 || (minor == 2 && patch >= 1) )); then
+  expected+=("polmon-${version}-windows-x64-portable.zip")
 fi
 
 workdir="$(mktemp -d)"

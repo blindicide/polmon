@@ -71,6 +71,7 @@ jobs:
           version="${version%%+*}"
           assets=(
             "polmon-${version}-windows-x64.exe"
+            "polmon-${version}-windows-x64-portable.zip"
             "polmon-${version}-linux-x64.tar.gz"
             "polmon-${version}-py3-none-any.whl"
             "polmon-backend.service"
@@ -80,6 +81,7 @@ jobs:
           done
           sha256sum --check --strict "polmon-${version}-linux-x64.tar.gz.sha256"
           sha256sum --check --strict "polmon-${version}-windows-x64.exe.sha256"
+          sha256sum --check --strict "polmon-${version}-windows-x64-portable.zip.sha256"
           sha256sum "${assets[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
           ls -l "${assets[@]}"
@@ -95,6 +97,7 @@ jobs:
           if [[ -n "$RELEASE_NOTES" ]]; then notes=(--notes "$RELEASE_NOTES"); fi
           gh release create "$RELEASE_TAG" \
             "dist/polmon-${version}-windows-x64.exe" \
+            "dist/polmon-${version}-windows-x64-portable.zip" \
             "dist/polmon-${version}-linux-x64.tar.gz" \
             "dist/polmon-${version}-py3-none-any.whl" \
             dist/polmon-backend.service dist/SHA256SUMS.txt \
@@ -151,5 +154,14 @@ jobs:
           grep -q "self-test: PASS" selftest.txt
           "${launch[@]}" "$client" --smoke-start 3 | tee smoke.txt
           grep -q "smoke-start: PASS platform=${platform}" smoke.txt
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pwsh -NoProfile -Command \
+              "Expand-Archive -Path polmon-${version}-windows-x64-portable.zip -DestinationPath portable"
+            portable="portable/polmon-${version}-windows-x64-portable/polmon-client.exe"
+            "$portable" --self-test | tee portable-selftest.txt
+            grep -q "self-test: PASS" portable-selftest.txt
+            "$portable" --smoke-start 3 | tee portable-smoke.txt
+            grep -q "smoke-start: PASS platform=windows" portable-smoke.txt
+          fi
           echo "Published ${RELEASE_TAG} client verified on ${RUNNER_OS} (platform ${platform})" \
             >> "$GITHUB_STEP_SUMMARY"

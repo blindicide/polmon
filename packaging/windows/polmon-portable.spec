@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Linux one-folder build of the Qt client: dist/polmon-<version>-linux-x64/polmon-client
+# Windows one-folder ("portable") build of the Qt client:
+#   dist/polmon-<version>-windows-x64-portable/polmon-client.exe
+# Starts without unpacking anything (the one-file EXE extracts itself on every launch).
 import sys
 from pathlib import Path
 
@@ -20,8 +22,8 @@ analysis = Analysis(
     excludes=EXCLUDED_MODULES,
     noarchive=False,
 )
-analysis.binaries = prune(analysis.binaries, "linux")
-analysis.datas = prune(analysis.datas, "linux")
+analysis.binaries = prune(analysis.binaries, "windows")
+analysis.datas = prune(analysis.datas, "windows")
 pyz = PYZ(analysis.pure)
 exe = EXE(
     pyz,
@@ -31,8 +33,7 @@ exe = EXE(
     name="polmon-client",
     debug=False,
     bootloader_ignore_signals=False,
-    # Strip debug symbols: the hosted runners' Python ships libpython with debug info (~20 MB).
-    strip=True,
+    strip=False,
     upx=False,
     console=True,
 )
@@ -40,7 +41,7 @@ COLLECT(
     exe,
     analysis.binaries,
     analysis.datas,
-    strip=True,
+    strip=False,
     upx=False,
-    name=f"polmon-{__version__}-linux-x64",
+    name=f"polmon-{__version__}-windows-x64-portable",
 )

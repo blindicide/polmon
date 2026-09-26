@@ -15,8 +15,16 @@ starts Qt, not merely that it exits 0:
 | SHA-256 | written next to the EXE (`.exe.sha256`) |
 | Start-up and memory | `scripts/measure-client.py` (3 launches, 10 s idle) uploaded as `windows-client-measurements` |
 
+The same job also builds the **portable** one-folder client (`packaging/windows/polmon-portable.spec`)
+and ships it as `polmon-<version>-windows-x64-portable.zip` (+ `.sha256`): unzip anywhere and run
+`polmon-client.exe`. It contains the same files as the one-file EXE but starts without unpacking
+them on every launch, so it opens several times faster (see RESOURCE-BUDGET.md). The zip is
+extracted and put through the same `--version`, `--self-test` and `--smoke-start` checks, and both
+forms are measured.
+
 A second job on a fresh runner downloads the `polmon-windows-x64` artifact, checks its SHA-256 and
-repeats the three launches, so the uploaded file itself is what was verified.
+repeats the launches for both the EXE and the portable zip, so the uploaded files themselves are
+what was verified.
 
 The spec bundles PySide6 through PyInstaller's Qt hooks and prunes what the client cannot use
 (`packaging/qt_bundle.py`): Qt modules outside QtCore/QtGui/QtWidgets, platform plugins other
