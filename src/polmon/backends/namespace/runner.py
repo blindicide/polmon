@@ -25,6 +25,7 @@ class CommandRunner:
         privileged: bool = False,
         check: bool = True,
         timeout: float = 10,
+        input: str | None = None,
     ) -> CommandResult:
         argv = ["sudo", "-n", *command] if privileged else command
         try:
@@ -34,6 +35,7 @@ class CommandRunner:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                input=input,
             )
         except subprocess.TimeoutExpired:
             # A hung command must not abort best-effort teardown or turn a probe into a crash.

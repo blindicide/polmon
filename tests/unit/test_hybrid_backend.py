@@ -20,7 +20,12 @@ class FakeRunner:
     def __init__(self) -> None:
         self.commands = []
 
-    def run(self, command, *, privileged=False, check=True, timeout=10):
+    def run(self, command, *, privileged=False, check=True, timeout=10, input=None):
+        if input is not None:  # expand `ip [-n NS] [-force] -batch -` into per-line commands
+            base = [part for part in command if part not in ("-batch", "-", "-force")]
+            for line in input.splitlines():
+                self.commands.append([*base, *line.split()])
+            return CommandResult("", "", 0)
         self.commands.append(command)
         return CommandResult("", "", 0)
 

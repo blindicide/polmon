@@ -13,7 +13,7 @@ class FakeProcess:
 
 
 class FakeRunner:
-    def run(self, command, *, privileged=False, check=True, timeout=10):
+    def run(self, command, *, privileged=False, check=True, timeout=10, input=None):
         return CommandResult("", "", 0)
 
     def start(self, command, *, privileged=False):

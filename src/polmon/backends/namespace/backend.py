@@ -120,52 +120,84 @@ class NamespaceBackend:
         self.names = self._names(topology)
 
     def create(self, topology: Topology) -> set[str]:
+        """Create bridges, namespaces, and veths with one privileged batch per namespace.
+
+        Every generated name is recorded as owned *before* the batch runs, so a failure at any
+        line is rolled back by ``destroy()`` without knowing how far the batch got.
+        """
         self.topology = topology
         self.names = self.names or self._names(topology)
+        existing = self._preexisting(self.names)
+        if existing:
+            # Never adopt objects this backend did not create: rollback would delete them.
+            raise RuntimeError(
+                "laboratory objects with this topology's generated names already exist "
+                f"({', '.join(existing)}); another deployment of the same topology is running or "
+                "a previous run left them behind (inspect with scripts/lab-cleanup.sh)"
+            )
+        prefixes = {network.id: network.ipv4_subnet.prefixlen for network in topology.networks}
+        host_lines: list[str] = []
+        namespace_lines: dict[str, list[str]] = {}
         resources: set[str] = set()
+        for network in topology.networks:
+            bridge = self.names.bridges[network.id]
+            host_lines += [f"link add name {bridge} type bridge", f"link set dev {bridge} up"]
+            self.created_bridges.add(bridge)
+            resources.add(f"bridge:{bridge}")
+        for node in topology.nodes:
+            namespace = self.names.namespaces[node.id]
+            host_lines.append(f"netns add {namespace}")
+            self.created_namespaces.add(namespace)
+            resources.add(f"netns:{namespace}")
+            inside_lines = ["link set lo up"]
+            for index, interface in enumerate(node.interfaces):
+                key = (node.id, interface.id)
+                host = self.names.host_veths[key]
+                peer = self.names.peer_veths[key]
+                inside = f"eth{index}"
+                bridge = self.names.bridges[interface.network]
+                host_lines += [
+                    f"link add {host} type veth peer name {peer}",
+                    f"link set {host} master {bridge}",
+                    f"link set dev {host} up",
+                    f"link set {peer} netns {namespace}",
+                ]
+                self.created_veths.add(host)
+                resources.add(f"link:{host}")
+                address = f"{interface.ipv4}/{prefixes[interface.network]}"
+                inside_lines += [
+                    f"link set {peer} name {inside}",
+                    f"link set dev {inside} address {interface.mac}",
+                    f"address add {address} dev {inside}",
+                    f"link set dev {inside} up",
+                ]
+            namespace_lines[namespace] = inside_lines
         try:
-            for network in topology.networks:
-                bridge = self.names.bridges[network.id]
-                self._ip("link", "add", "name", bridge, "type", "bridge")
-                self.created_bridges.add(bridge)
-                resources.add(f"bridge:{bridge}")
-                self._ip("link", "set", "dev", bridge, "up")
-            prefixes = {network.id: network.ipv4_subnet.prefixlen for network in topology.networks}
-            for node in topology.nodes:
-                namespace = self.names.namespaces[node.id]
-                self._ip("netns", "add", namespace)
-                self.created_namespaces.add(namespace)
-                resources.add(f"netns:{namespace}")
-                self._ip("-n", namespace, "link", "set", "lo", "up")
-                for index, interface in enumerate(node.interfaces):
-                    key = (node.id, interface.id)
-                    host = self.names.host_veths[key]
-                    peer = self.names.peer_veths[key]
-                    inside = f"eth{index}"
-                    self._ip("link", "add", host, "type", "veth", "peer", "name", peer)
-                    self.created_veths.add(host)
-                    resources.add(f"link:{host}")
-                    self._ip("link", "set", host, "master", self.names.bridges[interface.network])
-                    self._ip("link", "set", "dev", host, "up")
-                    self._ip("link", "set", peer, "netns", namespace)
-                    self._ip("-n", namespace, "link", "set", peer, "name", inside)
-                    self._ip(
-                        "-n",
-                        namespace,
-                        "link",
-                        "set",
-                        "dev",
-                        inside,
-                        "address",
-                        interface.mac,
-                    )
-                    address = f"{interface.ipv4}/{prefixes[interface.network]}"
-                    self._ip("-n", namespace, "address", "add", address, "dev", inside)
-                    self._ip("-n", namespace, "link", "set", "dev", inside, "up")
+            self._ip_batch(host_lines)
+            for namespace, lines in namespace_lines.items():
+                self._ip_batch(lines, namespace=namespace)
         except Exception:
             self.destroy()
             raise
         return resources
+
+    def _preexisting(self, names: NamespaceNames) -> list[str]:
+        """Generated names the kernel already reports (rootless ``ip`` queries)."""
+        links = self.runner.run(["ip", "-o", "link", "show"], check=False).stdout
+        namespaces = self.runner.run(["ip", "netns", "list"], check=False).stdout
+        link_names = {
+            line.split(": ")[1].split("@")[0] for line in links.splitlines() if ": " in line
+        }
+        namespace_names = {line.split()[0] for line in namespaces.splitlines() if line.strip()}
+        planned_links = [
+            *names.bridges.values(),
+            *names.host_veths.values(),
+            *names.peer_veths.values(),
+        ]
+        return sorted(
+            [name for name in planned_links if name in link_names]
+            + [name for name in names.namespaces.values() if name in namespace_names]
+        )
 
     def start(self) -> None:
         if self.topology is None or self.names is None:
@@ -189,12 +221,16 @@ class NamespaceBackend:
 
     def destroy(self) -> None:
         self.stop()
-        for namespace in sorted(self.created_namespaces):
-            self._ip("netns", "del", namespace, check=False)
+        # Namespaces first (removes moved veth peers and their host ends), then any host veth
+        # that never reached its namespace, then bridges. -force continues past already-gone
+        # objects, so one privileged call tears down everything this backend owns.
+        lines = [f"netns del {namespace}" for namespace in sorted(self.created_namespaces)]
+        lines += [f"link del dev {veth}" for veth in sorted(self.created_veths)]
+        lines += [f"link del dev {bridge}" for bridge in sorted(self.created_bridges)]
+        if lines:
+            self._ip_batch(lines, check=False, force=True)
         self.created_namespaces.clear()
         self.created_veths.clear()
-        for bridge in sorted(self.created_bridges):
-            self._ip("link", "del", "dev", bridge, check=False)
         self.created_bridges.clear()
         self.running = False
 
@@ -311,5 +347,29 @@ class NamespaceBackend:
             raise ValueError(f"unknown namespace node '{node_id}'")
         return self.names.namespaces[node_id]
 
-    def _ip(self, *arguments: str, check: bool = True) -> None:
-        self.runner.run(["ip", *arguments], privileged=True, check=check)
+    def _ip_batch(
+        self,
+        lines: list[str],
+        *,
+        namespace: str | None = None,
+        check: bool = True,
+        force: bool = False,
+    ) -> None:
+        """Run ``ip`` batch lines in one privileged call (inside ``namespace`` when given).
+
+        Lines are generated only from validated identifiers, addresses, and generated names;
+        ``ip -batch`` executes subcommands directly and never involves a shell.
+        """
+        command = ["ip"]
+        if namespace is not None:
+            command += ["-n", namespace]
+        if force:
+            command.append("-force")
+        command += ["-batch", "-"]
+        self.runner.run(
+            command,
+            privileged=True,
+            check=check,
+            timeout=10 + len(lines),
+            input="".join(f"{line}\n" for line in lines),
+        )
