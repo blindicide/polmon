@@ -85,6 +85,9 @@ class ApiClient:
             self._request("POST", "/v1/reset", timeout=30),
         )
 
+    def resources(self) -> dict[str, object]:
+        return cast(dict[str, object], self._request("GET", "/v1/resources"))
+
     def run_experiment(
         self, experiment_id: str, topology_id: str, scenario_source: str
     ) -> dict[str, object]:
@@ -114,4 +117,11 @@ class ApiClient:
         return cast(
             dict[str, object],
             self._request("GET", f"/v1/experiments/{safe}/report"),
+        )
+
+    def cancel_experiment(self, experiment_id: str) -> dict[str, object]:
+        safe = urllib.parse.quote(experiment_id, safe="")
+        return cast(
+            dict[str, object],
+            self._request("POST", f"/v1/experiments/{safe}/cancel"),
         )

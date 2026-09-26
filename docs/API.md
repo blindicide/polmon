@@ -15,6 +15,10 @@ preserving loaded topology definitions so they can be redeployed. Application er
 Request documents are capped at 2 MB; client connection/ordinary calls default to 5 seconds,
 deployment/reset to 30 seconds, and experiment execution to 120 seconds.
 
+`GET /v1/resources` returns effective admission limits, active counts, and a resource sample.
+`POST /v1/experiments/{experiment_id}/cancel` requests cooperative cancellation of an active
+experiment. Limit rejections return HTTP 429 and the `resource_limit` error code.
+
 The Windows client performs every HTTP call on one worker thread and polls completion through Tk's
 event loop. It never imports Linux networking code and does not require a backend to launch or run
 its headless smoke tests.

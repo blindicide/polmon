@@ -67,6 +67,9 @@ class ScenarioEngine:
     def cancel(self) -> None:
         self._cancelled.set()
 
+    def reset_cancellation(self) -> None:
+        self._cancelled.clear()
+
     def validate_against(self, scenario: Scenario, topology: Topology) -> None:
         if scenario.required_topology != topology.id:
             raise ScenarioError(
@@ -97,9 +100,12 @@ class ScenarioEngine:
         topology: Topology,
         executor: ActionExecutor,
         cleanup: Callable[[], None],
+        *,
+        reset_cancellation: bool = True,
     ) -> ScenarioResult:
         self.validate_against(scenario, topology)
-        self._cancelled.clear()
+        if reset_cancellation:
+            self.reset_cancellation()
         started_at = datetime.now(UTC)
         start = self.clock()
         observations: list[Observation] = []

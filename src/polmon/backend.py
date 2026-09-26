@@ -16,6 +16,7 @@ from polmon.api.routes import router
 from polmon.core.diagnostics import collect_diagnostics
 from polmon.core.errors import PolmonError
 from polmon.core.logging import configure_logging
+from polmon.resources import ResourceLimits
 from polmon.version import __version__
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", default=8080, type=int)
     parser.add_argument("--diagnostics", action="store_true", help="print diagnostics and exit")
     parser.add_argument("--log-level", default="INFO")
+    defaults = ResourceLimits()
+    parser.add_argument("--max-endpoints", type=int, default=defaults.max_endpoint_count)
+    parser.add_argument("--max-namespaces", type=int, default=defaults.max_active_namespaces)
+    parser.add_argument(
+        "--max-concurrent-experiments",
+        type=int,
+        default=defaults.max_concurrent_experiments,
+    )
+    parser.add_argument("--max-capture-bytes", type=int, default=defaults.max_capture_bytes)
+    parser.add_argument(
+        "--max-experiment-seconds",
+        type=float,
+        default=defaults.max_experiment_duration_seconds,
+    )
+    parser.add_argument(
+        "--memory-reserve-mb",
+        type=int,
+        default=defaults.memory_safety_threshold_mb,
+    )
     return parser
 
 
@@ -70,7 +90,15 @@ def main() -> None:
     if args.diagnostics:
         print(__import__("json").dumps(collect_diagnostics(), indent=2, sort_keys=True))
         return
-    uvicorn.run(app, host=args.host, port=args.port)
+    limits = ResourceLimits(
+        max_endpoint_count=args.max_endpoints,
+        max_active_namespaces=args.max_namespaces,
+        max_concurrent_experiments=args.max_concurrent_experiments,
+        max_capture_bytes=args.max_capture_bytes,
+        max_experiment_duration_seconds=args.max_experiment_seconds,
+        memory_safety_threshold_mb=args.memory_reserve_mb,
+    )
+    uvicorn.run(create_app(ControlPlane(limits=limits)), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

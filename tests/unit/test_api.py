@@ -116,7 +116,7 @@ cleanup_policy: never
     assert document["topology"]["id"] == topology_id
     assert document["scenario"]["id"] == "report-ping"
     assert document["expected_vs_actual"][0]["matched"] is True
-    assert len(document["resource_statistics"]) == 2
+    assert len(document["resource_statistics"]) >= 2
     assert Path(first["reports"]["json"]).is_file()
     assert Path(first["reports"]["markdown"]).is_file()
 

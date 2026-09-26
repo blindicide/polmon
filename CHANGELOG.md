@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.13] - 2026-09-26
+
+### Added
+
+- Pre-deployment endpoint, namespace, and available-memory admission with detailed HTTP 429 errors.
+- Configurable concurrency, capture, duration, and host-memory reserve limits through API policy and
+  backend CLI flags.
+- Runtime resource sampling, cooperative automatic/manual cancellation, and resource status API.
+
 ## [0.0.12] - 2026-09-26
 
 ### Added

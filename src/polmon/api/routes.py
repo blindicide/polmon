@@ -60,6 +60,11 @@ def reset(request: Request) -> dict[str, object]:
     return control(request).reset_all()
 
 
+@router.get("/resources")
+def resource_status(request: Request) -> dict[str, object]:
+    return control(request).resource_status()
+
+
 @router.post("/experiments")
 def experiment(payload: ExperimentRequest, request: Request) -> dict[str, object]:
     return control(request).run_experiment(
@@ -70,6 +75,11 @@ def experiment(payload: ExperimentRequest, request: Request) -> dict[str, object
 @router.get("/experiments/{experiment_id}")
 def experiment_status(experiment_id: str, request: Request) -> dict[str, object]:
     return control(request).experiment(experiment_id)
+
+
+@router.post("/experiments/{experiment_id}/cancel")
+def cancel_experiment(experiment_id: str, request: Request) -> dict[str, object]:
+    return control(request).cancel_experiment(experiment_id)
 
 
 @router.get("/experiments/{experiment_id}/telemetry")

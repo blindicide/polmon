@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from threading import RLock
@@ -10,14 +11,15 @@ from threading import RLock
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
-from polmon.core.diagnostics import resource_snapshot
+from polmon.core.diagnostics import ResourceSnapshot, resource_snapshot
 from polmon.core.errors import ConfigurationError
 from polmon.orchestration import Orchestrator
 from polmon.reporting import write_experiment_report
+from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
 from polmon.scenarios import ScenarioEngine, parse_scenario
-from polmon.scenarios.engine import Observation
+from polmon.scenarios.engine import ActionExecutor, Observation
 from polmon.scenarios.executors import NamespaceScenarioExecutor
-from polmon.scenarios.models import ActionKind, ScenarioAction
+from polmon.scenarios.models import ActionKind, Scenario, ScenarioAction
 from polmon.telemetry.models import EventCategory
 from polmon.telemetry.store import TelemetrySession, TelemetryStore
 from polmon.topology import dump_topology, parse_topology
@@ -47,13 +49,23 @@ class SyntheticScenarioExecutor:
 
 
 class ControlPlane:
-    def __init__(self, data_directory: str | Path = "var") -> None:
+    def __init__(
+        self,
+        data_directory: str | Path = "var",
+        *,
+        limits: ResourceLimits | None = None,
+        snapshot: Callable[[], ResourceSnapshot] = resource_snapshot,
+    ) -> None:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
         self.topologies: dict[str, Topology] = {}
         self.deployments: dict[str, Orchestrator] = {}
         self.experiments: dict[str, dict[str, object]] = {}
+        self.active_experiments: dict[str, ScenarioEngine] = {}
+        self.limits = limits or ResourceLimits()
+        self._snapshot = snapshot
+        self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
         self._lock = RLock()
 
     def validate_topology(self, source: str) -> dict[str, object]:
@@ -86,6 +98,8 @@ class ControlPlane:
             if topology_id in self.deployments:
                 return self.deployment(topology_id)
             topology = self._topology(topology_id)
+            deployed = [self._topology(item) for item in self.deployments]
+            self.admission.admit_topology(topology, deployed)
             control = Orchestrator(topology, self._backend(topology))
             try:
                 control.validate()
@@ -143,42 +157,92 @@ class ControlPlane:
         control = self.deployments.get(topology_id)
         if control is None:
             raise ConfigurationError("topology must be deployed before an experiment")
-        session = TelemetrySession(
-            self.telemetry,
-            experiment_id,
-            topology_id,
-            scenario.id,
-            self.data_directory / "captures",
-        )
-        session.event(EventCategory.SCENARIO, "started")
-        session.resources(resource_snapshot())
         backend = control.backend
         if isinstance(backend, NamespaceBackend):
             executor = NamespaceScenarioExecutor(backend)
         elif isinstance(backend, SyntheticBackend):
             executor = SyntheticScenarioExecutor(backend)
         else:
-            try:
-                session.close("failed")
-            finally:
-                self.destroy(topology_id)
+            self.destroy(topology_id)
             raise ConfigurationError("scenario execution is not yet supported for hybrid topology")
+
+        engine = ScenarioEngine()
+        with self._lock:
+            if experiment_id in self.active_experiments or experiment_id in self.experiments:
+                raise ConfigurationError(f"experiment '{experiment_id}' already exists")
+            self.admission.admit_experiment(scenario, len(self.active_experiments))
+            self.active_experiments[experiment_id] = engine
+
+        try:
+            return self._execute_experiment(
+                experiment_id, topology, scenario, executor, engine
+            )
+        finally:
+            with self._lock:
+                self.active_experiments.pop(experiment_id, None)
+
+    def _execute_experiment(
+        self,
+        experiment_id: str,
+        topology: Topology,
+        scenario: Scenario,
+        executor: ActionExecutor,
+        engine: ScenarioEngine,
+    ) -> dict[str, object]:
+        topology_id = topology.id
+        session = TelemetrySession(
+            self.telemetry,
+            experiment_id,
+            topology_id,
+            scenario.id,
+            self.data_directory / "captures",
+            max_capture_bytes=self.limits.max_capture_bytes,
+        )
+        session.event(EventCategory.SCENARIO, "started")
+        session.resources(self._snapshot())
 
         def cleanup() -> None:
             self.destroy(topology_id)
 
-        try:
-            result = ScenarioEngine().run(scenario, topology, executor, cleanup)
-        except Exception as error:
+        def resource_limit(reason: str, sample: ResourceSnapshot) -> None:
             session.event(
                 EventCategory.EXECUTION_ERROR,
-                "error",
-                payload={"message": f"{type(error).__name__}: experiment aborted"},
+                "resource_limit",
+                payload={"message": reason},
             )
-            session.resources(resource_snapshot())
-            session.close("failed")
-            self.destroy(topology_id)
+            engine.cancel()
+
+        monitor = ResourceMonitor(
+            self.limits,
+            resource_limit,
+            on_sample=session.resources,
+            snapshot=self._snapshot,
+        )
+
+        engine.reset_cancellation()
+        monitor.start()
+        try:
+            result = engine.run(
+                scenario,
+                topology,
+                executor,
+                cleanup,
+                reset_cancellation=False,
+            )
+        except Exception as error:
+            try:
+                session.event(
+                    EventCategory.EXECUTION_ERROR,
+                    "error",
+                    payload={"message": f"{type(error).__name__}: experiment aborted"},
+                )
+                session.resources(self._snapshot())
+                session.close("failed")
+            finally:
+                self.destroy(topology_id)
             raise
+        finally:
+            monitor.stop()
         for observation in result.observations:
             session.event(
                 EventCategory.NETWORK_OBSERVATION,
@@ -194,7 +258,7 @@ class ControlPlane:
                 session.packet(frame)
         for error in result.errors:
             session.event(EventCategory.EXECUTION_ERROR, "error", payload={"message": error})
-        session.resources(resource_snapshot())
+        session.resources(self._snapshot())
         summary = session.close(result.status)
         events = self.telemetry.events(experiment_id)
         artifacts = write_experiment_report(
@@ -217,6 +281,23 @@ class ControlPlane:
         }
         self.experiments[experiment_id] = record
         return record
+
+    def cancel_experiment(self, experiment_id: str) -> dict[str, object]:
+        with self._lock:
+            engine = self.active_experiments.get(experiment_id)
+            if engine is None:
+                raise ConfigurationError(f"experiment '{experiment_id}' is not active")
+            engine.cancel()
+        return {"experiment_id": experiment_id, "state": "cancelling"}
+
+    def resource_status(self) -> dict[str, object]:
+        snapshot = self._snapshot()
+        return {
+            "limits": self.limits.model_dump(mode="json"),
+            "active_deployments": len(self.deployments),
+            "active_experiments": len(self.active_experiments),
+            "snapshot": asdict(snapshot),
+        }
 
     def experiment(self, experiment_id: str) -> dict[str, object]:
         if experiment_id not in self.experiments:
