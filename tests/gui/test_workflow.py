@@ -134,6 +134,36 @@ def test_admission_rejection_names_the_limit(window, qtbot, backend_factory, tmp
     assert not window.session.deployments
 
 
+def test_l0_only_deployment_is_refused_in_ui_with_linux_guidance(
+    window, qtbot, backend_factory
+) -> None:
+    backend = backend_factory(l0_only=True)
+    connect(qtbot, window, backend)
+    wait_connected(qtbot, window)
+    window.session.set_topologies(
+        [
+            {
+                "topology_id": "needs-linux",
+                "deployed": False,
+                "resources": {
+                    "endpoint_count": 2,
+                    "l1_namespaces": 1,
+                    "l2_virtual_machines": 0,
+                },
+            }
+        ]
+    )
+    deployment = window.pages["deployment"]
+    deployment.target.setCurrentIndex(deployment.target.findData("needs-linux"))
+    deployment.deploy()
+    assert deployment.banner.problem.title == "Local backend — L0 only"
+    assert deployment.banner.problem.detail == (
+        "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a "
+        "Linux host with network namespace privileges."
+    )
+    assert "requires a polmon backend on a Linux host" in log_text(window)
+
+
 def test_validation_errors_point_at_the_line(window, qtbot, live_backend, tmp_path) -> None:
     broken = l0_topology().replace("ipv4_subnet: 10.77.0.0/24", "ipv4_subnet: 8.8.8.0/24")
     assert broken != l0_topology()

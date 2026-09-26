@@ -1,10 +1,12 @@
-"""``polmon-client``: Qt desktop client for a remote polmon Linux backend."""
+"""``polmon-client``: Qt console for an owned L0 or remote Linux backend."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from pathlib import Path
 
 from polmon.version import __version__
 
@@ -37,6 +39,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Linux: add polmon to the desktop menu for this user (XDG) and exit",
     )
     parser.add_argument("--url", help="backend URL to prefill (overrides the saved one)")
+    parser.add_argument(
+        "--backend-executable",
+        help="override polmon-backend executable used by the Local backend preset",
+    )
+    parser.add_argument(
+        "--local-backend-self-test",
+        action="store_true",
+        help="start the packaged backend through the client lifecycle and run a real L0 workflow",
+    )
+    parser.add_argument(
+        "--local-backend-crash-test",
+        type=Path,
+        metavar="PID_JSON",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--theme", choices=("system", "light", "dark"), help="colour theme for this session"
     )
@@ -92,8 +109,9 @@ def run_gui(args: argparse.Namespace, qt_arguments: list[str]) -> int:
     from polmon.client.mainwindow import MainWindow
 
     app = create_application([sys.argv[0], *qt_arguments], theme_preference=args.theme)
-    window = MainWindow()
+    window = MainWindow(backend_executable=args.backend_executable)
     if args.url:
+        window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))
         window.bar.url.setText(args.url)
     window.show()
     code = app.exec()
@@ -110,6 +128,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         print(f"polmon {__version__}")
         return 0
+    if args.local_backend_self_test:
+        from polmon.client.local_backend import packaged_workflow_self_test
+
+        try:
+            result = packaged_workflow_self_test(args.backend_executable)
+        except Exception as error:
+            print(f"local-backend self-test: FAIL {type(error).__name__}: {error}")
+            return 1
+        print(json.dumps(result, indent=2, sort_keys=True))
+        print("local-backend self-test: PASS")
+        return 0
+    if args.local_backend_crash_test:
+        from polmon.client.local_backend import crash_cleanup_probe
+
+        crash_cleanup_probe(args.local_backend_crash_test, args.backend_executable)
+        return 77
     try:
         import PySide6  # noqa: F401
     except ImportError:

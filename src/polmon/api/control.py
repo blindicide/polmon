@@ -14,7 +14,7 @@ from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
-from polmon.core.diagnostics import ResourceSnapshot, resource_snapshot
+from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
 from polmon.core.errors import ConfigurationError, PolmonError
 from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
@@ -64,6 +64,7 @@ class ControlPlane:
         *,
         limits: ResourceLimits | None = None,
         snapshot: Callable[[], ResourceSnapshot] = resource_snapshot,
+        l0_only: bool = False,
     ) -> None:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,7 @@ class ControlPlane:
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
         self.limits = limits or ResourceLimits()
+        self.l0_only = l0_only
         self._snapshot = snapshot
         self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
         self.deployment_seconds: dict[str, float] = {}
@@ -82,6 +84,16 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+
+    def capabilities(self) -> dict[str, object]:
+        """Execution fidelity advertised through health/resources responses."""
+        return {
+            "fidelity": "l0_only" if self.l0_only else "linux_lab",
+            "l0": True,
+            "l1": not self.l0_only,
+            "l2": False,
+            "hybrid_tap": not self.l0_only,
+        }
 
     def _benchmark_conflicts(self) -> dict[str, object]:
         with self._lock:
@@ -186,6 +198,25 @@ class ControlPlane:
         classes = {node.node_class for node in topology.nodes}
         if classes == {NodeClass.L0}:
             return SyntheticBackend()
+        if NodeClass.L2 in classes:
+            raise ConfigurationError("L2 virtual-machine execution is not implemented")
+        readiness = fidelity_readiness()
+        needed = "l1_ready" if classes == {NodeClass.L1} else "hybrid_ready"
+        if not readiness[needed]:
+            unavailable = [
+                name
+                for name, result in readiness["checks"].items()  # type: ignore[union-attr]
+                if not result["ok"]
+                and (needed == "hybrid_ready" or name != "tun_device")
+            ]
+            raise ConfigurationError(
+                "L1/hybrid deployment requires a Linux host with iproute2, unprivileged ping, "
+                "and passwordless sudo restricted to network namespace operations.",
+                details={
+                    "requires": "linux_network_namespaces",
+                    "unavailable_checks": unavailable,
+                },
+            )
         if classes == {NodeClass.L1}:
             return NamespaceBackend()
         if classes <= {NodeClass.L0, NodeClass.L1}:
@@ -197,6 +228,12 @@ class ControlPlane:
             if topology_id in self.deployments:
                 return self.deployment(topology_id)
             topology = self._topology(topology_id)
+            if self.l0_only and any(node.node_class is not NodeClass.L0 for node in topology.nodes):
+                raise ConfigurationError(
+                    "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon "
+                    "backend on a Linux host with network namespace privileges.",
+                    details={"fidelity": "l0_only", "requires": "linux_network_namespaces"},
+                )
             deployed = [self._topology(item) for item in self.deployments]
             self.admission.admit_topology(topology, deployed)
             control = Orchestrator(topology, self._backend(topology))
@@ -577,6 +614,7 @@ class ControlPlane:
     def resource_status(self) -> dict[str, object]:
         snapshot = self._sample()
         return {
+            "capabilities": self.capabilities(),
             "limits": self.limits.model_dump(mode="json"),
             "data_directory_bytes": directory_size_bytes(self.data_directory),
             "active_deployments": len(self.deployments),
@@ -584,6 +622,16 @@ class ControlPlane:
             "benchmark_running": self.benchmarks.running() is not None,
             "snapshot": asdict(snapshot),
         }
+
+    def start_benchmark(self, request) -> dict[str, object]:  # noqa: ANN001
+        """Start a benchmark allowed by this backend's fidelity policy."""
+        if self.l0_only and request.kind != "l0":
+            raise ConfigurationError(
+                "Local backend supports L0 benchmarks only; L1 and target benchmarks require a "
+                "polmon backend on a Linux host with network namespace privileges.",
+                details={"fidelity": "l0_only", "requires": "linux_network_namespaces"},
+            )
+        return self.benchmarks.start(request)
 
     def experiment(self, experiment_id: str) -> dict[str, object]:
         """Live progress while running, the full record once finished (this process), or the

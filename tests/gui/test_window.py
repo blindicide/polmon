@@ -1,10 +1,12 @@
 """The main window: identity, theming, shortcuts, and connection behaviour under failure."""
 
 import io
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
 from conftest import connect, free_port, log_text, wait_connected
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence, QPalette
@@ -81,6 +83,39 @@ def test_unreachable_backend_is_explained_and_ui_stays_live(window, qtbot) -> No
     assert "connection refused" in banner.problem.detail.lower()
     assert ticks, "the event loop must keep running while connecting"
     assert "Traceback" not in log_text(window)
+
+
+def test_local_preset_starts_connects_and_reaps_owned_backend(window, qtbot) -> None:
+    window.bar.mode.setCurrentIndex(window.bar.mode.findData("local"))
+    window.connect_backend()
+    wait_connected(qtbot, window, timeout=20_000)
+    process = window.local_backend.process
+    assert process is not None and process.poll() is None
+    assert window.session.l0_only
+    assert window.bar.state_label.text() == "Local backend — L0 only"
+    assert "Local backend — L0 only" in window.status_text.text()
+    assert window.bar.log_button.isEnabled()
+    window.disconnect_backend()
+    qtbot.waitUntil(lambda: process.poll() is not None, timeout=20_000)
+    assert process.returncode is not None
+    if os.name == "posix":
+        with pytest.raises(ProcessLookupError):
+            os.kill(process.pid, 0)
+
+
+def test_local_backend_death_is_actionable(window, qtbot) -> None:
+    window.bar.mode.setCurrentIndex(window.bar.mode.findData("local"))
+    window.connect_backend()
+    wait_connected(qtbot, window, timeout=20_000)
+    process = window.local_backend.process
+    assert process is not None
+    process.kill()
+    process.wait(timeout=10)
+    window.poll()
+    qtbot.waitUntil(lambda: window.session.state is ConnectionState.DISCONNECTED, timeout=5_000)
+    problem = window.pages["dashboard"].banner.problem
+    assert problem.title == "Local backend stopped"
+    assert str(window.local_backend.log_path) in problem.hint
 
 
 def test_slow_backend_times_out_without_blocking(window, qtbot) -> None:
@@ -262,7 +297,7 @@ def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_
     shown = []
     real_window = mainwindow.MainWindow
 
-    def isolated_window(settings=None, parent=None):
+    def isolated_window(settings=None, parent=None, **kwargs):
         window = real_window(QSettings(str(tmp_path / "gui.ini"), QSettings.Format.IniFormat))
         shown.append(window)
         return window

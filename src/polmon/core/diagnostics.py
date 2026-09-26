@@ -201,6 +201,24 @@ def lab_readiness(
     return {"ready": all(bool(item["ok"]) for item in checks.values()), "checks": checks}
 
 
+def fidelity_readiness() -> dict[str, object]:
+    """Summarize which privileged Linux fidelity levels the host can actually provide."""
+    lab = lab_readiness()
+    checks = lab["checks"]
+    assert isinstance(checks, dict)
+    l1_names = (
+        "tool_ip",
+        "tool_sudo",
+        "tool_setpriv",
+        "tool_ping",
+        "ping_unprivileged",
+        "passwordless_sudo_ip",
+    )
+    l1_ready = all(bool(checks[name]["ok"]) for name in l1_names)  # type: ignore[index]
+    hybrid_ready = l1_ready and bool(checks["tun_device"]["ok"])  # type: ignore[index]
+    return {"l1_ready": l1_ready, "hybrid_ready": hybrid_ready, "checks": checks}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="display secret-free polmon diagnostics")
     parser.add_argument("--version", action="version", version=f"polmon {__version__}")

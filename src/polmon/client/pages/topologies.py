@@ -319,7 +319,13 @@ class TopologiesPage(Page):
         self.context.navigate("refresh")
 
     def deploy(self) -> None:
-        self.context.navigate("deployment", {"deploy_source": self.source()})
+        self.context.navigate(
+            "deployment",
+            {
+                "deploy_source": self.source(),
+                "resources": (self.result or {}).get("resources"),
+            },
+        )
 
     # -- results ------------------------------------------------------------------------------
 

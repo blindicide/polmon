@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from enum import StrEnum
 
@@ -35,6 +36,8 @@ class Session(QObject):
         self.timeout = DEFAULT_TIMEOUT
         self.state = ConnectionState.DISCONNECTED
         self.backend_version: str | None = None
+        self.connection_kind = "local" if sys.platform == "win32" else "remote"
+        self.capabilities: dict[str, object] = {}
         self.latency: float | None = None
         self.lost_since: float | None = None
         self.problem: Problem | None = None
@@ -70,6 +73,7 @@ class Session(QObject):
         if state is ConnectionState.DISCONNECTED:
             self.unsupported = set()
             self.backend_version = None
+            self.capabilities = {}
             self.latency = None
             self.resources = None
             self.backend_topologies = []
@@ -109,3 +113,11 @@ class Session(QObject):
     def limits(self) -> dict[str, object]:
         limits = (self.resources or {}).get("limits")
         return limits if isinstance(limits, dict) else {}
+
+    @property
+    def local_backend(self) -> bool:
+        return self.connection_kind == "local"
+
+    @property
+    def l0_only(self) -> bool:
+        return self.capabilities.get("fidelity") == "l0_only" or self.local_backend

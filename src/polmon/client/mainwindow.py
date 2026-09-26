@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import html
+import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 from PySide6 import __version__ as pyside_version
-from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
+from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, QUrl, qVersion
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -35,6 +37,7 @@ from polmon.client import theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
 from polmon.client.icon import app_icon
+from polmon.client.local_backend import LOCAL_LABEL, LocalBackendError, LocalBackendManager
 from polmon.client.pages import Context, Page
 from polmon.client.pages.benchmarks import BenchmarksPage
 from polmon.client.pages.dashboard import DashboardPage
@@ -98,6 +101,12 @@ class ConnectionBar(QToolBar):
         self.setObjectName("connectionBar")
         self.setMovable(False)
         self.addWidget(QLabel(" Backend "))
+        self.mode = QComboBox()
+        self.mode.addItem("Local backend (L0 only)", "local")
+        self.mode.addItem("Remote Linux backend", "remote")
+        self.mode.setToolTip("Local is self-contained and L0-only; remote Linux can provide L1")
+        self.addWidget(self.mode)
+        self.addWidget(QLabel("  URL "))
         # Editable combo: type a URL or pick one of the recently connected backends.
         self.url_box = QComboBox()
         self.url_box.setEditable(True)
@@ -129,6 +138,10 @@ class ConnectionBar(QToolBar):
         self.connect_button.setObjectName("primary")
         self.connect_button.setToolTip("Connect or disconnect (Ctrl+Return)")
         self.addWidget(self.connect_button)
+        self.log_button = QPushButton("Backend log")
+        self.log_button.setToolTip("Open the owned local backend's stdout/stderr log")
+        self.log_button.setEnabled(False)
+        self.addWidget(self.log_button)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.addWidget(spacer)
@@ -140,7 +153,13 @@ class ConnectionBar(QToolBar):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings: QSettings | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        settings: QSettings | None = None,
+        parent: QWidget | None = None,
+        *,
+        backend_executable: str | Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("mainWindow")
         self.setWindowIcon(app_icon())
@@ -152,10 +171,15 @@ class MainWindow(QMainWindow):
         self._poll_handle = None
         self._poll_count = 0
         self._closing = False
+        self.local_backend = LocalBackendManager(backend_executable)
+        self._local_start_handle = None
+        self._local_stop_handle = None
 
         self.bar = ConnectionBar(self)
         self.addToolBar(self.bar)
         self.bar.connect_button.clicked.connect(self.toggle_connection)
+        self.bar.mode.currentIndexChanged.connect(self._connection_mode_changed)
+        self.bar.log_button.clicked.connect(self.open_backend_log)
         self.bar.url.returnPressed.connect(self.toggle_connection)
         self.bar.token.returnPressed.connect(self.toggle_connection)
 
@@ -262,6 +286,9 @@ class MainWindow(QMainWindow):
         )
         self._action(backend, "Focus backend &URL", "Ctrl+L", self._focus_url)
         self.refresh_action = self._action(backend, "&Refresh now", "F5", self.refresh_now)
+        self.backend_log_action = self._action(
+            backend, "Open local backend &log", None, self.open_backend_log
+        )
         backend.addSeparator()
         deployment = self.pages["deployment"]
         self.deploy_action = self._action(
@@ -325,6 +352,7 @@ class MainWindow(QMainWindow):
     def _name_for_assistive_technology(self) -> None:
         """Give every input, editor and view an accessible name (screen readers, UI tests)."""
         explicit = {
+            self.bar.mode: "Backend connection type",
             self.bar.url_box: "Backend URL",
             self.bar.token: "API token",
             self.bar.timeout: "Request timeout in seconds",
@@ -385,6 +413,8 @@ class MainWindow(QMainWindow):
     # -- connection ---------------------------------------------------------------------------
 
     def _focus_url(self) -> None:
+        if self.bar.mode.currentData() == "local":
+            self.bar.mode.setCurrentIndex(self.bar.mode.findData("remote"))
         self.bar.url.setFocus()
         self.bar.url.selectAll()
 
@@ -396,6 +426,10 @@ class MainWindow(QMainWindow):
 
     def connect_backend(self) -> None:
         session = self.session
+        session.connection_kind = str(self.bar.mode.currentData())
+        if session.local_backend:
+            self._start_local_backend()
+            return
         session.url = self.bar.url.text().strip()
         session.token = self.bar.token.text().strip()
         session.timeout = float(self.bar.timeout.value())
@@ -412,6 +446,75 @@ class MainWindow(QMainWindow):
         session.set_state(ConnectionState.CONNECTING)
         session.log(f"Connecting to {session.url}…")
         self.poll(initial=True)
+
+    def _start_local_backend(self) -> None:
+        if self._local_start_handle is not None or self._local_stop_handle is not None:
+            self.session.log("Local backend lifecycle change is still in progress", "warning")
+            return
+        session = self.session
+        session.connection_kind = "local"
+        session.url = "http://127.0.0.1 (selecting a free port)"
+        session.token = ""
+        session.timeout = float(self.bar.timeout.value())
+        session.set_state(ConnectionState.CONNECTING)
+        session.log(f"Starting {LOCAL_LABEL}…")
+
+        def work(token: CancelToken, report) -> dict[str, object]:  # noqa: ANN001
+            return self.local_backend.start(cancelled=lambda: token.cancelled)
+
+        self._local_start_handle = self.runner.submit(
+            "Start local backend",
+            work,
+            on_success=self._local_started,
+            on_failure=self._local_start_failed,
+        )
+        self._local_start_handle.released.connect(self._local_start_released)
+        self._connection_changed()
+
+    def _local_started(self, result: object) -> None:
+        if self.session.state is not ConnectionState.CONNECTING or not isinstance(result, dict):
+            self.local_backend.stop()
+            return
+        self.session.url = str(result["url"])
+        self.session.token = str(result["token"])
+        self.bar.log_button.setEnabled(True)
+        self.backend_log_action.setEnabled(True)
+        self.session.log(
+            f"{LOCAL_LABEL} started on {self.session.url}; log: {result.get('log_path')}"
+        )
+        self.poll(initial=True)
+
+    def _local_start_failed(self, error: BaseException) -> None:
+        if self.session.state is ConnectionState.DISCONNECTED:
+            return
+        problem = Problem(
+            "Local backend failed to start",
+            str(error),
+            f"Run polmon-backend --self-test and inspect {self.local_backend.log_path}.",
+        )
+        self.session.set_state(ConnectionState.DISCONNECTED, problem)
+        self.pages["dashboard"].banner.show_problem(problem)
+        self.session.log(problem.text(), "error")
+
+    def _local_start_released(self) -> None:
+        self._local_start_handle = None
+        self._connection_changed()
+
+    def _connection_mode_changed(self) -> None:
+        local = self.bar.mode.currentData() == "local"
+        editable = self.session.state in {
+            ConnectionState.DISCONNECTED,
+            ConnectionState.UNAUTHORIZED,
+        }
+        self.bar.url_box.setEnabled(editable and not local)
+        self.bar.token.setEnabled(editable and not local)
+        self.bar.timeout.setEnabled(editable)
+        self.settings.setValue("connection/kind", "local" if local else "remote")
+
+    def open_backend_log(self) -> None:
+        path = self.local_backend.log_path
+        if path is not None and path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def _remember_url(self, url: str) -> None:
         recent = [item for item in self.recent_urls() if item != url]
@@ -438,8 +541,36 @@ class MainWindow(QMainWindow):
         if self._poll_handle is not None:
             self._poll_handle.cancel()
             self._poll_handle = None
+        was_local = self.session.local_backend
         self.session.set_state(ConnectionState.DISCONNECTED)
         self.session.log("Disconnected")
+        if was_local:
+            if self._local_start_handle is not None:
+                self._local_start_handle.cancel()
+            elif self.local_backend.process is not None:
+                self._stop_local_backend()
+
+    def _stop_local_backend(self) -> None:
+        if self._local_stop_handle is not None:
+            return
+        log_path = self.local_backend.log_path
+        self.session.log(f"Stopping local backend (log: {log_path})…")
+        self._local_stop_handle = self.runner.submit(
+            "Stop local backend",
+            lambda token, report: self.local_backend.stop(),
+            on_success=lambda result: self.session.log(
+                f"Local backend stopped (exit code {result})"
+            ),
+            on_failure=lambda error: self.session.log(
+                f"Local backend stop failed: {type(error).__name__}: {error}", "error"
+            ),
+        )
+        self._local_stop_handle.released.connect(self._local_stop_released)
+        self._connection_changed()
+
+    def _local_stop_released(self) -> None:
+        self._local_stop_handle = None
+        self._connection_changed()
 
     def refresh_now(self) -> None:
         if self.session.state in {ConnectionState.CONNECTED, ConnectionState.LOST}:
@@ -447,6 +578,9 @@ class MainWindow(QMainWindow):
 
     def poll(self, *, initial: bool = False) -> None:
         if self._poll_handle is not None:
+            return
+        if self.session.local_backend and not self.local_backend.running:
+            self._local_backend_died()
             return
         client = self.session.client()
         known = sorted(self.session.known_topologies)
@@ -521,6 +655,13 @@ class MainWindow(QMainWindow):
         assert isinstance(health, dict)
         previous = session.state
         session.backend_version = str(health.get("version"))
+        capabilities = health.get("capabilities") or {}
+        session.capabilities = capabilities if isinstance(capabilities, dict) else {}
+        if session.local_backend and session.capabilities.get("fidelity") != "l0_only":
+            self._poll_failed(
+                LocalBackendError("owned backend did not advertise its L0-only boundary"), initial
+            )
+            return
         session.latency = result["latency"]  # type: ignore[assignment]
         if previous is not ConnectionState.CONNECTED:
             session.set_state(ConnectionState.CONNECTED)
@@ -566,6 +707,9 @@ class MainWindow(QMainWindow):
         session = self.session
         if session.state is ConnectionState.DISCONNECTED:
             return
+        if session.local_backend and not self.local_backend.running:
+            self._local_backend_died()
+            return
         problem = describe(error, url=session.url, timeout=session.timeout)
         banner = self.pages["dashboard"].banner
         if isinstance(error, ApiClientError) and error.status == 401:
@@ -600,6 +744,19 @@ class MainWindow(QMainWindow):
         if not self.poll_timer.isActive():
             self.poll_timer.start()
 
+    def _local_backend_died(self) -> None:
+        self._poll_handle = None
+        self.poll_timer.stop()
+        code = self.local_backend.exit_code
+        problem = Problem(
+            "Local backend stopped",
+            f"The owned backend exited unexpectedly with code {code}.",
+            f"Open the backend log for details: {self.local_backend.log_path}",
+        )
+        self.session.set_state(ConnectionState.DISCONNECTED, problem)
+        self.pages["dashboard"].banner.show_problem(problem)
+        self.session.log(problem.text(), "error")
+
     def _connection_changed(self) -> None:
         state = self.session.state
         tone = STATE_TONES[state]
@@ -611,8 +768,10 @@ class MainWindow(QMainWindow):
             else "Disconnect"
         )
         editable = state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}
-        for widget in (self.bar.url_box, self.bar.token, self.bar.timeout):
-            widget.setEnabled(editable)
+        lifecycle_busy = self._local_start_handle is not None or self._local_stop_handle is not None
+        self.bar.mode.setEnabled(editable and not lifecycle_busy)
+        self.bar.connect_button.setEnabled(not lifecycle_busy)
+        self._connection_mode_changed()
         self._update_status()
         self._update_actions()
 
@@ -620,7 +779,8 @@ class MainWindow(QMainWindow):
         session = self.session
         state = session.state
         if state is ConnectionState.CONNECTED:
-            text = f"Connected · {session.url} · backend {session.backend_version}"
+            prefix = LOCAL_LABEL if session.local_backend else "Connected"
+            text = f"{prefix} · {session.url} · backend {session.backend_version}"
         elif state is ConnectionState.LOST and session.lost_since:
             since = datetime.fromtimestamp(session.lost_since).strftime("%H:%M:%S")
             text = f"Backend unreachable since {since} · retrying"
@@ -697,8 +857,9 @@ class MainWindow(QMainWindow):
             "About polmon",
             f"<h3>polmon {__version__}</h3>"
             "<p>Operator console for the resource-efficient isolated network attack simulation "
-            "platform. The client talks to a polmon Linux backend over its documented HTTP API "
-            "and never runs laboratory networking itself.</p>"
+            "platform. It can own a loopback-only L0 backend or connect to a remote Linux "
+            "backend for higher-fidelity laboratory networking. The Qt client itself never "
+            "performs laboratory network operations.</p>"
             f"<p>Qt {qVersion()} · PySide6 {pyside_version} (Qt for Python, LGPLv3)</p>",
         )
 
@@ -706,6 +867,10 @@ class MainWindow(QMainWindow):
 
     def _restore(self) -> None:
         settings = self.settings
+        default_kind = "local" if sys.platform == "win32" else "remote"
+        kind = str(settings.value("connection/kind", default_kind))
+        restored_kind = kind if kind in {"local", "remote"} else default_kind
+        self.bar.mode.setCurrentIndex(self.bar.mode.findData(restored_kind))
         self._fill_recent(
             self.recent_urls(), current=str(settings.value("connection/url", DEFAULT_URL))
         )
@@ -725,6 +890,7 @@ class MainWindow(QMainWindow):
         state = settings.value("window/state")
         if isinstance(state, QByteArray):
             self.restoreState(state)
+        self._connection_mode_changed()
 
     def shutdown(self, wait_ms: int = 2000) -> bool:
         """Stop timers, cancel work and wait briefly; returns False if workers remain."""
@@ -734,6 +900,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("window/state", self.saveState())
         self.settings.sync()
         self.runner.close()
+        self.local_backend.stop(timeout=max(2.0, wait_ms / 1000))
         return self.runner.wait(wait_ms)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
@@ -741,8 +908,8 @@ class MainWindow(QMainWindow):
             answer = QMessageBox.question(
                 self,
                 "Operation in progress",
-                f"'{self.context.operation_name}' is still running. Quit anyway? Work already "
-                "sent to the backend continues there; reconnect later and use Reset if needed.",
+                f"'{self.context.operation_name}' is still running. Quit anyway? Remote work may "
+                "continue; an owned local backend will be stopped before exit.",
             )
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()

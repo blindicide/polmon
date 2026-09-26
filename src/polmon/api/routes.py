@@ -39,8 +39,13 @@ def control(request: Request) -> ControlPlane:
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    return {"name": "polmon", "version": __version__, "status": "ok"}
+def health(request: Request) -> dict[str, object]:
+    return {
+        "name": "polmon",
+        "version": __version__,
+        "status": "ok",
+        "capabilities": control(request).capabilities(),
+    }
 
 
 @router.post("/topologies/validate")
@@ -160,7 +165,7 @@ def start_benchmark(
     payload: BenchmarkRequest, request: Request, response: Response
 ) -> dict[str, object]:
     response.status_code = 202
-    return control(request).benchmarks.start(payload)
+    return control(request).start_benchmark(payload)
 
 
 @router.get("/benchmarks/jobs")

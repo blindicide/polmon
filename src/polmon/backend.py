@@ -1,9 +1,12 @@
-"""Minimal Linux backend entry point."""
+"""Cross-platform backend entry point (Windows is explicitly L0-only)."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import sys
+import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,7 +19,7 @@ from polmon.api.auth import BearerTokenAuth, require_safe_binding, resolve_token
 from polmon.api.control import ControlPlane
 from polmon.api.limits import RequestSizeLimit
 from polmon.api.routes import router
-from polmon.core.diagnostics import collect_diagnostics
+from polmon.core.diagnostics import collect_diagnostics, fidelity_readiness
 from polmon.core.errors import PolmonError
 from polmon.core.logging import configure_logging
 from polmon.resources import ResourceLimits
@@ -77,14 +80,35 @@ app = create_app()
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="polmon Linux backend")
+    parser = argparse.ArgumentParser(description="polmon backend (Windows: L0 only)")
     parser.add_argument("--version", action="version", version=f"polmon {__version__}")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8080, type=int)
     parser.add_argument("--diagnostics", action="store_true", help="print diagnostics and exit")
+    parser.add_argument(
+        "--lab-readiness",
+        action="store_true",
+        help="run read-only L1/hybrid host capability probes and exit 0 when L1 is available",
+    )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="load uvicorn and the application graph and complete a rootless L0 workflow",
+    )
+    parser.add_argument(
+        "--local-l0-only",
+        action="store_true",
+        help="enforce the local-client L0-only fidelity boundary (automatic on Windows)",
+    )
+    parser.add_argument(
+        "--run-benchmark",
+        nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
         "--api-token-file",
+        "--token-file",
         type=Path,
         help="file (mode 600) holding the bearer token; POLMON_API_TOKEN is used otherwise. "
         "A token is required to listen on a non-loopback address.",
@@ -123,12 +147,79 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = build_parser().parse_args()
+def _self_test() -> int:
+    """Exercise the real frozen graph without depending on a listening socket."""
+    from polmon.scenarios import parse_scenario
+
+    topology = """id: self-test
+networks:
+  - id: lab
+    ipv4_subnet: 198.18.0.0/24
+nodes:
+  - id: probe
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:00:00:00:00:01', ipv4: 198.18.0.2}
+  - id: target
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:00:00:00:00:02', ipv4: 198.18.0.3}
+"""
+    scenario = """id: self-test
+required_topology: self-test
+initial_conditions: [topology_deployed]
+permitted_actions: [icmp_probe]
+sequence:
+  - {id: ping, kind: icmp_probe, source: probe, target: target}
+timeout_seconds: 5
+success_conditions:
+  - {action: ping, field: success, equals: true}
+cleanup_policy: never
+"""
+    try:
+        with tempfile.TemporaryDirectory(prefix="polmon-backend-selftest-") as work:
+            plane = ControlPlane(work, l0_only=True)
+            application = create_app(plane)
+            config = uvicorn.Config(application, host="127.0.0.1", port=0, log_level="error")
+            assert config.app is application
+            parsed = parse_scenario(scenario)
+            assert parsed.required_topology == "self-test"
+            plane.load_topology(topology)
+            deployed = plane.deploy("self-test")
+            result = plane.run_experiment("backend-self-test", "self-test", scenario)
+            telemetry = plane.experiment_telemetry("backend-self-test")
+            report = plane.experiment_report("backend-self-test")
+            reset = plane.reset_all()
+            assert deployed["backend"] == "synthetic"
+            assert result["status"] == "succeeded"
+            assert telemetry and report["status"] == "succeeded"
+            assert reset["deployments_destroyed"] == 1
+            plane.shutdown()
+    except Exception as error:
+        print(f"polmon {__version__} backend self-test: FAIL {type(error).__name__}: {error}")
+        return 1
+    print("PASS uvicorn application graph")
+    print("PASS L0 deploy -> scenario -> telemetry -> report -> reset")
+    print(f"polmon {__version__} backend self-test: PASS")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     configure_logging(args.log_level)
+    if args.run_benchmark is not None:
+        from polmon.benchmarks.cli import main as benchmark_main
+
+        return benchmark_main(args.run_benchmark)
+    if args.self_test:
+        return _self_test()
     if args.diagnostics:
-        print(__import__("json").dumps(collect_diagnostics(), indent=2, sort_keys=True))
-        return
+        print(json.dumps(collect_diagnostics(), indent=2, sort_keys=True))
+        return 0
+    if args.lab_readiness:
+        readiness = fidelity_readiness()
+        print(json.dumps(readiness, indent=2, sort_keys=True))
+        return 0 if readiness["l1_ready"] else 2
     limits = ResourceLimits(
         max_endpoint_count=args.max_endpoints,
         max_active_namespaces=args.max_namespaces,
@@ -149,10 +240,14 @@ def main() -> None:
         "enabled" if token else "disabled (loopback only)",
         extra={"event": "api_auth"},
     )
+    l0_only = args.local_l0_only or sys.platform == "win32"
     uvicorn.run(
-        create_app(ControlPlane(limits=limits), api_token=token), host=args.host, port=args.port
+        create_app(ControlPlane(limits=limits, l0_only=l0_only), api_token=token),
+        host=args.host,
+        port=args.port,
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

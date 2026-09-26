@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from polmon.client.formatting import format_seconds
+from polmon.client.local_backend import LOCAL_FIDELITY_MESSAGE
 from polmon.client.pages import Context, Page
 from polmon.client.pages.dashboard import ResourceTiles
 from polmon.client.tasks import CancelToken, ProgressUpdate
@@ -47,6 +48,7 @@ class DeploymentPage(Page):
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self.editor_source = ""
+        self.editor_estimate: dict[str, object] | None = None
         self.seconds_per_endpoint: float | None = None
 
         controls = QHBoxLayout()
@@ -219,6 +221,19 @@ class DeploymentPage(Page):
             ),
             None,
         )
+        if source is not None and self.editor_estimate is not None:
+            estimate = self.editor_estimate
+        if self.session.l0_only and isinstance(estimate, dict) and (
+            int(estimate.get("l1_namespaces") or 0) > 0
+            or int(estimate.get("l2_virtual_machines") or 0) > 0
+        ):
+            self.banner.show_message(
+                "Local backend — L0 only",
+                LOCAL_FIDELITY_MESSAGE,
+                "warning",
+            )
+            self.session.log(f"Deployment refused — {LOCAL_FIDELITY_MESSAGE}", "warning")
+            return
         endpoints = estimate.get("endpoint_count") if isinstance(estimate, dict) else None
         expected = (
             self.seconds_per_endpoint * endpoints
@@ -321,6 +336,8 @@ class DeploymentPage(Page):
             return
         if isinstance(argument, dict) and "deploy_source" in argument:
             self.editor_source = str(argument["deploy_source"])
+            estimate = argument.get("resources")
+            self.editor_estimate = estimate if isinstance(estimate, dict) else None
             self._refresh_targets()
             self.target.setCurrentIndex(max(0, self.target.findData(EDITOR)))
             if argument.get("start", True) and self.deploy_button.isEnabled():

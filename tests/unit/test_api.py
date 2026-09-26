@@ -42,6 +42,71 @@ def test_api_returns_consistent_validation_error(tmp_path) -> None:
     assert response.json()["error"]["code"] == "configuration_error"
 
 
+def test_l0_only_backend_advertises_and_enforces_fidelity(tmp_path) -> None:
+    plane = ControlPlane(tmp_path, l0_only=True)
+    client = TestClient(create_app(plane))
+    health = client.get("/v1/health").json()
+    assert health["capabilities"] == {
+        "fidelity": "l0_only",
+        "l0": True,
+        "l1": False,
+        "l2": False,
+        "hybrid_tap": False,
+    }
+    hybrid = TOPOLOGY.read_text(encoding="utf-8")
+    assert client.post("/v1/topologies", json={"yaml": hybrid}).status_code == 200
+    refused = client.post("/v1/deployments/hybrid-small")
+    assert refused.status_code == 422
+    assert refused.json()["error"]["message"] == (
+        "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a "
+        "Linux host with network namespace privileges."
+    )
+    l2 = l0_source().replace("id: hybrid-small", "id: needs-l2").replace(
+        "class: l0", "class: l2", 1
+    )
+    assert client.post("/v1/topologies", json={"yaml": l2}).status_code == 200
+    l2_refused = client.post("/v1/deployments/needs-l2")
+    assert l2_refused.status_code == 422
+    assert l2_refused.json()["error"]["message"] == refused.json()["error"]["message"]
+    assert plane.deployments == {}
+
+
+def test_linux_backend_cleanly_refuses_l1_when_host_is_not_ready(tmp_path, monkeypatch) -> None:
+    from polmon.api import control as control_module
+
+    checks = {
+        "tool_ip": {"ok": False},
+        "tool_sudo": {"ok": True},
+        "tool_setpriv": {"ok": True},
+        "tool_ping": {"ok": True},
+        "ping_unprivileged": {"ok": True},
+        "passwordless_sudo_ip": {"ok": False},
+        "tun_device": {"ok": False},
+    }
+    monkeypatch.setattr(
+        control_module,
+        "fidelity_readiness",
+        lambda: {"l1_ready": False, "hybrid_ready": False, "checks": checks},
+    )
+    plane = ControlPlane(tmp_path)
+    client = TestClient(create_app(plane))
+    l1 = l0_source().replace("id: hybrid-small", "id: needs-l1").replace(
+        "class: l0", "class: l1"
+    )
+    assert client.post("/v1/topologies", json={"yaml": l1}).status_code == 200
+    refused = client.post("/v1/deployments/needs-l1")
+    assert refused.status_code == 422
+    assert refused.json()["error"]["message"] == (
+        "L1/hybrid deployment requires a Linux host with iproute2, unprivileged ping, and "
+        "passwordless sudo restricted to network namespace operations."
+    )
+    assert refused.json()["error"]["details"]["unavailable_checks"] == [
+        "tool_ip",
+        "passwordless_sudo_ip",
+    ]
+    assert plane.deployments == {}
+
+
 def test_api_runs_synthetic_experiment_and_returns_telemetry(tmp_path) -> None:
     client = TestClient(create_app(ControlPlane(tmp_path)))
     topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()["topology_id"]

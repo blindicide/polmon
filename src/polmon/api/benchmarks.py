@@ -64,7 +64,11 @@ class BenchmarkRequest(StrictModel):
 def benchmark_command(request: BenchmarkRequest, output_dir: Path) -> list[str]:
     """The exact ``polmon-benchmark`` invocation for a request (every limit explicit)."""
     limits = request.limits
-    command = [sys.executable, "-m", "polmon.benchmarks.cli", request.kind]
+    entry = ["--run-benchmark"] if getattr(sys, "frozen", False) else [
+        "-m",
+        "polmon.benchmarks.cli",
+    ]
+    command = [sys.executable, *entry, request.kind]
     if request.kind == "l0":
         command += ["--counts", *(str(count) for count in request.counts)]
         if request.large:

@@ -190,6 +190,7 @@ def window(qtbot, tmp_path, monkeypatch):
 
 
 def connect(qtbot, window, backend: LiveBackend | None = None, *, url=None, token=None) -> None:
+    window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))
     window.bar.url.setText(url or backend.url)
     window.bar.token.setText(token if token is not None else (backend.token or ""))
     window.connect_backend()
