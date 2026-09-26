@@ -7,7 +7,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 ### Changed
 
 - The TAP responder is woken through a self-pipe on stop, so teardown no longer waits for its
-  poll interval, and the idle poll lengthens from 0.1 s to 1 s (fewer idle wake-ups).
+  poll interval, and the idle poll lengthens from 0.1 s to 1 s (fewer idle wake-ups). Measured
+  target teardown median 0.191 s → 0.133 s (`benchmarks/results/SUMMARY-wave19-responder-wake.md`).
 
 ## [0.1.3] - 2026-09-26
 
