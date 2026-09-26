@@ -323,10 +323,10 @@ def _cell(rows: list[dict[str, object]], key: str, scale: float = 1.0, digits: i
     stat = _stat(rows, key)
     if stat is None:
         return "n/a"
-    median, low, high = (value * scale for value in stat)
+    median, low, high = (f"{value * scale:.{digits}f}" for value in stat)
     if len(rows) == 1 or low == high:
-        return f"{median:.{digits}f}"
-    return f"{median:.{digits}f} ({low:.{digits}f}–{high:.{digits}f})"
+        return median
+    return f"{median} ({low}–{high})"
 
 
 def _all(rows: list[dict[str, object]], key: str) -> str:
@@ -443,11 +443,19 @@ def summarize(payload: dict[str, object], source: str) -> list[str]:
     return lines
 
 
+def _display_path(path: Path) -> str:
+    """Repository-relative path when possible, so summaries never embed local home paths."""
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
 def command_summarize(args: argparse.Namespace) -> int:
     lines: list[str] = []
     for path in args.files:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        lines += summarize(payload, path.as_posix())
+        lines += summarize(payload, _display_path(path))
     text = "\n".join(lines).rstrip() + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,22 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.14] - 2026-09-26
+
+### Added
+
+- `polmon-benchmark` with L0 (10/25/50, explicit `--large` 100/250), L1 namespace, and Phase I
+  target (50 L0 + 2 L1) benchmarks, admission-checked and time/memory-bounded per run, each in a
+  fresh worker process, retaining raw JSON/CSV with host, workload, limits, and source commit.
+- Generated Markdown summaries, `tests/performance/`, and the first recorded results.
+- Helper scripts: `check.sh`, `privileged-tests.sh`, `lab-cleanup.sh`, `run-benchmarks.sh`,
+  `verify-release.sh`.
+
+### Fixed
+
+- Synthetic endpoints stopped answering after 256 received frames because delivered frames were
+  never consumed from their bounded receive queues (latent since 0.0.6).
+
 ## [0.0.13] - 2026-09-26
 
 ### Added

@@ -173,3 +173,24 @@ def test_summarize_renders_only_recorded_values(tmp_path) -> None:
     assert "| 10 | 3 | 2.00 (1.00–3.00) |" in text
     assert "n/a" in text  # columns without recorded values are never invented
     assert text.rstrip().endswith("yes |")
+
+
+def test_l0_run_once_measures_and_cleans_up_in_process() -> None:
+    row = synthetic.run_once(10, 1, 0.0)
+    assert row["fidelity"] == "L0" and row["cleanup_complete"] is True
+    assert row["traffic_attempts"] == 18 and row["packet_loss_percent"] == 0.0
+    assert row["python_heap_deployed_bytes"] > 0
+    assert row["latency_p95_ms"] >= row["latency_p50_ms"] > 0
+
+
+def test_worker_prints_one_json_row_and_rejects_bad_input(capsys) -> None:
+    from polmon.benchmarks import worker
+
+    params = json.dumps({"endpoint_count": 3, "repeat": 1, "idle_seconds": 0})
+    assert worker.main(["l0", params]) == 0
+    row = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert row["endpoint_count"] == 3 and row["cleanup_complete"] is True
+    assert worker.main(["l0"]) == 2
+    assert worker.main(["l0", "[]"]) == 2
+    with pytest.raises(ValueError, match="unknown benchmark kind"):
+        worker.measure("l9", {})
