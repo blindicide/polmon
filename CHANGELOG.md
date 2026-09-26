@@ -2,7 +2,9 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
-## [Unreleased]
+## [0.1.1] - 2026-09-26
+
+Security and hardening release after the Phase I MVP.
 
 ### Added
 
