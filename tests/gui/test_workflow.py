@@ -50,8 +50,10 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     first = page.nodes.topLevelItem(0)
     assert first.text(1) == "L0" and first.child(0).text(3).count(":") == 5  # MAC shown
     assert page.networks.rowCount() >= 1
-    summary = {page.summary.item(r, 0).text(): page.summary.item(r, 2).text()
-               for r in range(page.summary.rowCount())}
+    summary = {
+        page.summary.item(r, 0).text(): page.summary.item(r, 2).text()
+        for r in range(page.summary.rowCount())
+    }
     assert summary["Endpoints"].startswith("fits")
 
     deploy_from_editor(qtbot, window)
@@ -91,8 +93,10 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     )
     telemetry.search.setText("ping-1")
     assert telemetry.proxy.rowCount() == 1
-    capture = {telemetry.capture.item(r, 0).text(): telemetry.capture.item(r, 1).text()
-               for r in range(telemetry.capture.rowCount())}
+    capture = {
+        telemetry.capture.item(r, 0).text(): telemetry.capture.item(r, 1).text()
+        for r in range(telemetry.capture.rowCount())
+    }
     assert int(capture["Frames captured"]) >= 1
 
     scenarios.report_button.click()
@@ -330,3 +334,31 @@ def test_older_backend_is_usable_with_a_clear_warning(
     qtbot.waitUntil(lambda: not window.session.deployments, timeout=20_000)
     assert window.session.state.value == "connected" and probe
     assert "Traceback" not in log_text(window)
+
+
+def test_scenario_page_deploys_its_required_topology(window, qtbot, live_backend, tmp_path) -> None:
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    topologies = window.pages["topologies"]
+    window.navigate("topologies", write(tmp_path, "t.yml", l0_topology()))
+    qtbot.waitUntil(lambda: topologies.result is not None, timeout=10_000)
+    topologies.load_to_backend()
+    qtbot.waitUntil(lambda: window.session.loaded("hybrid-small"), timeout=10_000)
+    scenarios = window.pages["scenarios"]
+    window.navigate("scenarios", write(tmp_path, "s.yml", ping_scenario()))
+    qtbot.waitUntil(lambda: scenarios.deploy_required.isVisible(), timeout=10_000)
+    assert not scenarios.run_button.isEnabled()
+    scenarios.deploy_required.click()
+    qtbot.waitUntil(lambda: window.session.deployed("hybrid-small"), timeout=20_000)
+    qtbot.waitUntil(lambda: not window.context.busy, timeout=20_000)
+    window.navigate("scenarios")
+    qtbot.waitUntil(scenarios.ready, timeout=10_000)
+    assert not scenarios.deploy_required.isVisible()
+
+
+def test_deploy_eta_baseline_follows_the_namespace_count() -> None:
+    from polmon.client.pages.deployment import baseline_deploy_seconds
+
+    assert baseline_deploy_seconds({"l1_namespaces": 8}) == 2.2
+    assert baseline_deploy_seconds({"l1_namespaces": 0}) == 0.2
+    assert baseline_deploy_seconds(None) is None

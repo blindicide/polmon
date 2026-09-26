@@ -8,6 +8,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 - `GET /v1/experiments/{id}/capture` serves the finished experiment's bounded PCAP, and the
   Telemetry page gains *Save capture…* to open it in Wireshark or tcpdump on the workstation.
+- Scenarios page: *Deploy required topology* when the scenario's topology is loaded but not
+  deployed. Deployments show an ETA from measured per-namespace creation cost until the client
+  has observed the backend's own deployment times.
 
 ## [0.2.2] - 2026-09-26
 

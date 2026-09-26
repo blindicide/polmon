@@ -123,6 +123,10 @@ class ScenariosPage(Page):
         id_row.addWidget(regenerate)
         run_layout.addLayout(id_row)
         buttons = QHBoxLayout()
+        self.deploy_required = QPushButton("Deploy required topology")
+        self.deploy_required.setToolTip("The scenario's topology is loaded but not deployed")
+        self.deploy_required.clicked.connect(self._deploy_required)
+        self.deploy_required.hide()
         self.run_button = primary_button("Run experiment")
         self.run_button.setToolTip("Run on the deployed required topology (Ctrl+R)")
         self.cancel_button = QPushButton("Cancel")
@@ -130,6 +134,7 @@ class ScenariosPage(Page):
         self.run_button.clicked.connect(self.run)
         self.cancel_button.clicked.connect(self.context.cancel_operation)
         self.outcome = StatusBadge()
+        buttons.addWidget(self.deploy_required)
         buttons.addWidget(self.run_button)
         buttons.addWidget(self.cancel_button)
         buttons.addStretch(1)
@@ -560,8 +565,21 @@ class ScenariosPage(Page):
         self.experiment_id.setText(new_experiment_id())
         self.refresh_actions()
 
+    def _deploy_required(self) -> None:
+        topology_id = str(self._check().get("topology_id") or "")
+        if topology_id:
+            self.context.navigate("deployment", {"deploy_topology": topology_id})
+
     def refresh_actions(self) -> None:
         running = self.running_id is not None
+        check = self._check()
+        needs_deploy = bool(
+            self.result
+            and check.get("compatible")
+            and not self.session.deployed(str(check.get("topology_id")))
+        )
+        self.deploy_required.setVisible(needs_deploy and self.session.connected)
+        self.deploy_required.setEnabled(needs_deploy and not self.context.busy)
         self.validate_button.setEnabled(self.session.connected and bool(self.source().strip()))
         self.save_button.setEnabled(bool(self.source().strip()))
         self.run_button.setEnabled(self.ready() and not self.context.busy)

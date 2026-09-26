@@ -24,6 +24,20 @@ from polmon.client.widgets import JsonTree, fill_table, make_table, muted, prima
 from polmon.client.yamlmap import document_id
 
 EDITOR = "__editor__"
+# Measured creation cost on the development host (RESOURCE-BUDGET.md): about 0.25 s per L1
+# namespace including its veth pair, negligible per L0 endpoint, plus a fixed setup part. Used as
+# the ETA until this client has observed the backend's own deployment times.
+SECONDS_PER_NAMESPACE = 0.25
+SECONDS_BASE = 0.2
+
+
+def baseline_deploy_seconds(estimate: dict[str, object] | None) -> float | None:
+    if not estimate:
+        return None
+    namespaces = estimate.get("l1_namespaces")
+    if not isinstance(namespaces, int):
+        return None
+    return SECONDS_BASE + SECONDS_PER_NAMESPACE * namespaces
 
 
 class DeploymentPage(Page):
@@ -209,7 +223,7 @@ class DeploymentPage(Page):
         expected = (
             self.seconds_per_endpoint * endpoints
             if self.seconds_per_endpoint and isinstance(endpoints, int)
-            else None
+            else baseline_deploy_seconds(estimate if isinstance(estimate, dict) else None)
         )
 
         def work(token: CancelToken, report) -> dict[str, object]:  # noqa: ANN001
@@ -298,6 +312,13 @@ class DeploymentPage(Page):
         self.context.navigate("refresh")
 
     def activated(self, argument: object = None) -> None:
+        if isinstance(argument, dict) and "deploy_topology" in argument:
+            index = self.target.findData(argument["deploy_topology"])
+            if index >= 0:
+                self.target.setCurrentIndex(index)
+                if self.deploy_button.isEnabled():
+                    self.deploy()
+            return
         if isinstance(argument, dict) and "deploy_source" in argument:
             self.editor_source = str(argument["deploy_source"])
             self._refresh_targets()
