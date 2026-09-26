@@ -34,7 +34,6 @@ Controls in the implementation:
   iptables, and nft ruleset unchanged; `scripts/lab-cleanup.sh` lists or removes leftovers
   (including orphaned lab service processes) by generated name only.
 
-
 Dependencies are pinned exactly in `pyproject.toml` and `uv.lock`. Audit them before a release with
 `uvx pip-audit -r <(uv pip freeze --python .venv/bin/python | grep -v polmon)`; the 2026-09-26 audit
 after the starlette 1.7.0 upgrade reported no known vulnerabilities.

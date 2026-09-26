@@ -13,7 +13,6 @@ Get-FileHash .\polmon-0.0.1-windows-x64.exe -Algorithm SHA256
 Compare this with a hash obtained independently from the downloaded workflow or release artifact.
 Never tag incomplete work and never treat an unexecuted binary as validated.
 
-
 Each release also carries `SHA256SUMS.txt`, computed on the release job from the artifact the
 Windows job verified; compare it with your local `Get-FileHash` result.
 
