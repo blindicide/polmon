@@ -1,0 +1,179 @@
+{
+  "backend_exit_code": -15,
+  "command": "python scripts/ui_e2e.py --hybrid",
+  "duration_seconds": 3.321,
+  "finished_at": "2026-09-26T18:18:31.405837+00:00",
+  "os": "Linux 6.8.0-138-generic",
+  "platform": "xcb",
+  "polmon_version": "0.2.0",
+  "pyside6": "6.11.2",
+  "qt": "6.11.2",
+  "scenario": "examples/scenarios/mvp-recon.yml",
+  "started_at": "2026-09-26T18:18:28.946371+00:00",
+  "status": "passed",
+  "steps": [
+    {
+      "at_seconds": 0.898,
+      "backend_version": "0.2.0",
+      "platform": "xcb",
+      "state": "connected",
+      "step": "connect"
+    },
+    {
+      "at_seconds": 1.025,
+      "nodes_in_inspector": 52,
+      "resources": {
+        "cpu_millicores": 350,
+        "disk_mb": 16,
+        "endpoint_count": 52,
+        "l0_endpoints": 50,
+        "l1_namespaces": 2,
+        "l2_virtual_machines": 0,
+        "memory_mb": 114
+      },
+      "step": "validate_topology",
+      "topology_id": "mvp-demo"
+    },
+    {
+      "at_seconds": 1.758,
+      "backend": "hybrid",
+      "deployment_seconds": 0.30939975194633007,
+      "owned_resources": 56,
+      "state": "running",
+      "step": "deploy"
+    },
+    {
+      "at_seconds": 1.846,
+      "scenario_id": "mvp-recon",
+      "step": "validate_scenario",
+      "topology_check": {
+        "compatible": true,
+        "deployed": true,
+        "loaded": true,
+        "problems": [],
+        "topology_id": "mvp-demo"
+      }
+    },
+    {
+      "at_seconds": 2.372,
+      "experiment_id": "gui-20260926-201828-c624",
+      "observations": [
+        {
+          "action_id": "sensor-sweep-server-1",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "sensor-sweep-server-2",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "sensor-to-sensor",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "server-to-sensor",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "server-to-server",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "inspect-web-2",
+          "detail": "reachable",
+          "success": true
+        },
+        {
+          "action_id": "inspect-web-1",
+          "detail": "reachable",
+          "success": true
+        }
+      ],
+      "status": "succeeded",
+      "step": "experiment"
+    },
+    {
+      "at_seconds": 2.444,
+      "by_category": {
+        "network_observation": 7,
+        "resource": 4,
+        "scenario": 1
+      },
+      "capture": {
+        "Actions completed": "7/7",
+        "Bytes captured": "1.4 KiB",
+        "Capture file (on the backend)": "var/captures/gui-20260926-201828-c624.pcap",
+        "Events received": "12",
+        "Frames captured": "20",
+        "Frames dropped (capture limit)": "0",
+        "Frames truncated (snap length)": "0"
+      },
+      "events": 12,
+      "step": "telemetry"
+    },
+    {
+      "at_seconds": 2.894,
+      "expected_vs_actual": [
+        {
+          "action": "sensor-sweep-server-1",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "sensor-sweep-server-2",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "sensor-to-sensor",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "server-to-sensor",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "server-to-server",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "inspect-web-2",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "inspect-web-1",
+          "field": "success",
+          "outcome": "met"
+        },
+        {
+          "action": "sensor-sweep-server-1",
+          "field": "success",
+          "outcome": "not_triggered"
+        }
+      ],
+      "markdown_bytes": 23928,
+      "status": "succeeded",
+      "step": "report"
+    },
+    {
+      "at_seconds": 3.103,
+      "definitions_kept": [
+        "mvp-demo"
+      ],
+      "deployments_remaining": 0,
+      "kernel_leftovers": [],
+      "step": "reset"
+    }
+  ],
+  "topology": "examples/topologies/mvp-demo.yml",
+  "workload": "hybrid"
+}
