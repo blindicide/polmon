@@ -10,6 +10,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Configurable concurrency, capture, duration, and host-memory reserve limits through API policy and
   backend CLI flags.
 - Runtime resource sampling, cooperative automatic/manual cancellation, and resource status API.
+- Release workflow `workflow_dispatch` repairs build the pinned tag's own source, reject a
+  mismatched executable version, and attach `SHA256SUMS.txt`.
+
+### Fixed
+
+- Hybrid L0-to-L1 traffic could lose its first ARP frame while the TAP bridge port was still
+  disabled after attach; deployment now waits for every bridge port to forward (latent since 0.0.8).
 
 ## [0.0.12] - 2026-09-26
 
@@ -30,6 +37,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [0.0.10] - 2026-09-26
 
+Release note: the `v0.0.10` tag's own release run (36238266300) failed on Windows because Linux-only unit
+tests hit the namespace backend's Linux guard. The tag was not moved; the release was published
+later by repair run 36241102476, built from the tag source with those tests deselected on Windows only
+(they passed in Linux CI run 36238264377). See `docs/milestones/v0.0.10.md`.
+
 ### Added
 
 - SQLite experiment metadata and ordered structured events with secret-key redaction.
@@ -37,6 +49,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Foreign-key association and tcpdump interoperability coverage.
 
 ## [0.0.9] - 2026-09-26
+
+Release note: the `v0.0.9` tag's own release run (36238094325) failed on Windows because Linux-only unit
+tests hit the namespace backend's Linux guard. The tag was not moved; the release was published
+later by repair run 36241097856, built from the tag source with those tests deselected on Windows only
+(they passed in Linux CI run 36238093059). See `docs/milestones/v0.0.9.md`.
 
 ### Added
 
@@ -46,6 +63,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [0.0.8] - 2026-09-26
 
+Release note: the `v0.0.8` tag's own release run (36237923759) failed on Windows because Linux-only unit
+tests hit the namespace backend's Linux guard. The tag was not moved; the release was published
+later by repair run 36241093673, built from the tag source with those tests deselected on Windows only
+(they passed in Linux CI run 36237921993). See `docs/milestones/v0.0.8.md`.
+
 ### Added
 
 - One shared TAP per hybrid network connecting the synthetic engine to isolated Linux bridges.
@@ -53,6 +75,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Unit command-plan and real privileged L0-to-L1 integration coverage.
 
 ## [0.0.7] - 2026-09-26
+
+Release note: the `v0.0.7` tag's own release run (36237741029) failed on Windows because Linux-only unit
+tests hit the namespace backend's Linux guard. The tag was not moved; the release was published
+later by repair run 36240994208, built from the tag source with those tests deselected on Windows only
+(they passed in Linux CI run 36237739216). See `docs/milestones/v0.0.7.md`.
 
 ### Added
 
