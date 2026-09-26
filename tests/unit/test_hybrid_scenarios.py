@@ -98,16 +98,18 @@ def test_hybrid_executor_routes_each_path_to_its_real_transport() -> None:
 
 def test_hybrid_executor_reports_unsupported_paths_instead_of_emulating() -> None:
     backend, executor = deployed_executor()
+    calls = []
+    backend.namespace.ping = lambda source, address: calls.append((source, address)) or True
     reverse = executor.execute(action(ActionKind.ICMP_PROBE, "server-a", "sensor-a"), TOPOLOGY, 5)
-    tcp = executor.execute(
-        action(ActionKind.TCP_PROBE, "sensor-a", "server-a", "web"), TOPOLOGY, 5
-    )
-    assert (reverse.success, reverse.detail, reverse.data["path"]) == (
-        False,
-        "unsupported",
-        "l1->l0",
-    )
-    assert (tcp.success, tcp.detail, tcp.data["protocol"]) == (False, "unsupported", "tcp_probe")
+    assert (reverse.success, reverse.data["path"]) == (True, "l1->l0")
+    assert calls == [("server-a", "10.90.0.1")]  # the kernel pings; the TAP responder answers
+    for source, target in (("sensor-a", "server-a"), ("server-a", "sensor-a")):
+        tcp = executor.execute(action(ActionKind.TCP_PROBE, source, target, "web"), TOPOLOGY, 5)
+        assert (tcp.success, tcp.detail, tcp.data["protocol"]) == (
+            False,
+            "unsupported",
+            "tcp_probe",
+        )
     backend.destroy()
 
 

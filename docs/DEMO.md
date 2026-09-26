@@ -8,7 +8,7 @@ same contract the Windows client uses — and checks every outcome:
 | 1 health | Backend reachable; its version is recorded |
 | 2 topology | `examples/topologies/mvp-demo.yml` validated and loaded: 50 L0 sensors, 2 L1 servers with a built-in HTTP service, one isolated `10.70.0.0/24` network |
 | 3 deploy | Admission passes; hybrid deployment running with 50 synthetic endpoints, 2 namespaces, 1 bridge, 1 shared TAP |
-| 4 experiment | `examples/scenarios/mvp-recon.yml` (controlled reconnaissance of declared lab nodes only) succeeds: L0→L1 ICMP across the TAP, L0→L0 ICMP in the engine, L1→L1 ICMP and HTTP service probes in the kernel |
+| 4 experiment | `examples/scenarios/mvp-recon.yml` (controlled reconnaissance of declared lab nodes only) succeeds: L0→L1 ICMP across the TAP, L0→L0 ICMP in the engine, L1→L0 ICMP from the kernel answered by the TAP responder, L1→L1 ICMP and HTTP service probes in the kernel |
 | 5 telemetry | Structured events recorded and boundary frames captured to PCAP |
 | 6 report | JSON report retrievable with status `succeeded`; Markdown report written |
 | 7 reset | `POST /v1/reset` destroys the deployment |

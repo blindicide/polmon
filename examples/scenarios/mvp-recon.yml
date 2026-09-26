@@ -21,6 +21,10 @@ sequence:
     kind: icmp_probe
     source: sensor-01
     target: sensor-50
+  - id: server-to-sensor
+    kind: icmp_probe
+    source: server-1
+    target: sensor-25
   - id: server-to-server
     kind: icmp_probe
     source: server-1
@@ -40,6 +44,7 @@ success_conditions:
   - {action: sensor-sweep-server-1, field: success, equals: true}
   - {action: sensor-sweep-server-2, field: success, equals: true}
   - {action: sensor-to-sensor, field: success, equals: true}
+  - {action: server-to-sensor, field: success, equals: true}
   - {action: server-to-server, field: success, equals: true}
   - {action: inspect-web-2, field: success, equals: true}
   - {action: inspect-web-1, field: success, equals: true}

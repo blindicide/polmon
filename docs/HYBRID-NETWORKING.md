@@ -12,3 +12,11 @@ descriptor per participating network, and ordinary L0 state. Supported cross-bou
 Ethernet/ARP/IPv4/ICMP echo only. TCP, synthetic services, routing, IPv6, and fragmented IP are not
 claimed. Teardown closes TAP descriptors and deletes TAPs before namespaces and bridges.
 
+Inbound traffic: while a hybrid deployment runs, one reader thread per TAP owns all reads from it.
+It answers ARP requests and ICMP echo requests addressed to L0 endpoints on that network (with
+validated checksums and the endpoint's own MAC), so kernel tools in L1 namespaces can resolve and
+ping L0 endpoints. Every other frame is queued (bounded, 1024 frames) for `ping_l1`. Frames for
+protocols the synthetic engine does not implement are not answered, exactly like a closed port;
+`inspect()` reports the per-network ARP and echo answer counts. The thread stops before the TAP is
+closed on teardown.
+

@@ -10,6 +10,7 @@ from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Protocol
 
+from polmon.backends.hybrid.responder import TapResponder
 from polmon.backends.hybrid.tap import TapPort
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.namespace.runner import CommandRunner
@@ -82,6 +83,7 @@ class HybridBackend:
         self.synthetic = SyntheticBackend()
         self.tap_factory = tap_factory
         self.taps: dict[str, TapLike] = {}
+        self.responders: dict[str, TapResponder] = {}
         self.tap_names: dict[str, str] = {}
         self.capture: deque[bytes] = deque(maxlen=capture_limit)
         self.topology: Topology | None = None
@@ -181,12 +183,30 @@ class HybridBackend:
     def start(self) -> None:
         self.namespace.start()
         self.synthetic.start()
+        for network_id, tap in self.taps.items():
+            responder = TapResponder(
+                tap,
+                lambda network_id=network_id: self._l0_addresses(network_id),
+                on_frame=self.capture.append,
+            )
+            responder.start()
+            self.responders[network_id] = responder
         self.running = True
 
     def stop(self) -> None:
+        for responder in self.responders.values():
+            responder.stop()
+        self.responders.clear()
         self.namespace.stop()
         self.synthetic.stop()
         self.running = False
+
+    def _l0_addresses(self, network_id: str) -> dict[IPv4Address, str]:
+        return {
+            endpoint.ipv4: endpoint.mac
+            for endpoint in list(self.synthetic.engine.endpoints.values())
+            if endpoint.network == network_id and endpoint.ipv4 is not None
+        }
 
     def destroy(self) -> None:
         self.stop()
@@ -217,6 +237,10 @@ class HybridBackend:
                 "running": self.running,
                 "tap_count": len(self.taps),
                 "capture_frames": len(self.capture),
+                "answered_for_l0": {
+                    network_id: dict(responder.answered)
+                    for network_id, responder in self.responders.items()
+                },
                 "synthetic": asdict(self.synthetic.engine.stats()),
             },
         )
@@ -238,8 +262,10 @@ class HybridBackend:
         destination_ip = IPv4Address(destination)
         arp = ArpPacket.request(source.mac, source.ipv4, destination_ip)
         request = EthernetFrame(BROADCAST_MAC, source.mac, ETHERTYPE_ARP, arp.to_bytes()).to_bytes()
+        # While the responder runs it owns every TAP read; replies reach us through its inbox.
+        reader: TapLike | TapResponder = self.responders.get(source.network) or tap
         self._write(tap, request)
-        reply_frame = self._receive_arp(tap, destination_ip, timeout)
+        reply_frame = self._receive_arp(reader, destination_ip, timeout)
         arp_reply = ArpPacket.from_bytes(reply_frame.payload)
         self._sequence = (self._sequence + 1) & 0xFFFF
         echo = IcmpEcho(ECHO_REQUEST, source.instance_id.int & 0xFFFF, self._sequence, payload)
@@ -252,19 +278,22 @@ class HybridBackend:
         )
         frame = EthernetFrame(arp_reply.sender_mac, source.mac, ETHERTYPE_IPV4, packet.to_bytes())
         self._write(tap, frame.to_bytes())
-        return self._receive_echo(tap, source.ipv4, echo, timeout)
+        return self._receive_echo(reader, source.ipv4, echo, timeout)
 
     def _write(self, tap: TapLike, frame: bytes) -> None:
         self.capture.append(frame)
         tap.write(frame)
 
-    def _read_matching(self, tap: TapLike, timeout: float, matcher) -> EthernetFrame:
+    def _read_matching(
+        self, tap: TapLike | TapResponder, timeout: float, matcher
+    ) -> EthernetFrame:
         deadline = time.monotonic() + timeout
         while (remaining := deadline - time.monotonic()) > 0:
             raw = tap.read(remaining)
             if raw is None:
                 break
-            self.capture.append(raw)
+            if not isinstance(tap, TapResponder):  # the responder captures what it reads
+                self.capture.append(raw)
             try:
                 frame = EthernetFrame.from_bytes(raw)
                 if matcher(frame):
@@ -273,7 +302,9 @@ class HybridBackend:
                 continue
         raise SyntheticEngineError("timed out waiting for hybrid network response")
 
-    def _receive_arp(self, tap: TapLike, destination: IPv4Address, timeout: float) -> EthernetFrame:
+    def _receive_arp(
+        self, tap: TapLike | TapResponder, destination: IPv4Address, timeout: float
+    ) -> EthernetFrame:
         def matches(frame: EthernetFrame) -> bool:
             if frame.ethertype != ETHERTYPE_ARP:
                 return False
@@ -284,7 +315,7 @@ class HybridBackend:
 
     def _receive_echo(
         self,
-        tap: TapLike,
+        tap: TapLike | TapResponder,
         destination: IPv4Address,
         request: IcmpEcho,
         timeout: float,

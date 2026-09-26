@@ -28,8 +28,8 @@ success_conditions:
     field: success
     equals: true
   - action: l1-reaches-l0
-    field: detail
-    equals: unsupported
+    field: success
+    equals: true
 cleanup_policy: never
 """
 
@@ -59,7 +59,8 @@ def test_hybrid_experiment_captures_reports_and_resets(tmp_path) -> None:
         assert result["status"] == "succeeded", result
         observations = {item["action_id"]: item for item in result["observations"]}
         assert observations["l0-reaches-l1"]["data"]["path"] == "l0->l1"
-        assert observations["l1-reaches-l0"]["detail"] == "unsupported"
+        assert observations["l1-reaches-l0"]["data"]["path"] == "l1->l0"
+        assert observations["l1-reaches-l0"]["success"] is True
         assert result["capture"]["frame_count"] >= 4  # ARP request/reply + ICMP request/reply
         pcap = Path(result["capture"]["path"])
         assert pcap.is_file() and pcap.stat().st_size > 24

@@ -4,36 +4,12 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
-### Security
-
-- Dependency audit (`pip-audit`) found 8 advisories in the pinned starlette 0.41.3 (multipart
-  spooling, `FileResponse` Range, Host/path URL reconstruction, `StaticFiles`, `HTTPEndpoint`,
-  urlencoded form limits) and one in pytest 8.3.4. polmon uses none of the affected starlette
-  features, but the stack is upgraded anyway: FastAPI 0.141.1, starlette 1.7.0 (now pinned
-  explicitly), uvicorn 0.54.0, pydantic 2.13.5, PyYAML 6.0.3, pytest 9.1.1, pytest-cov 7.1.0.
-  `pip-audit` reports no known vulnerabilities afterwards.
-
-### Fixed
-
-- Scenario `initial_conditions` were parsed but never checked, so a scenario declaring
-  `services_started` ran against dead services. The control plane now verifies each declared
-  condition against the live deployment before the first action; unmet or unverifiable conditions
-  fail the experiment without running actions.
-
-### Security
-
-- ICMP probes, ping statistics, and TCP probes inside lab namespaces ran as root; they now run as
-  the invoking user through `setpriv` like the built-in services (`ping` keeps working through its
-  `cap_net_raw` file capability), and the probe interpreter runs isolated (`-I -S`).
-- SECURITY.md now states plainly that `sudo ip` is root-equivalent in the Phase I privilege model.
-
-### Changed
-
-- Hybrid TAP setup and teardown run as one privileged `ip` batch each; TAP names are owned before
-  creation, and a pre-existing interface with a generated TAP name is refused instead of adopted.
-
 ### Added
 
+- Hybrid networking is bidirectional: a per-TAP responder answers ARP and ICMP echo for L0
+  endpoints, so L1 namespaces can resolve and ping L0 endpoints with the kernel's own tools.
+  Scenario actions L1→L0 ICMP are now executed (path `l1->l0`) instead of reported unsupported;
+  TCP to or from L0 remains unsupported. The MVP scenario gains a `server-to-sensor` probe.
 - `polmon-benchmark --settle-seconds` pauses between runs; recorded in the workload.
 - Admission-estimate calibration against measurements and an L1 scaling study (2/4/8 namespaces)
   in RESOURCE-BUDGET.md.
@@ -46,6 +22,31 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   (`packaging/linux/polmon-backend.service`).
 - Rootless tests of the complete L0→L1 ARP/ICMP exchange across the TAP against a simulated L1
   peer (including unrelated frames on the bridge, timeouts, and unknown sources).
+
+### Changed
+
+- Hybrid TAP setup and teardown run as one privileged `ip` batch each; TAP names are owned before
+  creation, and a pre-existing interface with a generated TAP name is refused instead of adopted.
+
+### Fixed
+
+- Scenario `initial_conditions` were parsed but never checked, so a scenario declaring
+  `services_started` ran against dead services. The control plane now verifies each declared
+  condition against the live deployment before the first action; unmet or unverifiable conditions
+  fail the experiment without running actions.
+
+### Security
+
+- Dependency audit (`pip-audit`) found 8 advisories in the pinned starlette 0.41.3 (multipart
+  spooling, `FileResponse` Range, Host/path URL reconstruction, `StaticFiles`, `HTTPEndpoint`,
+  urlencoded form limits) and one in pytest 8.3.4. polmon uses none of the affected starlette
+  features, but the stack is upgraded anyway: FastAPI 0.141.1, starlette 1.7.0 (now pinned
+  explicitly), uvicorn 0.54.0, pydantic 2.13.5, PyYAML 6.0.3, pytest 9.1.1, pytest-cov 7.1.0.
+  `pip-audit` reports no known vulnerabilities afterwards.
+- ICMP probes, ping statistics, and TCP probes inside lab namespaces ran as root; they now run as
+  the invoking user through `setpriv` like the built-in services (`ping` keeps working through its
+  `cap_net_raw` file capability), and the probe interpreter runs isolated (`-I -S`).
+- SECURITY.md now states plainly that `sudo ip` is root-equivalent in the Phase I privilege model.
 
 ## [0.1.1] - 2026-09-26
 

@@ -31,7 +31,7 @@ def test_mvp_demonstration_passes_end_to_end(tmp_path) -> None:
     assert record["deployment"]["resource_counts"]["synthetic"] == 50
     assert record["deployment"]["resource_counts"]["netns"] == 2
     paths = {item["path"] for item in record["experiment"]["observations"]}
-    assert paths == {"l0->l1", "l0->l0", "l1->l1"}
+    assert paths == {"l0->l1", "l0->l0", "l1->l0", "l1->l1"}
     assert all(item["success"] for item in record["experiment"]["observations"])
     assert record["telemetry"]["capture"]["frame_count"] > 0
     assert record["cleanup"] == {

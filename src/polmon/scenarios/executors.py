@@ -58,8 +58,9 @@ class HybridScenarioExecutor:
     - L0 -> L0 ICMP: the synthetic protocol engine (in-process frames).
     - L0 -> L1 ICMP: ARP and ICMP echo across the shared TAP into the Linux bridge.
     - L1 -> L1 ICMP/TCP: the kernel, through the namespace executor.
-    L1 -> L0 and any TCP from an L0 source are reported as ``unsupported``: the synthetic engine
-    does not answer asynchronous inbound frames and implements no TCP. Nothing is emulated.
+    - L1 -> L0 ICMP: the kernel's ping; the TAP responder answers ARP and echo for L0 endpoints.
+    TCP to or from an L0 endpoint is reported as ``unsupported``: the synthetic engine implements
+    no TCP. Nothing is emulated.
     """
 
     def __init__(self, backend: HybridBackend) -> None:
@@ -79,7 +80,14 @@ class HybridScenarioExecutor:
         source = nodes[action.source]
         target = nodes[action.target]
         path = f"{source.node_class.value}->{target.node_class.value}"
-        if source.node_class is NodeClass.L1 and target.node_class is NodeClass.L1:
+        l1_icmp_to_l0 = (
+            source.node_class is NodeClass.L1
+            and target.node_class is NodeClass.L0
+            and action.kind is ActionKind.ICMP_PROBE
+        )
+        if l1_icmp_to_l0 or (
+            source.node_class is NodeClass.L1 and target.node_class is NodeClass.L1
+        ):
             observation = self.namespace.execute(action, topology, timeout_seconds)
             return Observation(
                 observation.action_id,

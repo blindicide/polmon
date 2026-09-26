@@ -30,9 +30,9 @@ Identifiers are validated before any work: `topology_id` path and body values mu
 
 Experiments run on L0, L1, and hybrid deployments. On a hybrid deployment each action uses the path
 its endpoint classes support: L0→L0 ICMP in the synthetic engine, L0→L1 ICMP across the shared
-TAP, and L1→L1 ICMP/TCP in the kernel. L1→L0 actions and TCP from an L0 source return an
-observation with `detail: "unsupported"` rather than an emulated result; observations carry a
-`path` such as `l0->l1`. The experiment capture contains the synthetic and TAP boundary frames.
+TAP, L1→L0 ICMP from the kernel answered by the TAP responder, and L1→L1 ICMP/TCP in the kernel.
+TCP to or from an L0 endpoint returns an observation with `detail: "unsupported"` rather than an
+emulated result; observations carry a `path` such as `l0->l1`. The experiment capture contains the synthetic and TAP boundary frames.
 
 When the backend stops (SIGINT or SIGTERM through uvicorn's graceful shutdown) it tears down every
 owned deployment before exiting and logs `shutdown_cleanup` (or `shutdown_cleanup_failed` with the
