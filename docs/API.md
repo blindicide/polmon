@@ -69,5 +69,5 @@ a file readable only by its owner; at least 24 characters), every path except `G
 `GET /v1/health` requires `Authorization: Bearer <token>` and otherwise returns HTTP 401
 `unauthorized`. The check runs before the request body is read and compares in constant time. The
 backend refuses to listen on a non-loopback address without a token. Clients pass the token with
-`ApiClient(url, token=...)`; the Windows client has an *API token* field that is kept in memory
+`ApiClient(url, token=...)`; the desktop client has a *Token* field whose value is kept in memory
 only, and `polmon-demo --url` reads `POLMON_API_TOKEN` or `--token-file`.

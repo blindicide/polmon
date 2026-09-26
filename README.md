@@ -2,8 +2,8 @@
 
 polmon is a resource-efficient platform for controlled network-security experiments in
 explicitly isolated laboratories. Phase I combines shared-process synthetic endpoints (L0),
-Linux network namespaces (L1), and a standalone Windows client. L2 virtual machines are an
-architectural extension, not part of the initial implementation.
+Linux network namespaces (L1), and a Qt desktop client for Windows and Linux. L2 virtual machines
+are an architectural extension, not part of the initial implementation.
 
 Phase I (v0.1.0) provides: a Linux FastAPI backend; a standalone Windows client executable built on
 GitHub-hosted runners; declarative YAML topologies; L0 synthetic endpoints with Ethernet, ARP, IPv4,
@@ -13,6 +13,13 @@ and Markdown reports; resource admission control and cancellation; automated cle
 reproducible benchmarks with retained raw results. Run the target demonstration (50 L0 + 2 L1, one
 controlled experiment, telemetry, report, reset) with `.venv/bin/polmon-demo`; see
 [docs/DEMO.md](docs/DEMO.md).
+
+Phase II (v0.2.0) replaces the Tkinter client with a Qt (PySide6) desktop client that runs on
+Windows and Linux from one code base — dashboard, topology editor and inspector, deployment with
+live resource counters, scenarios and experiments with live progress and cancellation, a filterable
+telemetry stream, reports and benchmark jobs — and a CI/CD pipeline that tests, packages, verifies
+and releases both platforms. Real screenshots: [docs/ui/SCREENSHOTS.md](docs/ui/SCREENSHOTS.md);
+design: [docs/UI-PLAN.md](docs/UI-PLAN.md).
 
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
 namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is
@@ -29,7 +36,7 @@ with `.venv/bin/polmon-diagnostics --lab`.
 
 ```bash
 uv venv --python /usr/bin/python3.12
-uv pip install -e '.[dev]'
+uv pip install -e '.[dev,gui]'
 scripts/check.sh              # lint + rootless tests
 .venv/bin/polmon-backend
 ```
@@ -42,13 +49,16 @@ and `verify-release.sh` (download a release and check its SHA-256).
 Benchmarks run only on explicit request: `.venv/bin/polmon-benchmark l0|l1|target|summarize`. See
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for limits, method, and the retained raw results.
 
-To control a backend from another machine (for example the Windows client), start it with a token:
+To control a backend from another machine (for example the desktop client on Windows), start it
+with a token:
 `POLMON_API_TOKEN=... .venv/bin/polmon-backend --host <lab-host-address>` (or `--api-token-file`),
 and enter the same token in the client; see [SECURITY.md](SECURITY.md) and the operator runbook
 [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-Run `.venv/bin/polmon-client --version` or `--self-test` without a display. The GUI can be
-opened with `.venv/bin/polmon-client`; it starts independently of the backend.
+Run `.venv/bin/polmon-client` to open the desktop client (it starts without a backend and connects
+on demand); `--self-test` checks Qt and the client without opening a window. Packaged clients for
+Windows (`.exe`) and Linux (`.tar.gz`) are attached to every release; see
+[BUILD-WINDOWS.md](BUILD-WINDOWS.md) and [BUILD-LINUX.md](BUILD-LINUX.md).
 
 Use `.venv/bin/polmon-diagnostics --json` to inspect the Python version, host capabilities,
 network-tool availability, and an allow-listed resource snapshot without exposing environment

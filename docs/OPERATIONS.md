@@ -44,16 +44,18 @@ backend flags (`--max-endpoints`, `--max-namespaces`, `--memory-reserve-mb`, ...
 [RESOURCE-MANAGEMENT.md](RESOURCE-MANAGEMENT.md)). Data (telemetry SQLite, captures, reports)
 is written under `var/` in the working directory.
 
-## 3. Connect the Windows client
+## 3. Connect the desktop client
 
-Keep the backend on loopback and tunnel from the Windows machine (OpenSSH is built into Windows):
+Keep the backend on loopback and tunnel from the operator's machine (OpenSSH is built into
+Windows and every Linux desktop):
 
 ```powershell
 ssh -N -L 8080:127.0.0.1:8080 operator@lab-host
 ```
 
-Start `polmon-<version>-windows-x64.exe`, keep the backend URL `http://127.0.0.1:8080`, paste the
-token into *API token*, and press *Connect*. Verify a downloaded executable first with
+Start `polmon-<version>-windows-x64.exe` (Windows) or `polmon-client` from the extracted
+`polmon-<version>-linux-x64.tar.gz` (Linux), keep the backend URL `http://127.0.0.1:8080`, paste
+the token into *Token*, and press *Connect* (Ctrl+Return). The token stays in memory only. Verify a downloaded executable first with
 `scripts/verify-release.sh vX.Y.Z` (or `Get-FileHash` against the release's `SHA256SUMS.txt`).
 
 ## 4. Routine checks

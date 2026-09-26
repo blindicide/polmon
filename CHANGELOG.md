@@ -4,11 +4,68 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+Phase II: a Qt desktop client for Windows and Linux, and a CI/CD pipeline that tests, packages,
+verifies and releases both platforms (operator mandate; design in `docs/UI-PLAN.md`).
+
+### Added
+
+- Qt (PySide6) desktop client `polmon-client`, one code base for Windows and Linux: dashboard with
+  live resource counters and admission limits; topology library, YAML editor, backend validation
+  with errors mapped to YAML lines, node/interface/MAC/IPv4 inspector and admission fit;
+  deployment control (deploy with cancel-and-roll-back, destroy, reset); scenario inspection and
+  experiments with live per-action status, percent/step/elapsed/ETA progress and graceful cancel;
+  a live, filterable telemetry stream with capture summary; reports (overall status, expected vs
+  actual, observations, Markdown, JSON, save); bounded benchmark jobs with explicit limits and
+  retained results. All I/O runs off the GUI thread; light/dark themes, HiDPI, keyboard
+  shortcuts, persisted settings; the API token stays in memory only.
+- `polmon-client --self-test` verifies Qt, the bundled platform plugins, the main window and the
+  API client on the offscreen platform without opening a window; `--smoke-start SECONDS` shows the
+  real window on the native platform and reports start-up time and idle memory.
+- Backend API (additive): structured topology inspection and listing, scenario validation against
+  the loaded topology, experiments that return once admitted (`"wait": false`) with live progress,
+  observations recorded as they happen, telemetry paging (`after`, `limit`), experiment listing
+  across restarts, the Markdown report route, and bounded benchmark jobs
+  (`/v1/benchmarks`) that run the unchanged CLI with limits capped by admission control.
+- `pytest-qt` GUI suite (`tests/gui`, marker `gui`) against real in-process backends, including
+  unreachable, slow, malformed, unauthorised, rejecting and dying backends.
+- Linux client bundle (`polmon-<version>-linux-x64.tar.gz`, built on ubuntu-22.04) next to the
+  wheel and the systemd unit; `BUILD-LINUX.md`.
+- `scripts/ui_screenshots.py` (real renders in `docs/ui/`), `scripts/ui_e2e.py` (live
+  end-to-end demonstration through the client), `scripts/measure-client.py`, the rootless
+  `l0-office` example pair, and `scripts/privileged-tests.sh -- COMMAND`.
+- Workflows: CI matrix on `ubuntu-latest` and `windows-latest` with GUI tests under Xvfb and
+  offscreen, `build-linux.yml`, fresh-runner re-verification of both build artifacts, release
+  assets for both platforms with a post-publication download-and-smoke job, and a manual
+  `benchmark.yml`.
+
 ### Changed
 
+- **Tkinter client replaced by Qt** (operator-ordered deviation from the specification's Tkinter
+  baseline; rationale in `ARCHITECTURE.md`). PySide6-Essentials 6.11.2 (LGPLv3) is the new
+  optional `gui` extra; the backend install does not need it. Measured cost in
+  `RESOURCE-BUDGET.md`.
+- PyInstaller 6.22.3 with pyinstaller-hooks-contrib 2026.7; the Windows spec bundles a pruned Qt
+  plugin set and proves the `qwindows` plugin in the packaged self-test.
+- GitHub Actions upgraded to Node 24 releases (checkout v7.0.1, setup-python v7.0.0,
+  upload-artifact v7.0.1, download-artifact v8.0.1), still pinned by commit SHA; every job has
+  an explicit timeout, workflows have concurrency groups and pip caching.
+- Experiment identifiers are unique across backend restarts; the backend cancels and joins
+  active experiments and stops benchmark jobs before its shutdown reset.
 - The TAP responder is woken through a self-pipe on stop, so teardown no longer waits for its
   poll interval, and the idle poll lengthens from 0.1 s to 1 s (fewer idle wake-ups). Measured
   target teardown median 0.191 s → 0.133 s (`benchmarks/results/SUMMARY-wave19-responder-wake.md`).
+
+### Removed
+
+- The Tkinter client, its tests and the `tkinter` hidden import; a hygiene test keeps Tk out of
+  code and packaging.
+
+### Fixed
+
+- A cancel request that reached the backend before the experiment thread started was cleared by
+  the run; the engine is fresh per experiment and is no longer reset.
+- Reusing an experiment identifier from an earlier backend process failed inside SQLite instead
+  of returning a clear HTTP 422.
 
 ## [0.1.3] - 2026-09-26
 

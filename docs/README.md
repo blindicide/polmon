@@ -2,7 +2,7 @@
 
 Start with the repository [README](../README.md). Root documents cover the project as a whole:
 [ARCHITECTURE](../ARCHITECTURE.md), [DEVELOPMENT](../DEVELOPMENT.md),
-[BUILD-WINDOWS](../BUILD-WINDOWS.md), [CI](../CI.md), [RELEASE](../RELEASE.md),
+[BUILD-WINDOWS](../BUILD-WINDOWS.md), [BUILD-LINUX](../BUILD-LINUX.md), [CI](../CI.md), [RELEASE](../RELEASE.md),
 [RESOURCE-BUDGET](../RESOURCE-BUDGET.md), [SECURITY](../SECURITY.md),
 [CONTRIBUTING](../CONTRIBUTING.md), and [CHANGELOG](../CHANGELOG.md).
 
@@ -21,7 +21,9 @@ Start with the repository [README](../README.md). Root documents cover the proje
 | Benchmarks: method, limits, fidelity classes | [BENCHMARKS.md](BENCHMARKS.md) |
 | Phase I MVP demonstration | [DEMO.md](DEMO.md) |
 | Operating a laboratory host, client connection, recovery | [OPERATIONS.md](OPERATIONS.md) |
-| Milestone reports v0.0.1 – v0.1.0 | [milestones/](milestones/) |
+| Qt desktop client: design, threading, packaging and CI plan | [UI-PLAN.md](UI-PLAN.md) |
+| Desktop client screenshots and live end-to-end runs | [ui/SCREENSHOTS.md](ui/SCREENSHOTS.md), [ui/e2e/](ui/e2e/) |
+| Milestone reports | [milestones/](milestones/) |
 
 Evidence retained in the repository: raw benchmark results and generated summaries in
 [`../benchmarks/results/`](../benchmarks/results/) and recorded demonstration runs in

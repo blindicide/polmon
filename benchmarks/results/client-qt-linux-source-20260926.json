@@ -1,0 +1,52 @@
+{
+  "command": [
+    ".venv/bin/polmon-client"
+  ],
+  "runs": [
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.533,
+      "idle_rss_mib": 96.4,
+      "platform": "xcb",
+      "summary": "polmon 0.1.3 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.274s idle-rss-after-10s=96.4MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.557,
+      "idle_rss_mib": 96.3,
+      "platform": "xcb",
+      "summary": "polmon 0.1.3 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.293s idle-rss-after-10s=96.3MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.511,
+      "idle_rss_mib": 96.2,
+      "platform": "xcb",
+      "summary": "polmon 0.1.3 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.268s idle-rss-after-10s=96.2MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.531,
+      "idle_rss_mib": 96.3,
+      "platform": "xcb",
+      "summary": "polmon 0.1.3 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.289s idle-rss-after-10s=96.3MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.49,
+      "idle_rss_mib": 96.2,
+      "platform": "xcb",
+      "summary": "polmon 0.1.3 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.256s idle-rss-after-10s=96.2MiB"
+    }
+  ],
+  "cold_start_seconds": {
+    "median": 0.531,
+    "min": 0.49,
+    "max": 0.557
+  },
+  "idle_rss_mib": {
+    "median": 96.3,
+    "min": 96.2,
+    "max": 96.4
+  }
+}
