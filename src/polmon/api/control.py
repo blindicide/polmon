@@ -648,6 +648,18 @@ class ControlPlane:
             for event in self.telemetry.events(experiment_id, after=after, limit=limit)
         ]
 
+    def experiment_capture_path(self, experiment_id: str) -> Path:
+        """The finished experiment's bounded PCAP file (written when the experiment closes)."""
+        if not EXPERIMENT_ID.fullmatch(experiment_id):
+            raise ConfigurationError("invalid experiment identifier")
+        with self._lock:
+            if experiment_id in self.active_experiments:
+                raise ConfigurationError(f"experiment '{experiment_id}' is still running")
+        path = self.data_directory / "captures" / f"{experiment_id}.pcap"
+        if not path.is_file():
+            raise ConfigurationError(f"capture for experiment '{experiment_id}' does not exist")
+        return path
+
     def experiment_report_markdown(self, experiment_id: str) -> dict[str, object]:
         if not EXPERIMENT_ID.fullmatch(experiment_id):
             raise ConfigurationError("invalid experiment identifier")

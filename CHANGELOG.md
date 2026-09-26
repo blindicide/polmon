@@ -4,6 +4,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /v1/experiments/{id}/capture` serves the finished experiment's bounded PCAP, and the
+  Telemetry page gains *Save capture…* to open it in Wireshark or tcpdump on the workstation.
+
 ## [0.2.2] - 2026-09-26
 
 Robustness and usability waves after v0.2.1.

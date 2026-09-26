@@ -364,3 +364,14 @@ def test_in_memory_experiment_history_is_bounded(tmp_path, monkeypatch) -> None:
     evicted = client.get("/v1/experiments/bounded-0").json()
     assert evicted["status"] == "succeeded" and evicted["persisted"] is True
     assert len(client.get("/v1/experiments").json()) == 5
+
+
+def test_experiment_capture_downloads_as_pcap(tmp_path) -> None:
+    client = deployed_client(tmp_path)
+    body = {"experiment_id": "with-capture", "topology_id": "hybrid-small"}
+    client.post("/v1/experiments", json={**body, "scenario_yaml": scenario()})
+    response = client.get("/v1/experiments/with-capture/capture")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/vnd.tcpdump.pcap"
+    assert response.content[:4] in {b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4"}  # pcap magic
+    assert client.get("/v1/experiments/unknown/capture").status_code == 422

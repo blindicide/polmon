@@ -6,6 +6,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import NoReturn
 
 
 class ApiClientError(RuntimeError):
@@ -74,25 +75,7 @@ class ApiClient:
             with urllib.request.urlopen(request, timeout=timeout or self.timeout) as response:
                 body = response.read()
         except urllib.error.HTTPError as error:
-            try:
-                document = json.loads(error.read().decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                document = None
-            body = document.get("error") if isinstance(document, dict) else None
-            if isinstance(body, dict):
-                code = str(body.get("code") or "error")
-                message = str(body.get("message") or error.reason)
-                details = body.get("details")
-            else:
-                code, message, details = None, str(error.reason), document
-            raise ApiClientError(
-                f"server returned HTTP {error.code}"
-                + (f" {code}" if code else "")
-                + f": {message}",
-                status=error.code,
-                code=code,
-                details=details,
-            ) from error
+            self._raise_http(error)
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if hasattr(error, "reason") else error
             raise ApiClientError(f"unable to reach backend: {reason}") from error
@@ -105,6 +88,27 @@ class ApiClient:
                 "backend returned a malformed response (not JSON); is this a polmon backend?",
                 code="malformed_response",
             ) from error
+
+    def _bytes(self, path: str, *, limit: int) -> bytes:
+        """GET a binary resource of at most ``limit`` bytes (errors as in ``_request``)."""
+        request = urllib.request.Request(
+            self.base_url + path,
+            method="GET",
+            headers={**({"Authorization": f"Bearer {self._token}"} if self._token else {})},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = response.read(limit + 1)
+        except urllib.error.HTTPError as error:
+            self._raise_http(error)
+        except (urllib.error.URLError, TimeoutError) as error:
+            reason = error.reason if hasattr(error, "reason") else error
+            raise ApiClientError(f"unable to reach backend: {reason}") from error
+        except OSError as error:
+            raise ApiClientError(f"connection to backend failed: {error}") from error
+        if len(body) > limit:
+            raise ApiClientError(f"download exceeds the {limit}-byte client limit")
+        return body
 
     def _dict(self, method: str, path: str, payload=None, *, timeout=None) -> dict[str, object]:
         document = self._request(method, path, payload, timeout=timeout)
@@ -123,6 +127,29 @@ class ApiClient:
                 code="malformed_response",
             )
         return document
+
+    @staticmethod
+    def _raise_http(error: urllib.error.HTTPError) -> NoReturn:
+        """Raise the backend's error document (or the HTTP reason) as ``ApiClientError``."""
+        try:
+            document = json.loads(error.read().decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            document = None
+        body = document.get("error") if isinstance(document, dict) else None
+        if isinstance(body, dict):
+            code = str(body.get("code") or "error")
+            message = str(body.get("message") or error.reason)
+            details = body.get("details")
+        else:
+            code, message, details = None, str(error.reason), document
+        raise ApiClientError(
+            f"server returned HTTP {error.code}"
+            + (f" {code}" if code else "")
+            + f": {message}",
+            status=error.code,
+            code=code,
+            details=details,
+        ) from error
 
     def health(self) -> dict[str, object]:
         return self._dict("GET", "/v1/health")
@@ -197,6 +224,10 @@ class ApiClient:
         if not isinstance(markdown, str):
             raise ApiClientError("backend report has no Markdown text", code="malformed_response")
         return markdown
+
+    def capture(self, experiment_id: str, *, limit: int = 1_073_741_824) -> bytes:
+        """The experiment's PCAP capture (bounded by the backend's capture limit)."""
+        return self._bytes(f"/v1/experiments/{_segment(experiment_id)}/capture", limit=limit)
 
     def cancel_experiment(self, experiment_id: str) -> dict[str, object]:
         return self._dict("POST", f"/v1/experiments/{_segment(experiment_id)}/cancel")

@@ -63,6 +63,11 @@ class TelemetryPage(Page):
         self.export_button.setToolTip("Save the events currently shown (filters applied) as CSV")
         self.export_button.clicked.connect(self.export_csv)
         top.addWidget(self.export_button)
+        self.capture_button = QPushButton("Save capture…")
+        self.capture_button.setToolTip("Download the experiment's PCAP (open it in Wireshark)")
+        self.capture_button.clicked.connect(self.save_capture)
+        self.capture_button.setEnabled(False)
+        top.addWidget(self.capture_button)
         top.addStretch(1)
         self.root.addLayout(top)
 
@@ -185,6 +190,7 @@ class TelemetryPage(Page):
             self.payload.clear()
             self.capture.setRowCount(0)
             self.badge.set_status("")
+            self.capture_button.setEnabled(False)
         index = self.selector.findData(experiment_id)
         if index < 0:
             self.selector.addItem(experiment_id, experiment_id)
@@ -259,6 +265,7 @@ class TelemetryPage(Page):
         assert isinstance(record, dict)
         self.status = str(record.get("status"))
         self.badge.set_status(self.status)
+        self.capture_button.setEnabled(isinstance(record.get("capture"), dict))
         self._show_capture(record)
         self._update_count()
 
@@ -339,6 +346,32 @@ class TelemetryPage(Page):
             self.banner.show_problem(self.context.problem(error))
             return
         self.session.log(f"Exported {count} telemetry events to {path}")
+
+    def save_capture(self, path: Path | None = None) -> None:
+        """Download the capture of the shown experiment into ``path`` (asks when omitted)."""
+        experiment_id = self.experiment_id
+        if not experiment_id:
+            return
+        if path is None:
+            path = self.context.ask_save(
+                self, "Save capture", f"{experiment_id}.pcap", "Packet capture (*.pcap)"
+            )
+            if path is None:
+                return
+        client = self.session.client(timeout=max(30.0, self.session.timeout))
+        target = path
+
+        def work(token: CancelToken, report) -> int:  # noqa: ANN001
+            data = client.capture(experiment_id)
+            target.write_bytes(data)
+            return len(data)
+
+        self.context.run(
+            f"Save capture {experiment_id}",
+            work,
+            on_success=lambda size: self.session.log(f"Saved {size} bytes of capture to {target}"),
+            banner=self.banner,
+        )
 
     def _event_selected(self, current, previous) -> None:  # noqa: ANN001
         event = self.proxy.data(current, Qt.ItemDataRole.UserRole) if current.isValid() else None

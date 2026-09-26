@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from polmon.api.benchmarks import RESULT_NAME, BenchmarkRequest
@@ -139,6 +140,14 @@ def experiment_report(experiment_id: ExperimentId, request: Request) -> dict[str
 @router.get("/experiments/{experiment_id}/report/markdown")
 def experiment_report_markdown(experiment_id: ExperimentId, request: Request) -> dict[str, object]:
     return control(request).experiment_report_markdown(experiment_id)
+
+
+@router.get("/experiments/{experiment_id}/capture", response_class=FileResponse)
+def experiment_capture(experiment_id: ExperimentId, request: Request) -> FileResponse:
+    path = control(request).experiment_capture_path(experiment_id)
+    return FileResponse(
+        path, media_type="application/vnd.tcpdump.pcap", filename=f"{experiment_id}.pcap"
+    )
 
 
 @router.post("/benchmarks")

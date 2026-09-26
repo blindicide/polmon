@@ -282,6 +282,11 @@ def test_documents_save_with_ctrl_s_and_telemetry_exports_csv(
     qtbot.waitUntil(lambda: telemetry.model.rowCount() >= 4, timeout=10_000)
     for name, box in telemetry.category_boxes.items():
         box.setChecked(name == "network_observation")
+    capture = tmp_path / "run.pcap"
+    qtbot.waitUntil(telemetry.capture_button.isEnabled, timeout=10_000)
+    telemetry.save_capture(capture)
+    qtbot.waitUntil(lambda: capture.exists() and capture.stat().st_size > 24, timeout=10_000)
+    assert capture.read_bytes()[:4] in {b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4"}
     exported = tmp_path / "events.csv"
     assert telemetry.write_csv(exported) == 2
     rows = list(csv.DictReader(exported.open(encoding="utf-8")))
