@@ -14,7 +14,7 @@ Windows client. Read [SECURITY.md](../SECURITY.md) first.
   ```bash
   git clone <repository> ~/polmon && cd ~/polmon
   uv venv --python /usr/bin/python3.12 && uv pip install -e .
-  .venv/bin/polmon-diagnostics            # Python, namespaces, ip/ping/tcpdump availability
+  .venv/bin/polmon-diagnostics --lab      # read-only lab readiness; exit 1 if not ready
   scripts/check.sh                        # rootless gate
   scripts/privileged-tests.sh             # lab tests + proof the host network is untouched
   ```

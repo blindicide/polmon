@@ -64,3 +64,32 @@ def test_json_log_lines_carry_version_event_and_utf8(capsys) -> None:
     assert record["message"] == "NOT RUN — ünïcode"  # UTF-8, not \\u escapes or mojibake
     assert "—" in line
     logging.getLogger().handlers.clear()
+
+
+def test_lab_readiness_is_read_only_and_reports_each_check() -> None:
+    import subprocess
+
+    from polmon.core.diagnostics import lab_readiness
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, "", "sudo: a password is required")
+
+    result = lab_readiness(run=fake_run)
+    assert calls in ([], [["sudo", "-n", "ip", "netns", "list"]])  # the only privileged probe
+    assert result["ready"] is False
+    assert set(result["checks"]) >= {"tool_ip", "tun_device", "passwordless_sudo_ip"}
+    assert result["checks"]["passwordless_sudo_ip"]["ok"] is False
+
+
+def test_lab_flag_sets_exit_status_and_keeps_json_clean(capsys, monkeypatch) -> None:
+    from polmon.core import diagnostics
+
+    monkeypatch.setattr(diagnostics, "lab_readiness", lambda: {"ready": False, "checks": {}})
+    assert main(["--json", "--lab"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["lab"] == {"ready": False, "checks": {}}
+    monkeypatch.setattr(diagnostics, "lab_readiness", lambda: {"ready": True, "checks": {}})
+    assert main(["--json", "--lab"]) == 0

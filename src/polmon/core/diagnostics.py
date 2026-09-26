@@ -9,8 +9,10 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -145,18 +147,82 @@ def collect_diagnostics() -> dict[str, object]:
     }
 
 
+def _file_capabilities(path: str | None) -> str | None:
+    """Read ``security.capability`` via getcap when available (e.g. ping's cap_net_raw)."""
+    getcap = shutil.which("getcap")
+    if path is None or getcap is None:
+        return None
+    try:
+        output = subprocess.run(
+            [getcap, path], capture_output=True, text=True, timeout=5, check=False
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return output.split(" ", 1)[1] if " " in output else ""
+
+
+def lab_readiness(
+    *, run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
+) -> dict[str, object]:
+    """Read-only checks that the privileged laboratory (L1/hybrid) can run on this host.
+
+    Nothing is created: the only privileged call is ``sudo -n ip netns list``.
+    """
+    tools = {name: shutil.which(name) for name in ("ip", "sudo", "setpriv", "ping")}
+    checks: dict[str, dict[str, object]] = {}
+    for name, path in tools.items():
+        checks[f"tool_{name}"] = {"ok": path is not None, "detail": path or "not installed"}
+    checks["tun_device"] = {
+        "ok": Path("/dev/net/tun").exists(),
+        "detail": "/dev/net/tun (hybrid TAP boundary)",
+    }
+    capabilities = _file_capabilities(tools["ping"])
+    ping_ok = capabilities is None or "cap_net_raw" in capabilities
+    checks["ping_unprivileged"] = {
+        "ok": ping_ok,
+        "detail": capabilities if capabilities is not None else "getcap unavailable; not verified",
+    }
+    if tools["sudo"] and tools["ip"]:
+        try:
+            probe = run(
+                ["sudo", "-n", "ip", "netns", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            sudo_ok = probe.returncode == 0
+            detail = "passwordless sudo for ip" if sudo_ok else "sudo -n ip netns list failed"
+        except (OSError, subprocess.SubprocessError) as error:
+            sudo_ok, detail = False, f"sudo probe failed: {type(error).__name__}"
+    else:
+        sudo_ok, detail = False, "sudo or ip missing"
+    checks["passwordless_sudo_ip"] = {"ok": sudo_ok, "detail": detail}
+    return {"ready": all(bool(item["ok"]) for item in checks.values()), "checks": checks}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="display secret-free polmon diagnostics")
     parser.add_argument("--version", action="version", version=f"polmon {__version__}")
     parser.add_argument("--json", action="store_true", help="emit compact machine-readable JSON")
+    parser.add_argument(
+        "--lab",
+        action="store_true",
+        help="also check privileged-lab readiness (read-only); exit 1 when not ready",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     diagnostics = collect_diagnostics()
+    status = 0
+    if args.lab:
+        readiness = lab_readiness()
+        diagnostics["lab"] = readiness
+        status = 0 if readiness["ready"] else 1
     print(json.dumps(diagnostics, indent=None if args.json else 2, sort_keys=True))
-    return 0
+    return status
 
 
 if __name__ == "__main__":
