@@ -115,3 +115,32 @@ def test_telemetry_model_is_append_only_bounded_and_filterable(qtbot) -> None:
     proxy.set_categories({"scenario", "resource"})
     proxy.set_text('"n": 5')
     assert proxy.rowCount() == 1
+
+
+def test_runner_can_be_dropped_before_its_handles_are_deleted(qapp) -> None:
+    """Regression: a handle's deferred deletion must not run into its runner's destruction.
+
+    Handles used to be children of the runner and held lambdas capturing it; if the handle's
+    DeferredDelete ran after the last runner reference was gone, the runner was freed from inside
+    the handle's destructor and deleted it a second time (native abort on Windows CI, bus error on
+    Linux when forced).
+    """
+    import gc
+    import time
+
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    def scenario() -> None:
+        runner = TaskRunner()
+        done: list[object] = []
+        runner.submit("t", lambda token, report: 1, on_success=done.append)
+        deadline = time.monotonic() + 5
+        while runner.in_flight and time.monotonic() < deadline:
+            qapp.processEvents()
+            time.sleep(0.002)
+        assert done == [1]
+
+    for _ in range(50):
+        scenario()
+        gc.collect()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)

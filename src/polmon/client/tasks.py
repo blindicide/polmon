@@ -158,15 +158,18 @@ class TaskRunner(QObject):
         on_failure: Callable[[BaseException], None] | None = None,
         on_progress: Callable[[ProgressUpdate], None] | None = None,
     ) -> TaskHandle:
-        handle = TaskHandle(name, self)
+        # Parentless on purpose: a handle is deleted only by deleteLater after its worker has
+        # returned, never as a side effect of the runner being destroyed (that ordering could
+        # delete a handle while its own deferred deletion is running).
+        handle = TaskHandle(name)
         if on_success is not None:
             handle.succeeded.connect(on_success)
         if on_failure is not None:
             handle.failed.connect(on_failure)
         if on_progress is not None:
             handle.progress.connect(on_progress)
-        handle.finished.connect(lambda: self.task_finished.emit(handle))
-        handle.released.connect(lambda: self._released(handle))
+        handle.finished.connect(self._handle_finished)
+        handle.released.connect(self._handle_released)
 
         def run() -> None:
             _execute(handle, work)
@@ -176,9 +179,18 @@ class TaskRunner(QObject):
         self.pool.start(run)
         return handle
 
-    def _released(self, handle: TaskHandle) -> None:
-        self._active.pop(handle, None)
-        handle.deleteLater()
+    @Slot()
+    def _handle_finished(self) -> None:
+        handle = self.sender()
+        if isinstance(handle, TaskHandle):
+            self.task_finished.emit(handle)
+
+    @Slot()
+    def _handle_released(self) -> None:
+        handle = self.sender()
+        if isinstance(handle, TaskHandle):
+            self._active.pop(handle, None)
+            handle.deleteLater()
 
     @property
     def active(self) -> list[TaskHandle]:
