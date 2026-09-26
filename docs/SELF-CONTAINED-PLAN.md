@@ -74,8 +74,8 @@ text for L1/L2, exercises disconnect/backend-killed/client-killed paths, and use
 process queries after each path to prove no `polmon-backend.exe` remains. `--self-test` must name
 uvicorn, the application graph, and the completed L0 workflow.
 
-Hosted Linux verification extracts the backend tarball and starts it with `env -i` (no venv or
-Python on `PATH`), then drives the same real L0 workflow over HTTP. A read-only lab readiness probe
+Hosted Linux verification extracts the backend tarball and starts it with `env -i` (no activated
+venv and no Python invocation), then drives the same real L0 workflow over HTTP. A read-only lab readiness probe
 records whether L1 is available; when permitted, a bounded two-node L1 deploy/destroy is run, and
 otherwise the exact clean refusal is recorded as `NOT RUN - environment unavailable`. The
 downloaded artifact is rechecked on a fresh runner and its SHA-256 is published.

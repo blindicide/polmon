@@ -4,12 +4,38 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-26
+
+Phase III: self-contained backend artifacts and client-owned local execution.
+
 ### Added
 
 - `DELETE /v1/topologies/{id}` forgets a loaded definition (refused while deployed); the
   Topologies page's *Loaded on backend* list gains *Unload*.
 - Reports page: filter box over the experiment list. Dashboard: memory headroom and data
   directory tiles turn amber/red as they approach the reserve or limit.
+- Qt-free PyInstaller backend executables for Windows and Linux. The Linux
+  `polmon-backend-<version>-linux-x64.tar.gz` runs with no Python/pip/venv; a second systemd unit
+  targets the extracted bundle. Uvicorn's dynamic imports are explicit, and `--self-test` loads
+  the application graph and completes a real L0 experiment/report/reset.
+- The client connection bar defaults to **Local backend (L0 only)** on Windows (Linux retains its
+  remote-backend default). It selects a free loopback port, starts the bundled backend off the GUI
+  thread with an ephemeral token and owned process group, captures a user-openable log, detects
+  child death, and reaps on disconnect/exit. Windows adds a kill-on-close Job Object for abrupt
+  client crashes; an executable override supports development and custom layouts.
+- Packaged acceptance probes: Windows runs the real owned L0 HTTP workflow and exact L1 refusal
+  from both client forms, plus normal/backend-killed/client-crashed orphan checks. Linux starts the
+  extracted backend under `env -i`, performs the real HTTP workflow, and passes or cleanly refuses
+  a readiness-gated L1 deployment. A real connected Local-backend screenshot is committed.
+
+### Changed
+
+- Windows backends are authoritatively L0-only. Health/resources publish `l0_only` versus
+  `linux_lab`; both UI and API refuse L1/L2 with the Linux namespace-host requirement and never
+  silently degrade. Linux probes tools/privileges before constructing an L1/hybrid backend.
+- Windows portable archives place `polmon-client.exe` and `polmon-backend.exe` side by side; the
+  one-file client embeds the same independently built backend. Release notes and artifacts state
+  fidelity explicitly. Unsigned/SmartScreen reality is documented.
 
 ## [0.2.3] - 2026-09-26
 

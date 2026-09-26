@@ -84,6 +84,31 @@ def main() -> int:
         print(f"wrote {path}")
 
     try:
+        window.bar.mode.setCurrentIndex(window.bar.mode.findData("local"))
+        window.bar.connect_button.click()
+        wait_until(
+            app,
+            lambda: window.session.state is ConnectionState.CONNECTED,
+            "owned local backend connection",
+        )
+        window.navigate("dashboard")
+        grab(
+            "local-backend",
+            "Self-contained Local backend preset connected on loopback with the persistent "
+            "L0-only fidelity indicator and an operator-openable process log",
+        )
+        owned = window.local_backend.process
+        window.disconnect_backend()
+        wait_until(
+            app,
+            lambda: (
+                owned is not None
+                and owned.poll() is not None
+                and window._local_stop_handle is None
+            ),
+            "owned local backend cleanup",
+        )
+        window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))
         window.bar.url.setText(backend.url)
         window.bar.token.setText(backend.token)
         window.bar.connect_button.click()

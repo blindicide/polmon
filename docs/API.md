@@ -5,6 +5,13 @@ Topology YAML is validated with `POST /v1/topologies/validate` and loaded with
 `POST /v1/topologies`, both using `{"yaml":"..."}`. Deployment creation/status/removal use
 `POST`, `GET`, and `DELETE /v1/deployments/{topology_id}`.
 
+From v0.3.0, health and resources include `capabilities`: `fidelity` is `l0_only` or `linux_lab`,
+with booleans for L0, L1, L2 and the hybrid TAP path. The Windows/local policy refuses deployment
+of any non-L0 topology with HTTP 422 `configuration_error` and the message “Local backend supports
+L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with network namespace
+privileges.” L1/hybrid deployment on Linux first runs read-only host readiness checks and returns
+an actionable 422 when tools or privileges are missing.
+
 Run an experiment with `POST /v1/experiments` and fields `experiment_id`, `topology_id`, and
 `scenario_yaml`. Read its result at `GET /v1/experiments/{experiment_id}` and ordered telemetry at
 `GET /v1/experiments/{experiment_id}/telemetry`. The durable machine-readable report is returned by

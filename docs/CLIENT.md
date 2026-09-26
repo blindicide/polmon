@@ -9,8 +9,8 @@ laboratory networking itself. Screenshots of every page, rendered from the runni
 
 | Platform | Get it from the release | Start |
 |---|---|---|
-| Windows, single file | `polmon-<version>-windows-x64.exe` | double-click (unpacks itself on every start, 2–3 s) |
-| Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip, run `polmon-client.exe` (under 1 s) |
+| Windows, single file | `polmon-<version>-windows-x64.exe` | double-click; includes the owned backend (unpacks itself on every start) |
+| Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip; `polmon-client.exe` and `polmon-backend.exe` are side by side |
 | Linux | `polmon-<version>-linux-x64.tar.gz` | extract, run `polmon-client`; `--install-desktop-entry` adds a menu entry |
 | Any, from source | `pip install "polmon[gui]"` | `polmon-client` |
 
@@ -21,14 +21,26 @@ on Windows). Linux needs glibc 2.35+ and, for X11, `libxcb-cursor0` (see
 Command-line options: `--version`; `--self-test` (checks Qt, its plugins, the main window and the
 API client without opening a window; exit status 0 when healthy); `--smoke-start SECONDS` (shows
 the window on the native platform and reports start-up time and memory); `--url URL` (prefill the
-backend URL); `--theme system|light|dark`; `--install-desktop-entry` (Linux).
+backend URL and select the remote preset); `--backend-executable PATH` (override the local child);
+`--local-backend-self-test`; `--theme system|light|dark`; `--install-desktop-entry` (Linux).
 
 ## Connect
 
-Enter the backend URL (the drop-down remembers the last eight backends), the API token if the
-backend requires one, and press **Connect** (Ctrl+Return). Remote backends are best reached
-through an SSH tunnel (`ssh -N -L 8080:127.0.0.1:8080 operator@lab-host`, then
-`http://127.0.0.1:8080`); see [OPERATIONS.md](OPERATIONS.md). The token is held in memory only.
+Choose a connection type and press **Connect** (Ctrl+Return):
+
+- **Local backend (L0 only)** is the default. The client starts the bundled executable on a free
+  `127.0.0.1` port with an ephemeral token, waits for health without blocking the window, and
+  stops/reaps it on disconnect or exit. The status bar keeps the fidelity label visible. *Backend
+  log* opens the captured stdout/stderr. On Windows a kill-on-close Job Object also reaps the
+  child if the client crashes.
+- **Remote Linux backend** enables the URL/token fields. The URL drop-down remembers eight
+  backends. This is required for L1 namespace and hybrid TAP topologies. Remote backends are best
+  reached through an SSH tunnel (`ssh -N -L 8080:127.0.0.1:8080 operator@lab-host`, then
+  `http://127.0.0.1:8080`); see [OPERATIONS.md](OPERATIONS.md). The token is held in memory only.
+
+The local backend never silently lowers fidelity. Deploying a topology containing L1 or L2 shows
+the same actionable refusal in the UI and API: “Local backend supports L0 synthetic nodes only;
+L1/L2 requires a polmon backend on a Linux host with network namespace privileges.”
 
 The LED and the status bar show the connection: *connected*, *unauthorized* (token missing or
 wrong — the token field stays editable), or *lost* (the backend stopped answering; the client
@@ -85,6 +97,8 @@ F1 shows the same list in the client. The theme follows the operating system unl
 | Rejected / Problems tab | The document is invalid: each problem names the field and line. |
 | Unexpected response | The URL does not point at a polmon backend (for example a web server or proxy). |
 | Backend lost (during an experiment) | The backend stopped answering mid-run; the outcome is unknown until it is reachable — check the Reports page afterwards. |
+| Local backend — L0 only | The owned Windows-compatible backend runs synthetic endpoints only. Select Remote Linux backend for L1/hybrid work. |
+| Local backend stopped | The child exited unexpectedly; open *Backend log*, run its `--self-test`, then reconnect. |
 | Not supported by this backend / Older backend | The backend is older than the client; upgrade it to the same version. |
 
 `polmon-client --self-test` diagnoses the installation itself; a missing Qt platform plugin is

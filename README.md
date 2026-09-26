@@ -21,6 +21,14 @@ telemetry stream, reports and benchmark jobs — and a CI/CD pipeline that tests
 and releases both platforms. Operator guide: [docs/CLIENT.md](docs/CLIENT.md); real screenshots:
 [docs/ui/SCREENSHOTS.md](docs/ui/SCREENSHOTS.md); design: [docs/UI-PLAN.md](docs/UI-PLAN.md).
 
+Phase III (v0.3.0) makes the downloads self-contained. The Windows client starts, monitors and
+stops its bundled backend from the **Local backend (L0 only)** preset; no Python install or separate
+service is needed. This local Windows path intentionally supports synthetic L0 only: Windows has
+no Linux network namespaces, so L1/L2 is refused rather than emulated. Use **Remote Linux backend**
+for L1 and hybrid TAP experiments. Linux releases also contain
+`polmon-backend-<version>-linux-x64.tar.gz`, a Qt-free backend bundle that runs without Python,
+pip, or a virtual environment.
+
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
 namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is
 mandatory off loopback, in-namespace workloads that never run as root, verified scenario
@@ -30,7 +38,7 @@ and a CI dependency audit. Releases carry `SHA256SUMS.txt`; check a download wit
 
 ## Quick start
 
-Requirements: Linux, `/usr/bin/python3.12`, and `uv`. The privileged laboratory (L1/hybrid)
+Source-development requirements: Linux, `/usr/bin/python3.12`, and `uv`. The privileged laboratory (L1/hybrid)
 additionally needs `iproute2`, `setpriv`, `/dev/net/tun`, and passwordless `sudo` for `ip`; check
 with `.venv/bin/polmon-diagnostics --lab`.
 
@@ -55,8 +63,9 @@ with a token:
 and enter the same token in the client; see [SECURITY.md](SECURITY.md) and the operator runbook
 [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-Run `.venv/bin/polmon-client` to open the desktop client (it starts without a backend and connects
-on demand); `--self-test` checks Qt and the client without opening a window. Packaged clients for
+Run `.venv/bin/polmon-client` to open the desktop client; the default local preset starts its own
+L0-only backend on a free loopback port. `--self-test` checks Qt and the client without opening a
+window, while `--local-backend-self-test` proves the owned deploy-to-reset workflow. Packaged clients for
 Windows (`.exe`) and Linux (`.tar.gz`) are attached to every release; see
 [BUILD-WINDOWS.md](BUILD-WINDOWS.md) and [BUILD-LINUX.md](BUILD-LINUX.md).
 

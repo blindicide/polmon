@@ -79,3 +79,17 @@ authorisation does not cover); the first launch after boot is slower. The develo
 inexpensive for the backend: it polls `health`, `resources`, `topologies` and deployed topologies
 every 3 s (a few small JSON requests), telemetry once per second only while the Telemetry page
 follows a running experiment, and never overlaps polls.
+
+## Self-contained backend (v0.3.0)
+
+The backend is frozen separately and explicitly excludes PySide6. Preliminary development-host
+measurement of the Linux one-folder build (same pinned PyInstaller graph as CI): 32,640,077 bytes
+extracted, 15,676,797-byte gzip tarball, and 59,764,736 bytes RSS after reaching HTTP health in an
+`env -i` process. Starting the Local preset therefore adds one roughly 57 MiB backend process to
+the existing client working set; L0 endpoint allocations remain governed by the admission and
+per-endpoint measurements above. The client itself does not import this graph.
+
+Authoritative Windows/Linux hosted-runner bundle sizes, backend RSS, updated client startup, and
+the combined Local-backend cost are recorded by the v0.3.0 build workflows and will be copied into
+the milestone report after those runs. These local numbers are retained as measured preliminary
+evidence, not substituted for hosted measurements.

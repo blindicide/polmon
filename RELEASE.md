@@ -8,16 +8,21 @@ publishes one GitHub Release with:
 | Asset | Platform |
 |---|---|
 | `polmon-<version>-windows-x64.exe` | Windows client (one file) |
+| `polmon-backend-<version>-windows-x64.exe` | Standalone Qt-free Windows backend (L0 only) |
 | `polmon-<version>-windows-x64-portable.zip` | Windows client, one folder: faster start (from v0.2.1) |
 | `polmon-<version>-linux-x64.tar.gz` | Linux client bundle (see [BUILD-LINUX.md](BUILD-LINUX.md)) |
+| `polmon-backend-<version>-linux-x64.tar.gz` | Self-contained Linux backend; no Python install |
 | `polmon-<version>-py3-none-any.whl` | Python package: backend, CLI tools, client (with `[gui]`) |
 | `polmon-backend.service` | Example systemd user unit for the backend |
+| `polmon-backend-bundled.service` | User unit for the extracted backend bundle |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
 
 Before publishing, the release job checks every file name against the tag version and each
 platform artifact against the checksum its build job recorded after smoke-testing it. After
 publishing, `verify-release` downloads the assets from the release itself on Windows and Linux,
-checks `SHA256SUMS.txt`, and runs `--version`, `--self-test` and `--smoke-start` of the client.
+checks `SHA256SUMS.txt`, runs both client and backend self-tests, and repeats the Windows owned-
+backend workflow. Release notes always say that Windows local execution is L0-only and that Linux
+L1/hybrid execution depends on host namespace privileges.
 
 Verify a download yourself:
 

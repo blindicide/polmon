@@ -124,6 +124,7 @@ def main() -> int:
     }
     status = "failed"
     try:
+        window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))
         window.bar.url.setText(backend.url)
         window.bar.token.setText(backend.token)
         window.bar.connect_button.click()

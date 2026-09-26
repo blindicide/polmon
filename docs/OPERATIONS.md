@@ -1,12 +1,23 @@
 # Operations runbook
 
-For operators running polmon on a dedicated Linux laboratory host and controlling it from the
-Windows client. Read [SECURITY.md](../SECURITY.md) first.
+For local L0 use on Windows and for operators running polmon on a dedicated Linux laboratory host.
+Read [SECURITY.md](../SECURITY.md) first.
+
+## 0. Windows local backend (L0 only)
+
+Download either Windows client artifact, select **Local backend (L0 only)** and press *Connect*.
+The client owns the bundled backend, its loopback port, ephemeral token and log; disconnecting or
+exiting stops it. No Python, service installation, administrator access or network-namespace tool
+is needed. This path supports L0 topologies, scenarios, telemetry, reports and L0 benchmarks.
+L1/L2 requests are refused with the Linux-host requirement. Windows executables are currently
+unsigned, so SmartScreen can warn on first launch; verify `SHA256SUMS.txt` and do not bypass a hash
+mismatch.
 
 ## 1. Prepare the laboratory host
 
-- Linux with `iproute2`, `setpriv` (util-linux), `ping` (iputils, with `cap_net_raw`), `/dev/net/tun`,
-  and `/usr/bin/python3.12`; `uv` for the environment; optionally `tcpdump` to inspect captures.
+- Linux with `iproute2`, `setpriv` (util-linux), `ping` (iputils, with `cap_net_raw`) and, for
+  hybrid operation, `/dev/net/tun`; optionally `tcpdump` to inspect captures. The self-contained
+  bundle needs no Python, pip, uv or virtual environment.
 - An account with passwordless `sudo` for laboratory networking. `sudo ip` is root-equivalent
   (SECURITY.md), so use a host and account dedicated to the laboratory.
 - Install and check:
@@ -21,6 +32,12 @@ Windows client. Read [SECURITY.md](../SECURITY.md) first.
 
 ## 2. Run the backend
 
+For the release bundle, extract `polmon-backend-<version>-linux-x64.tar.gz` and run
+`./polmon-backend-<version>-linux-x64/polmon-backend --lab-readiness`. Start that executable in
+place of `.venv/bin/polmon-backend` below. The accompanying
+`polmon-backend-bundled.service` targets a bundle installed at `~/polmon-backend/`; the original
+unit remains for source/venv installations.
+
 Create an API token that only the service account can read:
 
 ```bash
@@ -34,7 +51,7 @@ Run it in the foreground (`--host 127.0.0.1` is the default), or install the exa
 [`packaging/linux/polmon-backend.service`](../packaging/linux/polmon-backend.service):
 
 ```bash
-.venv/bin/polmon-backend --api-token-file ~/.config/polmon/api-token      # foreground
+.venv/bin/polmon-backend --token-file ~/.config/polmon/api-token          # foreground
 cp packaging/linux/polmon-backend.service ~/.config/systemd/user/          # adjust paths first
 systemctl --user daemon-reload && systemctl --user enable --now polmon-backend
 ```

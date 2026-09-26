@@ -38,6 +38,11 @@ Controls in the implementation:
   window title or reports; asserted by the GUI tests and the end-to-end driver), talks to the
   backend only through the documented HTTP API, and imports no backend or networking code.
   Its settings (`QSettings`: URL, recent URLs, timeout, theme, window layout) hold no secrets.
+- The local preset binds its child to `127.0.0.1`, generates a fresh in-memory token and captures
+  stdout/stderr in the user's state directory. The child has its own process group; on Windows it
+  is also assigned to a kill-on-close Job Object, preventing an orphan after an abrupt client
+  crash. Windows enforces L0-only fidelity in both UI and backend. Release EXEs are unsigned and
+  may trigger SmartScreen; SHA-256 verification is the available authenticity check.
 - Telemetry redacts secret-like keys; diagnostics use an allow-list and never read the environment.
 - `scripts/privileged-tests.sh` proves each privileged run left the default route, host interfaces,
   iptables, and nft ruleset unchanged; `scripts/lab-cleanup.sh` lists or removes leftovers
@@ -49,4 +54,3 @@ are built only on GitHub-hosted runners from the tagged source, with third-party
 to commit SHAs, and every published asset is listed in `SHA256SUMS.txt`. Audit them before a release with
 `uvx pip-audit -r <(uv pip freeze --python .venv/bin/python | grep -v polmon)`; the 2026-09-26 audit
 after the starlette 1.7.0 upgrade reported no known vulnerabilities.
-

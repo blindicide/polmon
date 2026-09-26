@@ -10,6 +10,29 @@ Dependencies point inward: GUI and API depend on control-plane models, while syn
 networking implementations never depend on the GUI. This keeps Windows packaging independent of
 Linux facilities and permits unit testing without privileges.
 
+## Self-contained execution and fidelity
+
+The backend has two explicit fidelity policies. `linux_lab` permits L0 and, after a read-only host
+capability probe, Linux namespace L1 / hybrid TAP execution. `l0_only` permits only the shared-
+process synthetic engine. Windows selects `l0_only` automatically; the desktop client's local
+child also passes `--local-l0-only`. Health and resource documents publish this policy. Deployment
+checks it before constructing an orchestrator, so an L1/L2 request returns HTTP 422 with the Linux
+host requirement and cannot silently degrade or create partial resources.
+
+```
+Windows client EXE ──LocalBackendManager──► bundled polmon-backend.exe (127.0.0.1, L0 only)
+        │                 │ process group + log + Windows kill-on-close Job Object
+        │                 └── ephemeral bearer token, dynamic port, owned start/stop
+        └──Remote Linux preset────────────► self-contained/Python Linux backend (L0/L1/hybrid)
+```
+
+The client lifecycle module imports no backend implementation. It resolves an override, an
+executable beside the client / in the one-file extraction directory, or the checkout's console
+script, then uses only the HTTP contract. The backend PyInstaller graph is built independently and
+excludes PySide6; uvicorn's dynamically selected loops, protocols and lifespan handlers are
+collected explicitly. Frozen benchmark jobs re-enter that executable through a private fixed
+dispatch flag instead of assuming `python -m` exists.
+
 The orchestration layer owns lifecycle state and resource claims; backends own implementation
 details. This separation lets the mock backend test rollback and legal transitions while later L0,
 L1, and L2 implementations share the same control-plane contract.

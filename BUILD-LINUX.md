@@ -5,8 +5,10 @@
 | Artifact | Content |
 |---|---|
 | `polmon-<version>-linux-x64.tar.gz` (+ `.sha256`) | One-folder PyInstaller bundle of the Qt client: `polmon-<version>-linux-x64/polmon-client` and its `_internal/` libraries |
+| `polmon-backend-<version>-linux-x64.tar.gz` (+ `.sha256`) | Qt-free, self-contained backend bundle; no Python, pip or venv needed |
 | `polmon-<version>-py3-none-any.whl` | The Python package (backend, CLI tools, client code; Qt via the `gui` extra) |
 | `polmon-backend.service` | The example systemd user unit (see [docs/OPERATIONS.md](docs/OPERATIONS.md)) |
+| `polmon-backend-bundled.service` | User unit targeting an extracted self-contained backend |
 
 The bundle is built on `ubuntu-22.04`, the oldest supported hosted image, so it runs on glibc 2.35
 and newer (Ubuntu 22.04+, Debian 12+). The tarball is reproducible in its metadata: sorted
@@ -19,6 +21,13 @@ downloads the artifact, verifies the checksum, repeats the smoke tests, installs
 fresh virtual environment, checks every backend entry point's version, starts the backend, reads
 `/v1/health` and confirms the graceful `shutdown_cleanup`.
 
+The backend tarball is separately extracted and run under `env -i` with only system utility paths:
+`--version`, `--self-test` (uvicorn graph plus L0 deploy/scenario/telemetry/report/reset), then a
+real listening-server workflow driven over HTTP. `--lab-readiness` records whether the runner can
+provide L1; the job either deploys/destroys the two-node L1 topology or records the exact clean
+HTTP 422 refusal as `NOT RUN - environment unavailable`. The build rejects any PySide6/Qt file in
+the backend bundle and uploads its RSS, extracted size, readiness JSON, E2E record and log.
+
 ## Running the bundle
 
 ```bash
@@ -27,6 +36,16 @@ tar -xzf polmon-<version>-linux-x64.tar.gz
 ./polmon-<version>-linux-x64/polmon-client            # X11 or Wayland session
 ./polmon-<version>-linux-x64/polmon-client --self-test  # headless check, opens no window
 ./polmon-<version>-linux-x64/polmon-client --install-desktop-entry  # menu entry + icon (per user)
+```
+
+Backend, without installing Python:
+
+```bash
+sha256sum --check polmon-backend-<version>-linux-x64.tar.gz.sha256
+tar -xzf polmon-backend-<version>-linux-x64.tar.gz
+./polmon-backend-<version>-linux-x64/polmon-backend --self-test
+./polmon-backend-<version>-linux-x64/polmon-backend --lab-readiness
+./polmon-backend-<version>-linux-x64/polmon-backend --host 127.0.0.1 --token-file api-token
 ```
 
 `--install-desktop-entry` writes `~/.local/share/applications/polmon-client.desktop` and the icon
@@ -45,6 +64,7 @@ libxcb-xinerama0 libxcb-xfixes0 libegl1 libfontconfig1 libdbus-1-3` plus `xvfb` 
 ```bash
 uv pip install -e '.[dev,gui,build]'
 .venv/bin/pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec
+.venv/bin/pyinstaller --clean --noconfirm packaging/linux/polmon-backend.spec
 dist/polmon-<version>-linux-x64/polmon-client --self-test
 ```
 
