@@ -51,7 +51,7 @@ def test_hybrid_uses_one_shared_tap_and_tears_it_down_first() -> None:
         taps.append(tap)
         return tap
 
-    backend = HybridBackend(runner=runner, tap_factory=factory)
+    backend = HybridBackend(runner=runner, tap_factory=factory, require_linux=False)
     topology = load_topology(EXAMPLE)
     backend.validate(topology)
     resources = backend.create(topology)

@@ -49,9 +49,10 @@ class HybridBackend:
         runner: CommandRunner | None = None,
         tap_factory: TapFactory = TapPort.attach,
         capture_limit: int = 1_024,
+        require_linux: bool = True,
     ) -> None:
         self.runner = runner or CommandRunner()
-        self.namespace = NamespaceBackend(runner=self.runner)
+        self.namespace = NamespaceBackend(runner=self.runner, require_linux=require_linux)
         self.synthetic = SyntheticBackend()
         self.tap_factory = tap_factory
         self.taps: dict[str, TapLike] = {}
@@ -239,4 +240,3 @@ class HybridBackend:
 
         self._read_matching(tap, timeout, matches)
         return True
-

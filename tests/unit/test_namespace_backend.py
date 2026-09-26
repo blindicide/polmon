@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from polmon.backends.namespace.backend import NamespaceBackend
@@ -29,7 +30,9 @@ class FakeRunner:
 
 def test_namespace_command_plan_is_isolated_and_cleanup_is_idempotent() -> None:
     runner = FakeRunner()
-    backend = NamespaceBackend(runner=runner, python_executable="/usr/bin/python3.12")
+    backend = NamespaceBackend(
+        runner=runner, python_executable=sys.executable, require_linux=False
+    )
     topology = load_topology(EXAMPLE)
     backend.validate(topology)
     resources = backend.create(topology)
@@ -48,4 +51,3 @@ def test_namespace_command_plan_is_isolated_and_cleanup_is_idempotent() -> None:
         for part in command
         if part.startswith(("polmon", "veth"))
     )
-

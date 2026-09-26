@@ -31,9 +31,11 @@ class NamespaceBackend:
         *,
         runner: CommandRunner | None = None,
         python_executable: str | None = None,
+        require_linux: bool = True,
     ) -> None:
         self.runner = runner or CommandRunner()
         self.python_executable = str(Path(python_executable or sys.executable).resolve())
+        self.require_linux = require_linux
         self.topology: Topology | None = None
         self.names: NamespaceNames | None = None
         self.created_namespaces: set[str] = set()
@@ -70,7 +72,7 @@ class NamespaceBackend:
         return NamespaceNames(namespaces, bridges, host_veths, peer_veths)
 
     def validate(self, topology: Topology) -> None:
-        if not sys.platform.startswith("linux"):
+        if self.require_linux and not sys.platform.startswith("linux"):
             raise ValueError("namespace backend requires Linux")
         unsupported = [node.id for node in topology.nodes if node.node_class is not NodeClass.L1]
         if unsupported:
