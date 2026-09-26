@@ -10,6 +10,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   experiment listing, scenario validation, Markdown report, benchmark jobs) degrade to a single
   "Older backend" warning naming the missing features; deployments the client loads stay
   tracked and the Reports page works without the Markdown route.
+- The backend keeps at most 256 finished experiments in memory with full detail; older ones are
+  served from SQLite (`persisted: true`), so a long-running backend no longer grows without
+  bound.
 
 ## [0.2.1] - 2026-09-26
 

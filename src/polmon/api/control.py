@@ -53,6 +53,10 @@ class SyntheticScenarioExecutor:
         )
 
 
+# Finished experiments kept in memory with full detail; older ones are served from SQLite.
+MAX_EXPERIMENT_RECORDS = 256
+
+
 class ControlPlane:
     def __init__(
         self,
@@ -328,6 +332,17 @@ class ControlPlane:
             if progress is not None:
                 progress["finished"] = time.monotonic()
                 progress["current_action"] = None
+            self._trim_finished()
+
+    def _trim_finished(self) -> None:
+        """Bound in-memory history; evicted experiments remain available from SQLite."""
+        finished = [item for item in self.progress if item not in self.active_experiments]
+        for experiment_id in finished[: max(0, len(finished) - MAX_EXPERIMENT_RECORDS)]:
+            self.progress.pop(experiment_id, None)
+            self.experiments.pop(experiment_id, None)
+        excess = len(self.experiments) - MAX_EXPERIMENT_RECORDS
+        for experiment_id in list(self.experiments)[: max(0, excess)]:
+            self.experiments.pop(experiment_id, None)
 
     def _background_experiment(
         self,

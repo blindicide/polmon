@@ -343,3 +343,24 @@ def test_real_l0_benchmark_job_retains_a_result(tmp_path) -> None:
     assert detail["document"]["measurements"][0]["endpoint_count"] == 3
     assert "l0" in (detail["summary_markdown"] or "")
     assert client.get("/v1/benchmarks/results/..%2Fsecret.json").status_code in {404, 422}
+
+
+def test_in_memory_experiment_history_is_bounded(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(control_module, "MAX_EXPERIMENT_RECORDS", 3)
+    client = deployed_client(tmp_path)
+    for index in range(5):
+        response = client.post(
+            "/v1/experiments",
+            json={
+                "experiment_id": f"bounded-{index}",
+                "topology_id": "hybrid-small",
+                "scenario_yaml": scenario(),
+            },
+        )
+        assert response.json()["status"] == "succeeded"
+    plane = PLANES[-1]
+    assert list(plane.experiments) == ["bounded-2", "bounded-3", "bounded-4"]
+    assert len(plane.progress) == 3
+    evicted = client.get("/v1/experiments/bounded-0").json()
+    assert evicted["status"] == "succeeded" and evicted["persisted"] is True
+    assert len(client.get("/v1/experiments").json()) == 5
