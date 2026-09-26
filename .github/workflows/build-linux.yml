@@ -214,6 +214,44 @@ jobs:
               echo "| $file | $(stat -c %s "$file") | \`$(sha256sum "$file" | cut -d' ' -f1)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Run the extracted bundle as the shipped systemd user unit
+        working-directory: artifact
+        run: |
+          # Installs exactly where polmon-backend-bundled.service expects it, starts it through a
+          # real systemd user manager, drives the L0 workflow, then stops it gracefully.
+          backend_tarball="$(ls polmon-backend-*-linux-x64.tar.gz)"
+          unit="$HOME/.config/systemd/user/polmon-backend-bundled.service"
+          mkdir -p "$HOME/polmon-backend" "$HOME/polmon-data" "$HOME/.config/polmon" "$(dirname "$unit")"
+          tar -xzf "$backend_tarball" -C "$HOME/polmon-backend" --strip-components=1
+          token="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          (umask 077 && printf '%s\n' "$token" > "$HOME/.config/polmon/api-token")
+          cp polmon-backend-bundled.service "$unit"
+          sudo loginctl enable-linger "$USER"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 0.1; done
+          systemd-analyze --user verify "$unit"
+          systemctl --user daemon-reload
+          systemctl --user start polmon-backend-bundled.service
+          for _ in $(seq 100); do
+            curl -fsS http://127.0.0.1:8080/v1/health >/dev/null 2>&1 && break
+            sleep 0.1
+          done
+          set +e
+          "$HOME/polmon-backend/polmon-backend" --lab-readiness > unit-readiness.json
+          set -e
+          (cd "$GITHUB_WORKSPACE" && scripts/packaged-backend-smoke.sh http://127.0.0.1:8080 \
+            "$token" "$OLDPWD/unit-readiness.json" "$OLDPWD/unit-e2e.json") > /dev/null
+          jq '{experiment_status, report_status, l1_outcome}' unit-e2e.json
+          systemctl --user show polmon-backend-bundled.service -p ActiveState -p MainPID -p ExecMainStartTimestamp
+          systemctl --user stop polmon-backend-bundled.service
+          test "$(systemctl --user show polmon-backend-bundled.service -p ActiveState --value)" = inactive
+          sudo journalctl _SYSTEMD_USER_UNIT=polmon-backend-bundled.service --no-pager -o cat \
+            > unit-journal.txt
+          tail -5 unit-journal.txt
+          grep -q '"event":"shutdown_cleanup"' unit-journal.txt
+          if pgrep -f "$HOME/polmon-backend/polmon-backend"; then echo "unit left a process" >&2; exit 1; fi
+          echo "Bundled systemd user unit: started, served the L0 workflow (L1: $(jq -r .l1_outcome unit-e2e.json)), stopped cleanly" \
+            >> "$GITHUB_STEP_SUMMARY"
       - name: Install the wheel into a fresh environment and start the backend
         working-directory: artifact
         run: |

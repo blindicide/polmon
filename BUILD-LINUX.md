@@ -30,7 +30,11 @@ control with a `PATH` holding only `ip`, `ping` and `setpriv`, where readiness r
 unavailable and the deploy must be refused cleanly with HTTP 422 naming the missing checks
 (recorded as `NOT RUN - environment unavailable`). The build rejects any PySide6/Qt file in the
 backend bundle and uploads its RSS, extracted size, readiness JSON, E2E records and logs as
-`linux-backend-evidence`. The fresh-runner job repeats both runs on the downloaded tarball.
+`linux-backend-evidence`. The fresh-runner job repeats both runs on the downloaded tarball, then
+installs it exactly where `polmon-backend-bundled.service` expects it, checks the unit with
+`systemd-analyze --user verify`, starts it through a real systemd user manager (lingering
+enabled), drives the same HTTP workflow against it, stops it, and requires the journal to show
+the graceful `shutdown_cleanup` and no process left behind.
 
 ## Running the bundle
 
