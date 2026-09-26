@@ -75,14 +75,25 @@ def hex_color(name: str) -> str:
     return COLORS[_current][name]
 
 
+SUCCESS_STATES = {"succeeded", "connected", "complete", "met", "not_triggered", "ok", "done",
+                  "valid", "yes"}
+INFO_STATES = {"running", "connecting"}
+WARNING_STATES = {"cancelled", "cancelling", "timed_out", "not_run", "interrupted", "modified",
+                  "unknown", "incompatible"}
+DANGER_STATES = {"failed", "error", "aborted", "lost", "unauthorized", "not_met", "triggered",
+                 "invalid"}
+
+
 def status_color(status: str) -> str:
-    """Semantic colour name for an experiment/job/connection status string."""
+    """Semantic colour name for an experiment/job/connection/action status string."""
     status = status.lower()
-    if status in {"succeeded", "connected", "running", "complete", "met", "not_triggered"}:
-        return "success" if status != "running" else "info"
-    if status in {"cancelled", "cancelling", "timed_out", "not_run", "interrupted", "connecting"}:
+    if status in SUCCESS_STATES:
+        return "success"
+    if status in INFO_STATES:
+        return "info"
+    if status in WARNING_STATES:
         return "warning"
-    if status in {"failed", "error", "aborted", "lost", "unauthorized", "not_met", "triggered"}:
+    if status in DANGER_STATES:
         return "danger"
     return "muted"
 
