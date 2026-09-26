@@ -1,0 +1,38 @@
+{
+  "command": [
+    "D:\\a\\_temp/portable-check/polmon-0.2.0-windows-x64-portable/polmon-client.exe"
+  ],
+  "runs": [
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.815,
+      "idle_rss_mib": 89.9,
+      "platform": "windows",
+      "summary": "polmon 0.2.0 smoke-start: PASS platform=windows visible=True exposed=True in-process-startup=0.527s idle-rss-after-10s=89.9MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.82,
+      "idle_rss_mib": 89.8,
+      "platform": "windows",
+      "summary": "polmon 0.2.0 smoke-start: PASS platform=windows visible=True exposed=True in-process-startup=0.534s idle-rss-after-10s=89.8MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.864,
+      "idle_rss_mib": 89.9,
+      "platform": "windows",
+      "summary": "polmon 0.2.0 smoke-start: PASS platform=windows visible=True exposed=True in-process-startup=0.550s idle-rss-after-10s=89.9MiB"
+    }
+  ],
+  "cold_start_seconds": {
+    "median": 0.82,
+    "min": 0.815,
+    "max": 0.864
+  },
+  "idle_rss_mib": {
+    "median": 89.9,
+    "min": 89.8,
+    "max": 89.9
+  }
+}

@@ -60,15 +60,22 @@ Windows and Linux). Measured cost:
 | Launch to window, Windows EXE | 3.41 s median (3.39–3.63); in-process part 0.47–0.49 s | same run, `scripts/measure-client.py`, 3 launches on the hosted runner |
 | Idle working set after 10 s, Windows | 89.9 MiB (Python process; the one-file bootloader parent adds a few MiB) | same |
 
-On Windows almost all of the start-up time is the one-file bootloader unpacking the bundled Qt
-and Python runtime into a temporary directory on every launch; the client itself is on screen
-0.47 s after its interpreter starts.
+| Windows portable (one-folder) zip | 35.7 MB (35,697,588 bytes) | Build Windows run 36263250482 |
+| Launch to window, Windows | EXE 2.23 s median (2.08–5.40); portable 0.82 s median (0.82–0.86) | same run, 3 launches each |
+| Linux bundle built on the runner (stripped) | 127.4 MB unpacked, 49.7 MB `.tar.gz`; 0.48 s to window, 90.9 MiB idle | Build Linux run 36263251867 |
+
+On Windows most of the one-file EXE's start-up time is its bootloader unpacking the bundled Qt and
+Python runtime into a temporary directory on every launch; the portable one-folder build skips
+that and opens 2.7× faster, at the price of shipping a folder instead of one file. Stripping the
+Linux bundle removed 35 MB (22 % of the tarball) of debug information that the runners' Python
+build carries (v0.2.0's bundle: 162.7 MB / 63.7 MB).
 
 Launch times are with a warm page cache (dropping caches needs root, which the laboratory
 authorisation does not cover); the first launch after boot is slower. The development host is
 4 vCPU / 7.8 GiB and shared with other services. Raw files:
 `benchmarks/results/client-qt-linux-{source,bundle,appimage}-20260926.json` and
-`benchmarks/results/client-qt-windows-exe-20260926.json`. The GUI itself is
+`benchmarks/results/client-qt-windows-{exe-20260926,exe-20260926b,portable-20260926}.json` and
+`benchmarks/results/client-qt-linux-ci-bundle-20260926.json`. The GUI itself is
 inexpensive for the backend: it polls `health`, `resources`, `topologies` and deployed topologies
 every 3 s (a few small JSON requests), telemetry once per second only while the Telemetry page
 follows a running experiment, and never overlaps polls.

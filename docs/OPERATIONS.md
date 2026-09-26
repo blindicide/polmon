@@ -53,7 +53,8 @@ Windows and every Linux desktop):
 ssh -N -L 8080:127.0.0.1:8080 operator@lab-host
 ```
 
-Start `polmon-<version>-windows-x64.exe` (Windows) or `polmon-client` from the extracted
+Start `polmon-<version>-windows-x64.exe` or, for a faster start, `polmon-client.exe` from the
+unzipped `polmon-<version>-windows-x64-portable.zip` (Windows), or `polmon-client` from the extracted
 `polmon-<version>-linux-x64.tar.gz` (Linux), keep the backend URL `http://127.0.0.1:8080`, paste
 the token into *Token*, and press *Connect* (Ctrl+Return). The token stays in memory only. Verify a downloaded executable first with
 `scripts/verify-release.sh vX.Y.Z` (or `Get-FileHash` against the release's `SHA256SUMS.txt`).
