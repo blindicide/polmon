@@ -2,6 +2,32 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.15] - 2026-09-26
+
+Release candidate: feature freeze, audits, and corrections found by release testing.
+
+### Added
+
+- Experiments on hybrid L0/L1 deployments: L0→L0 and L0→L1 ICMP use the synthetic engine and the
+  shared TAP, L1→L1 uses the kernel; L1→L0 and L0-sourced TCP are reported as `unsupported`.
+  Boundary frames are written to the experiment capture. (Required by the v0.1.0 demonstration.)
+
+### Fixed
+
+- Path-like experiment/topology identifiers returned HTTP 500; they are now rejected with 422 at the
+  API boundary, and the report writer and reader refuse them independently.
+- Stopping the backend with SIGINT/SIGTERM left deployed namespaces, bridges, veths, and services
+  behind; graceful shutdown now tears down every deployment and logs the result.
+- A benchmark run that hit its time limit was SIGKILLed before its teardown; it now receives
+  SIGTERM with a grace period. `lab-cleanup.sh` also stops processes inside leftover namespaces.
+- Topology subnets outside RFC 1918 / RFC 2544 laboratory ranges were accepted; they are rejected.
+
+### Removed
+
+- The obsolete v0.0.2 privileged placeholder test that reported a misleading skip.
+- `INSTRUCTION.md` from version control (operator instructions are not repository content; the
+  file remains in history and on the operator's disk).
+
 ## [0.0.14] - 2026-09-26
 
 ### Added

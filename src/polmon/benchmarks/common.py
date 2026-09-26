@@ -189,18 +189,40 @@ def available_memory_bytes() -> int | None:
     return _meminfo().get("MemAvailable")
 
 
+TERMINATION_GRACE_SECONDS = 20.0
+
+
 def run_worker(kind: str, params: dict[str, object], *, timeout: float) -> dict[str, object]:
-    """Run one measurement in a fresh interpreter so every run starts from a clean baseline."""
+    """Run one measurement in a fresh interpreter so every run starts from a clean baseline.
+
+    A run that exceeds ``timeout`` receives SIGTERM first so its teardown still executes, and is
+    killed only if it does not exit within the grace period.
+    """
     command = [sys.executable, "-m", "polmon.benchmarks.worker", kind, json.dumps(params)]
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
     try:
-        completed = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout, check=False
-        )
-    except subprocess.TimeoutExpired as error:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            _, stderr = process.communicate(timeout=TERMINATION_GRACE_SECONDS)
+            killed = False
+        except subprocess.TimeoutExpired:
+            process.kill()
+            _, stderr = process.communicate()
+            killed = True
         raise BenchmarkLimitError(
             "benchmark run exceeded its duration limit",
-            details={"kind": kind, "limit_seconds": timeout},
-        ) from error
+            details={
+                "kind": kind,
+                "limit_seconds": timeout,
+                "terminated_gracefully": not killed,
+                "stderr": (stderr or "").strip()[-2_000:],
+            },
+        ) from None
+    completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     if completed.returncode != 0:
         raise BenchmarkLimitError(
             "benchmark worker failed",

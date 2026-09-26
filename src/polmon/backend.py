@@ -23,11 +23,25 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    logger.info("polmon backend starting", extra={"event": "startup"})
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    logger.info("polmon backend %s starting", __version__, extra={"event": "startup"})
     logger.info("startup diagnostics: %s", collect_diagnostics(), extra={"event": "resources"})
-    yield
-    logger.info("polmon backend stopped", extra={"event": "shutdown"})
+    try:
+        yield
+    finally:
+        # SIGINT/SIGTERM end here through uvicorn's graceful shutdown: never leave lab resources.
+        try:
+            result = application.state.control.reset_all()
+            logger.info("shutdown cleanup: %s", result, extra={"event": "shutdown_cleanup"})
+        except Exception as error:  # shutdown must finish and report what it could not clean
+            details = getattr(error, "details", {})
+            logger.error(
+                "shutdown cleanup incomplete: %s %s",
+                error,
+                details,
+                extra={"event": "shutdown_cleanup_failed"},
+            )
+        logger.info("polmon backend stopped", extra={"event": "shutdown"})
 
 
 async def handle_polmon_error(_: Request, error: PolmonError) -> JSONResponse:

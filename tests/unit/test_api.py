@@ -182,3 +182,39 @@ def test_reset_continues_after_failure_and_retains_failed_deployment(tmp_path) -
         raise AssertionError("reset should report incomplete cleanup")
     assert failed.destroyed is True and cleaned.destroyed is True
     assert set(plane.deployments) == {"failed"}
+
+
+def test_api_rejects_path_like_identifiers_before_touching_files(tmp_path) -> None:
+    client = TestClient(create_app(ControlPlane(tmp_path)), raise_server_exceptions=False)
+    topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()["topology_id"]
+    for experiment_id in ("../escape", "a/b", ".hidden", "x" * 65):
+        response = client.post(
+            "/v1/experiments",
+            json={"experiment_id": experiment_id, "topology_id": topology_id, "scenario_yaml": "x"},
+        )
+        assert response.status_code == 422, experiment_id
+    for path in ("/v1/experiments/..escape/report", "/v1/deployments/Bad_Id"):
+        assert client.get(path).status_code == 422, path
+    assert not (tmp_path / "reports").exists() and not (tmp_path / "captures").exists()
+    assert all(item.name.startswith("telemetry.sqlite3") for item in tmp_path.iterdir())
+
+
+def test_report_writer_refuses_unsafe_identifiers(tmp_path) -> None:
+    import pytest
+
+    from polmon.reporting import write_experiment_report
+
+    with pytest.raises(ValueError, match="invalid experiment identifier"):
+        write_experiment_report(tmp_path, "../escape", None, None, None, [], None)  # type: ignore[arg-type]
+
+
+def test_backend_shutdown_tears_down_every_deployment(tmp_path) -> None:
+    control = ControlPlane(tmp_path)
+    with TestClient(create_app(control)) as client:
+        topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()[
+            "topology_id"
+        ]
+        assert client.post(f"/v1/deployments/{topology_id}").status_code == 200
+        assert control.deployments
+    assert not control.deployments  # lifespan shutdown ran reset_all()
+    assert topology_id in control.topologies  # definitions survive for a restart

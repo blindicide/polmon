@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Path, Request
 from pydantic import BaseModel, Field
 
 from polmon.api.control import ControlPlane
+from polmon.telemetry.store import EXPERIMENT_ID
+from polmon.topology.models import IDENTIFIER
 from polmon.version import __version__
 
 router = APIRouter(prefix="/v1")
+
+TopologyId = Annotated[str, Path(pattern=IDENTIFIER.pattern)]
+ExperimentId = Annotated[str, Path(pattern=EXPERIMENT_ID.pattern)]
 
 
 class YamlDocument(BaseModel):
@@ -16,8 +23,8 @@ class YamlDocument(BaseModel):
 
 
 class ExperimentRequest(BaseModel):
-    experiment_id: str = Field(min_length=1, max_length=64)
-    topology_id: str = Field(min_length=1, max_length=32)
+    experiment_id: str = Field(min_length=1, max_length=64, pattern=EXPERIMENT_ID.pattern)
+    topology_id: str = Field(min_length=1, max_length=32, pattern=IDENTIFIER.pattern)
     scenario_yaml: str = Field(min_length=1, max_length=2_000_000)
 
 
@@ -41,17 +48,17 @@ def load_topology(document: YamlDocument, request: Request) -> dict[str, object]
 
 
 @router.post("/deployments/{topology_id}")
-def deploy(topology_id: str, request: Request) -> dict[str, object]:
+def deploy(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).deploy(topology_id)
 
 
 @router.get("/deployments/{topology_id}")
-def deployment(topology_id: str, request: Request) -> dict[str, object]:
+def deployment(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).deployment(topology_id)
 
 
 @router.delete("/deployments/{topology_id}")
-def destroy(topology_id: str, request: Request) -> dict[str, object]:
+def destroy(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).destroy(topology_id)
 
 
@@ -73,20 +80,20 @@ def experiment(payload: ExperimentRequest, request: Request) -> dict[str, object
 
 
 @router.get("/experiments/{experiment_id}")
-def experiment_status(experiment_id: str, request: Request) -> dict[str, object]:
+def experiment_status(experiment_id: ExperimentId, request: Request) -> dict[str, object]:
     return control(request).experiment(experiment_id)
 
 
 @router.post("/experiments/{experiment_id}/cancel")
-def cancel_experiment(experiment_id: str, request: Request) -> dict[str, object]:
+def cancel_experiment(experiment_id: ExperimentId, request: Request) -> dict[str, object]:
     return control(request).cancel_experiment(experiment_id)
 
 
 @router.get("/experiments/{experiment_id}/telemetry")
-def experiment_telemetry(experiment_id: str, request: Request) -> list[dict[str, object]]:
+def experiment_telemetry(experiment_id: ExperimentId, request: Request) -> list[dict[str, object]]:
     return control(request).experiment_telemetry(experiment_id)
 
 
 @router.get("/experiments/{experiment_id}/report")
-def experiment_report(experiment_id: str, request: Request) -> dict[str, object]:
+def experiment_report(experiment_id: ExperimentId, request: Request) -> dict[str, object]:
     return control(request).experiment_report(experiment_id)

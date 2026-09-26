@@ -82,3 +82,32 @@ def test_l0_services_are_explicitly_unsupported() -> None:
     with pytest.raises(ConfigurationError) as caught:
         parse_topology(source)
     assert "unsupported" in str(caught.value.details)
+
+
+@pytest.mark.parametrize(
+    "subnet",
+    ["8.8.8.0/24", "100.64.0.0/24", "127.0.0.0/24", "169.254.1.0/24", "224.0.0.0/24", "11.0.0.0/8"],
+)
+def test_external_and_special_address_ranges_are_rejected(subnet: str) -> None:
+    source = f"""id: outside
+networks:
+  - id: lab
+    ipv4_subnet: {subnet}
+nodes: []
+"""
+    with pytest.raises(ConfigurationError) as caught:
+        parse_topology(source)
+    assert "controlled laboratory ranges" in str(caught.value.details)
+
+
+@pytest.mark.parametrize(
+    "subnet", ["10.1.0.0/24", "172.20.0.0/16", "192.168.5.0/24", "198.18.0.0/24"]
+)
+def test_laboratory_address_ranges_are_accepted(subnet: str) -> None:
+    source = f"""id: inside
+networks:
+  - id: lab
+    ipv4_subnet: {subnet}
+nodes: []
+"""
+    assert str(parse_topology(source).networks[0].ipv4_subnet) == subnet

@@ -18,10 +18,10 @@ from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
 from polmon.scenarios import ScenarioEngine, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation
-from polmon.scenarios.executors import NamespaceScenarioExecutor
+from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
 from polmon.scenarios.models import ActionKind, Scenario, ScenarioAction
 from polmon.telemetry.models import EventCategory
-from polmon.telemetry.store import TelemetrySession, TelemetryStore
+from polmon.telemetry.store import EXPERIMENT_ID, TelemetrySession, TelemetryStore
 from polmon.topology import dump_topology, parse_topology
 from polmon.topology.models import NodeClass, Topology
 
@@ -152,19 +152,24 @@ class ControlPlane:
     def run_experiment(
         self, experiment_id: str, topology_id: str, scenario_source: str
     ) -> dict[str, object]:
+        if not EXPERIMENT_ID.fullmatch(experiment_id):
+            raise ConfigurationError("invalid experiment identifier")
         scenario = parse_scenario(scenario_source)
         topology = self._topology(topology_id)
         control = self.deployments.get(topology_id)
         if control is None:
             raise ConfigurationError("topology must be deployed before an experiment")
         backend = control.backend
+        executor: ActionExecutor
         if isinstance(backend, NamespaceBackend):
             executor = NamespaceScenarioExecutor(backend)
         elif isinstance(backend, SyntheticBackend):
             executor = SyntheticScenarioExecutor(backend)
+        elif isinstance(backend, HybridBackend):
+            executor = HybridScenarioExecutor(backend)
         else:
             self.destroy(topology_id)
-            raise ConfigurationError("scenario execution is not yet supported for hybrid topology")
+            raise ConfigurationError("scenario execution is unsupported for this backend")
 
         engine = ScenarioEngine()
         with self._lock:
@@ -256,6 +261,9 @@ class ControlPlane:
         if isinstance(executor, SyntheticScenarioExecutor):
             for frame in executor.network.capture:
                 session.packet(frame)
+        elif isinstance(executor, HybridScenarioExecutor):
+            for frame in executor.captured_frames():
+                session.packet(frame)
         for error in result.errors:
             session.event(EventCategory.EXECUTION_ERROR, "error", payload={"message": error})
         session.resources(self._snapshot())
@@ -308,6 +316,8 @@ class ControlPlane:
         return [asdict(event) for event in self.telemetry.events(experiment_id)]
 
     def experiment_report(self, experiment_id: str) -> dict[str, object]:
+        if not EXPERIMENT_ID.fullmatch(experiment_id):
+            raise ConfigurationError("invalid experiment identifier")
         path = self.data_directory / "reports" / f"{experiment_id}.json"
         if not path.is_file():
             raise ConfigurationError(f"report for experiment '{experiment_id}' does not exist")

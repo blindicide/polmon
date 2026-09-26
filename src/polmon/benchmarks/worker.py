@@ -6,6 +6,7 @@ Prints exactly one JSON object (the measurement row) on the last stdout line.
 from __future__ import annotations
 
 import json
+import signal
 import sys
 
 
@@ -37,6 +38,11 @@ def measure(kind: str, params: dict[str, object]) -> dict[str, object]:
     raise ValueError(f"unknown benchmark kind '{kind}'")
 
 
+def _terminate(signum: int, _frame: object) -> None:
+    # Raise inside the measurement so its ``finally`` teardown removes lab resources.
+    raise SystemExit(128 + signum)
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if len(arguments) != 2:
@@ -52,4 +58,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _terminate)
     raise SystemExit(main())

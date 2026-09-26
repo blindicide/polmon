@@ -194,3 +194,15 @@ def test_worker_prints_one_json_row_and_rejects_bad_input(capsys) -> None:
     assert worker.main(["l0", "[]"]) == 2
     with pytest.raises(ValueError, match="unknown benchmark kind"):
         worker.measure("l9", {})
+
+
+def test_timed_out_worker_is_terminated_gracefully() -> None:
+    import time
+
+    from polmon.benchmarks.common import run_worker
+
+    started = time.monotonic()
+    with pytest.raises(BenchmarkLimitError) as raised:
+        run_worker("l0", {"endpoint_count": 3, "repeat": 1, "idle_seconds": 30}, timeout=1.5)
+    assert raised.value.details["terminated_gracefully"] is True
+    assert time.monotonic() - started < 15

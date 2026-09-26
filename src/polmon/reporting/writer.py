@@ -11,6 +11,7 @@ from pathlib import Path
 from polmon.scenarios.engine import ScenarioResult
 from polmon.scenarios.models import Condition, Scenario
 from polmon.telemetry.models import CaptureSummary, EventCategory, TelemetryEvent
+from polmon.telemetry.store import EXPERIMENT_ID
 from polmon.topology.models import Topology
 from polmon.version import __version__
 
@@ -203,6 +204,8 @@ def write_experiment_report(
     events: list[TelemetryEvent],
     capture: CaptureSummary,
 ) -> ReportArtifacts:
+    if not EXPERIMENT_ID.fullmatch(experiment_id):
+        raise ValueError("invalid experiment identifier")
     document = build_experiment_report(
         experiment_id, topology, scenario, result, events, capture
     )

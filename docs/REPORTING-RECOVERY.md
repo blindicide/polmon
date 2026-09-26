@@ -17,3 +17,9 @@ Scenario preflight or execution exceptions close telemetry and invoke deployment
 the API returns an error. Normal scenario cleanup follows the scenario's declared cleanup policy;
 the reset endpoint remains the explicit recovery boundary for deployments intentionally retained by
 `cleanup_policy: never`.
+
+Interrupted executions: stopping the backend with SIGINT or SIGTERM runs the same reset before the
+process exits. A benchmark run that exceeds its time limit receives SIGTERM so its teardown still
+executes, and is killed only after a 20-second grace period. After an uncatchable SIGKILL or power
+loss, `scripts/lab-cleanup.sh` lists leftover platform-named namespaces, bridges, TAPs, veths, and
+processes still running inside those namespaces, and removes them with `--apply`.

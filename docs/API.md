@@ -22,3 +22,17 @@ experiment. Limit rejections return HTTP 429 and the `resource_limit` error code
 The Windows client performs every HTTP call on one worker thread and polls completion through Tk's
 event loop. It never imports Linux networking code and does not require a backend to launch or run
 its headless smoke tests.
+
+Identifiers are validated before any work: `topology_id` path and body values must match
+`^[a-z][a-z0-9-]{0,31}$` and `experiment_id` values `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`; anything else
+(for example a path-like `../x`) is rejected with HTTP 422 before files or telemetry are touched.
+
+Experiments run on L0, L1, and hybrid deployments. On a hybrid deployment each action uses the path
+its endpoint classes support: L0→L0 ICMP in the synthetic engine, L0→L1 ICMP across the shared
+TAP, and L1→L1 ICMP/TCP in the kernel. L1→L0 actions and TCP from an L0 source return an
+observation with `detail: "unsupported"` rather than an emulated result; observations carry a
+`path` such as `l0->l1`. The experiment capture contains the synthetic and TAP boundary frames.
+
+When the backend stops (SIGINT or SIGTERM through uvicorn's graceful shutdown) it tears down every
+owned deployment before exiting and logs `shutdown_cleanup` (or `shutdown_cleanup_failed` with the
+failures). A backend killed with SIGKILL cannot clean up; recover with `scripts/lab-cleanup.sh`.

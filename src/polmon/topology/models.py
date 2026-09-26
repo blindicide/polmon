@@ -9,6 +9,15 @@ from ipaddress import IPv4Address, IPv4Network
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+# Controlled laboratory address space (SECURITY.md): RFC 1918 private ranges and the RFC 2544
+# benchmarking range. Public, shared (100.64.0.0/10), loopback, link-local, and multicast ranges
+# are rejected; Phase I has no configuration that authorises external addresses.
+LAB_IPV4_RANGES = (
+    IPv4Network("10.0.0.0/8"),
+    IPv4Network("172.16.0.0/12"),
+    IPv4Network("192.168.0.0/16"),
+    IPv4Network("198.18.0.0/15"),
+)
 MAC_ADDRESS = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
 
 
@@ -61,6 +70,17 @@ class Network(StrictModel):
     def require_explicit_network(cls, value: object) -> object:
         if isinstance(value, str):
             return IPv4Network(value, strict=True)
+        return value
+
+    @field_validator("ipv4_subnet")
+    @classmethod
+    def require_laboratory_range(cls, value: IPv4Network) -> IPv4Network:
+        if not any(value.subnet_of(allowed) for allowed in LAB_IPV4_RANGES):
+            allowed = ", ".join(str(item) for item in LAB_IPV4_RANGES)
+            raise ValueError(
+                f"{value} is outside the controlled laboratory ranges ({allowed}); external "
+                "addresses are not authorised"
+            )
         return value
 
 
