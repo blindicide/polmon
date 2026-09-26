@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.7] - 2026-09-26
+
+### Added
+
+- Linux namespace backend with isolated bridges, veth interfaces, addressing, and direct routing.
+- Predefined lightweight HTTP service lifecycle and connectivity probes.
+- Narrow privileged command boundary, deterministic teardown, unit command-plan checks, and opt-in
+  real namespace integration coverage.
+
 ## [0.0.6] - 2026-09-26
 
 ### Added
