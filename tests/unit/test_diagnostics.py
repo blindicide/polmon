@@ -47,3 +47,20 @@ def test_json_log_formatter_is_structured() -> None:
     assert payload["message"] == "hello world"
     assert payload["event"] == "test"
     assert payload["version"] == __version__
+
+
+def test_json_log_lines_carry_version_event_and_utf8(capsys) -> None:
+    import json
+    import logging
+
+    from polmon.core.logging import configure_logging
+    from polmon.version import __version__
+
+    configure_logging("info")
+    logging.getLogger("polmon.test").info("NOT RUN — ünïcode", extra={"event": "probe"})
+    line = capsys.readouterr().err.strip().splitlines()[-1]
+    record = json.loads(line)
+    assert record["version"] == __version__ and record["event"] == "probe"
+    assert record["message"] == "NOT RUN — ünïcode"  # UTF-8, not \\u escapes or mojibake
+    assert "—" in line
+    logging.getLogger().handlers.clear()

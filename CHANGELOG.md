@@ -10,6 +10,12 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   or crash a probe; timeouts now return exit code 124 (or raise a clear error when checked).
 - Oversized request bodies were read and parsed before model limits applied; bodies above 5 MiB,
   including chunked uploads, are now refused with HTTP 413 before parsing.
+- Client errors embedded the server's error document as a Python dict repr; `ApiClientError` now
+  states the HTTP status, error code, and message, and exposes `status`, `code`, and `details`.
+
+### Added
+
+- Tests for the topology CLI, client error handling against a live backend, and UTF-8 JSON logs.
 
 ## [0.1.0] - 2026-09-26
 

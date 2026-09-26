@@ -12,7 +12,20 @@ T = TypeVar("T")
 
 
 class ApiClientError(RuntimeError):
-    pass
+    """A failed call; ``status``/``code``/``details`` mirror the backend's error document."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: object = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.details = details
 
 
 class ApiClient:
@@ -43,10 +56,24 @@ class ApiClient:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
             try:
-                detail = json.loads(error.read().decode("utf-8"))
+                document = json.loads(error.read().decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                detail = {"message": error.reason}
-            raise ApiClientError(f"server returned HTTP {error.code}: {detail}") from error
+                document = None
+            body = document.get("error") if isinstance(document, dict) else None
+            if isinstance(body, dict):
+                code = str(body.get("code") or "error")
+                message = str(body.get("message") or error.reason)
+                details = body.get("details")
+            else:
+                code, message, details = None, str(error.reason), document
+            raise ApiClientError(
+                f"server returned HTTP {error.code}"
+                + (f" {code}" if code else "")
+                + f": {message}",
+                status=error.code,
+                code=code,
+                details=details,
+            ) from error
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if hasattr(error, "reason") else error
             raise ApiClientError(f"unable to reach backend: {reason}") from error
