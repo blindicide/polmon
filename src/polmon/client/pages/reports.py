@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSplitter,
     QTabWidget,
@@ -57,6 +58,11 @@ class ReportsPage(Page):
         self.refresh_button.clicked.connect(self.refresh_list)
         row.addWidget(self.refresh_button)
         left_layout.addLayout(row)
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Filter by experiment, scenario, topology or status…")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.textChanged.connect(self._apply_filter)
+        left_layout.addWidget(self.filter)
         self.list = make_table(
             ("Experiment", "Scenario", "Topology", "Status", "Started"), stretch=0
         )
@@ -150,6 +156,16 @@ class ReportsPage(Page):
             if row[0] == selected:
                 self.list.selectRow(index)
         self.list.blockSignals(False)
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        needle = self.filter.text().strip().lower()
+        for row in range(self.list.rowCount()):
+            text = " ".join(
+                (self.list.item(row, column).text() if self.list.item(row, column) else "")
+                for column in range(4)
+            ).lower()
+            self.list.setRowHidden(row, bool(needle) and needle not in text)
 
     def _chosen(self) -> None:
         rows = self.list.selectionModel().selectedRows()

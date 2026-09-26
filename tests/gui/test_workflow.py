@@ -107,6 +107,11 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     assert reports.observations.rowCount() == 3
     assert experiment_id in reports.markdown
     assert reports.rendered.toPlainText().strip()
+    qtbot.waitUntil(lambda: reports.list.rowCount() >= 1, timeout=10_000)
+    reports.filter.setText("no-such-run")
+    assert all(reports.list.isRowHidden(row) for row in range(reports.list.rowCount()))
+    reports.filter.setText("gui-ping")
+    assert not reports.list.isRowHidden(0)
 
     window.pages["deployment"].reset()
     qtbot.waitUntil(lambda: not window.session.deployments, timeout=20_000)

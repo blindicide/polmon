@@ -107,10 +107,13 @@ class ResourceTiles(QWidget):
         reserve = int(limits.get("memory_safety_threshold_mb") or 0) * 1_048_576
         if isinstance(available, int):
             headroom = available - reserve
+            # Below zero new deployments are refused; under a quarter of the reserve is close.
+            tone = "danger" if headroom <= 0 else "warning" if headroom < reserve / 4 else ""
             self.headroom.set(
                 format_bytes(headroom),
                 f"{format_bytes(available)} available − {format_bytes(reserve)} reserve",
                 headroom,
+                tone,
             )
         else:
             self.headroom.set("—", "not reported by this host")
@@ -118,7 +121,17 @@ class ResourceTiles(QWidget):
         self.swap.set(format_bytes(swap), "host swap in use")
         used = resources.get("data_directory_bytes")
         limit_mb = limits.get("max_data_directory_mb")
-        self.data.set(format_bytes(used), f"limit {limit_mb} MiB" if limit_mb else "")
+        share = (
+            used / (int(limit_mb) * 1_048_576)
+            if isinstance(used, int) and isinstance(limit_mb, int) and limit_mb
+            else 0.0
+        )
+        tone = "danger" if share >= 0.95 else "warning" if share >= 0.8 else ""
+        self.data.set(
+            format_bytes(used),
+            f"limit {limit_mb} MiB ({share:.0%} used)" if limit_mb else "",
+            tone=tone,
+        )
 
 
 class DashboardPage(Page):

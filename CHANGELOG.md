@@ -8,6 +8,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 - `DELETE /v1/topologies/{id}` forgets a loaded definition (refused while deployed); the
   Topologies page's *Loaded on backend* list gains *Unload*.
+- Reports page: filter box over the experiment list. Dashboard: memory headroom and data
+  directory tiles turn amber/red as they approach the reserve or limit.
 
 ## [0.2.3] - 2026-09-26
 

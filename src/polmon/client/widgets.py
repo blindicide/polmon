@@ -308,8 +308,12 @@ class CounterTile(QFrame):
             layout.addWidget(self.sparkline)
         self.setMinimumWidth(130)
 
-    def set(self, value: str, secondary: str = "", sample: float | None = None) -> None:
+    def set(
+        self, value: str, secondary: str = "", sample: float | None = None, tone: str = ""
+    ) -> None:
+        """Show a value; ``tone`` (``warning``/``danger``) tints it to draw attention."""
         self.value.setText(value)
+        self.value.setStyleSheet(f"color: {theme.hex_color(tone)};" if tone else "")
         self.secondary.setText(secondary)
         if self.sparkline is not None:
             self.sparkline.add(sample)

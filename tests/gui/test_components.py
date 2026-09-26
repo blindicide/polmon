@@ -202,3 +202,27 @@ def test_current_backend_cpu_is_derived_from_poll_deltas(qtbot, monkeypatch) -> 
     assert tiles._current_cpu(10.0) is None  # first sample
     assert tiles._current_cpu(11.0) == 50.0  # 1 CPU second in 2 wall seconds
     assert tiles._current_cpu(5.0) is None  # counter went backwards: backend restarted
+
+
+def test_resource_tiles_warn_when_headroom_or_storage_runs_low(qtbot) -> None:
+    from polmon.client import theme
+    from polmon.client.pages.dashboard import ResourceTiles
+    from polmon.client.state import ConnectionState, Session
+
+    class FakeContext:
+        session = Session()
+
+    tiles = ResourceTiles(FakeContext())
+    qtbot.addWidget(tiles)
+    FakeContext.session.state = ConnectionState.CONNECTED
+    mib = 1_048_576
+    FakeContext.session.set_resources(
+        {
+            "limits": {"memory_safety_threshold_mb": 256, "max_data_directory_mb": 100},
+            "snapshot": {"available_memory_bytes": 260 * mib, "process_cpu_seconds": 1.0},
+            "data_directory_bytes": 96 * mib,
+        }
+    )
+    assert theme.hex_color("warning") in tiles.headroom.value.styleSheet()  # 4 MiB above reserve
+    assert theme.hex_color("danger") in tiles.data.value.styleSheet()  # 96 % of the limit
+    assert "96% used" in tiles.data.secondary.text()
