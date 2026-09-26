@@ -165,3 +165,17 @@ def test_closed_runner_accepts_no_work_and_drops_late_results(qtbot) -> None:
     release.set()
     qtbot.waitUntil(lambda: runner.in_flight == 0, timeout=5000)
     assert len(outcome) == 1
+
+
+def test_yaml_editor_highlights_keys_comments_and_strings(qtbot) -> None:
+    from polmon.client import theme
+    from polmon.client.widgets import YamlEditor
+
+    editor = YamlEditor()
+    qtbot.addWidget(editor)
+    editor.setPlainText('id: lab  # comment\nnodes:\n  - id: "sensor-1"\n    count: 3\n')
+    first = editor.document().firstBlock().layout().formats()
+    colours = {fmt.format.foreground().color().name() for fmt in first}
+    assert theme.hex_color("accent") in colours and theme.hex_color("muted") in colours
+    third = editor.document().findBlockByNumber(2).layout().formats()
+    assert theme.hex_color("success") in {fmt.format.foreground().color().name() for fmt in third}

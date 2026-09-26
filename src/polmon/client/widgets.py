@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import deque
 from collections.abc import Iterable, Sequence
 
@@ -14,6 +15,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QSyntaxHighlighter,
     QTextCharFormat,
     QTextCursor,
     QTextFormat,
@@ -379,6 +381,30 @@ class OperationProgress(QWidget):
             self.hide()
 
 
+class YamlHighlighter(QSyntaxHighlighter):
+    """Minimal, fast YAML colouring: keys, comments, strings, scalars, list markers."""
+
+    RULES = (
+        (re.compile(r"^\s*-\s"), "muted"),
+        (re.compile(r"^\s*(?:-\s+)?([A-Za-z_][\w-]*)(?=\s*:)"), "accent"),
+        (re.compile(r"(?<=:\s)(true|false|null|~)\b|(?<=:\s)-?\d+(?:\.\d+)?\b"), "warning"),
+        (re.compile(r"\"[^\"]*\"|'[^']*'"), "success"),
+        (re.compile(r"(?:^|\s)#.*$"), "muted"),
+    )
+
+    def highlightBlock(self, text: str) -> None:  # noqa: N802 - Qt override
+        for pattern, tone in self.RULES:
+            fmt = QTextCharFormat()
+            fmt.setForeground(theme.color(tone))
+            if tone == "accent":
+                fmt.setFontWeight(QFont.Weight.DemiBold)
+            for match in pattern.finditer(text):
+                group = 1 if match.lastindex else 0
+                start, end = match.span(group)
+                if start >= 0:
+                    self.setFormat(start, end - start, fmt)
+
+
 class _LineNumbers(QWidget):
     def __init__(self, editor: YamlEditor) -> None:
         super().__init__(editor)
@@ -403,9 +429,15 @@ class YamlEditor(QPlainTextEdit):
         self.setPlaceholderText("Open a YAML file (Ctrl+O) or paste a document here.")
         self._gutter = _LineNumbers(self)
         self._error_line: int | None = None
+        self.highlighter = YamlHighlighter(self.document())
         self.blockCountChanged.connect(self._update_margins)
         self.updateRequest.connect(self._scroll_gutter)
         self._update_margins()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802 - Qt override
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange):
+            self.highlighter.rehighlight()
 
     def gutter_width(self) -> int:
         digits = max(3, len(str(self.blockCount())))
