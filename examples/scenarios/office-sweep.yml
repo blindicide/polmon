@@ -1,0 +1,64 @@
+# ICMP sweep of the office segment from the sensor (every probe must be answered).
+id: office-sweep
+required_topology: l0-office
+initial_conditions:
+  - topology_deployed
+permitted_actions:
+  - icmp_probe
+sequence:
+  - id: probe-ws-1
+    kind: icmp_probe
+    source: sensor-1
+    target: ws-1
+  - id: probe-ws-2
+    kind: icmp_probe
+    source: sensor-1
+    target: ws-2
+  - id: probe-ws-3
+    kind: icmp_probe
+    source: sensor-1
+    target: ws-3
+  - id: probe-ws-4
+    kind: icmp_probe
+    source: sensor-1
+    target: ws-4
+  - id: probe-printer-1
+    kind: icmp_probe
+    source: sensor-1
+    target: printer-1
+  - id: probe-nas-1
+    kind: icmp_probe
+    source: sensor-1
+    target: nas-1
+  - id: probe-badge-reader
+    kind: icmp_probe
+    source: sensor-1
+    target: badge-reader
+timeout_seconds: 30
+success_conditions:
+  - action: probe-ws-1
+    field: success
+    equals: true
+  - action: probe-ws-2
+    field: success
+    equals: true
+  - action: probe-ws-3
+    field: success
+    equals: true
+  - action: probe-ws-4
+    field: success
+    equals: true
+  - action: probe-printer-1
+    field: success
+    equals: true
+  - action: probe-nas-1
+    field: success
+    equals: true
+  - action: probe-badge-reader
+    field: success
+    equals: true
+failure_conditions:
+  - action: probe-nas-1
+    field: detail
+    equals: "unsupported"
+cleanup_policy: on_failure

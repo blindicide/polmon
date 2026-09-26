@@ -1,0 +1,63 @@
+# Rootless laboratory office segment: eight synthetic (L0) endpoints on one isolated network.
+# Deploys without privileges on any OS; used by the desktop-client screenshots and demo.
+id: l0-office
+networks:
+  - id: office
+    ipv4_subnet: 10.20.0.0/24
+nodes:
+  - id: sensor-1
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:01"
+        ipv4: 10.20.0.11
+  - id: ws-1
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:02"
+        ipv4: 10.20.0.12
+  - id: ws-2
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:03"
+        ipv4: 10.20.0.13
+  - id: ws-3
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:04"
+        ipv4: 10.20.0.14
+  - id: ws-4
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:05"
+        ipv4: 10.20.0.15
+  - id: printer-1
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:06"
+        ipv4: 10.20.0.16
+  - id: nas-1
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:07"
+        ipv4: 10.20.0.17
+  - id: badge-reader
+    class: l0
+    interfaces:
+      - id: eth0
+        network: office
+        mac: "02:20:00:00:00:08"
+        ipv4: 10.20.0.18

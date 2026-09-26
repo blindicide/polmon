@@ -6,6 +6,7 @@
 # platform-owned namespace or interface remains. Requires passwordless sudo that is authorised for
 # laboratory networking only (see SECURITY.md).
 # Usage: scripts/privileged-tests.sh [pytest selection, default: -m privileged]
+#        scripts/privileged-tests.sh -- COMMAND [ARGS...]   (guard any command, e.g. a GUI demo)
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,8 +49,13 @@ fi
 snapshot > "$workdir/before"
 cd "$root"
 status=0
-if [[ $# -eq 0 ]]; then set -- -m privileged; fi
-"$python" -m pytest "$@" || status=$?
+if [[ "${1:-}" == "--" ]]; then
+  shift
+  "$@" || status=$?
+else
+  if [[ $# -eq 0 ]]; then set -- -m privileged; fi
+  "$python" -m pytest "$@" || status=$?
+fi
 snapshot > "$workdir/after"
 
 if ! diff -u "$workdir/before" "$workdir/after"; then
