@@ -4,6 +4,10 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-26
+
+Improvement waves after v0.2.0: faster Windows start, smaller Linux bundle, client conveniences.
+
 ### Added
 
 - Portable Windows client `polmon-<version>-windows-x64-portable.zip` (one-folder build) next to
