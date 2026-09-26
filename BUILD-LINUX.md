@@ -26,7 +26,12 @@ sha256sum --check polmon-<version>-linux-x64.tar.gz.sha256
 tar -xzf polmon-<version>-linux-x64.tar.gz
 ./polmon-<version>-linux-x64/polmon-client            # X11 or Wayland session
 ./polmon-<version>-linux-x64/polmon-client --self-test  # headless check, opens no window
+./polmon-<version>-linux-x64/polmon-client --install-desktop-entry  # menu entry + icon (per user)
 ```
+
+`--install-desktop-entry` writes `~/.local/share/applications/polmon-client.desktop` and the icon
+(`$XDG_DATA_HOME` is honoured) pointing at the executable it was run from; run it again after
+moving the folder. It works the same for a `pip install polmon[gui]` installation.
 
 The bundle carries Qt, its X11/xcb client libraries and the Wayland platform. The host provides
 the display server, fontconfig/fonts and the C runtime. On a minimal Ubuntu/Debian host the xcb

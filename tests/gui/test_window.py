@@ -171,3 +171,20 @@ def test_connected_backends_are_remembered(window, qtbot, live_backend) -> None:
     window.bar.url.setText("http://10.0.0.9:8080")
     box.setCurrentIndex(0)  # picking a recent entry fills the field
     assert window.bar.url.text() == live_backend.url
+
+
+def test_desktop_entry_is_installed_for_the_user(tmp_path, monkeypatch, capsys) -> None:
+    import sys
+
+    import pytest
+
+    if not sys.platform.startswith("linux"):
+        pytest.skip("NOT RUN — environment unavailable: desktop entries are a Linux feature")
+    from polmon.client.app import main
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert main(["--install-desktop-entry"]) == 0
+    entry = (tmp_path / "applications/polmon-client.desktop").read_text(encoding="utf-8")
+    assert "Exec=" in entry and "Icon=polmon-client" in entry
+    assert (tmp_path / "icons/hicolor/256x256/apps/polmon-client.png").stat().st_size > 1000
+    assert "wrote" in capsys.readouterr().out

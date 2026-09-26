@@ -31,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="show the main window on the native platform for SECONDS, report, and exit",
     )
+    parser.add_argument(
+        "--install-desktop-entry",
+        action="store_true",
+        help="Linux: add polmon to the desktop menu for this user (XDG) and exit",
+    )
     parser.add_argument("--url", help="backend URL to prefill (overrides the saved one)")
     parser.add_argument(
         "--theme", choices=("system", "light", "dark"), help="colour theme for this session"
@@ -110,6 +115,19 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print(MISSING_QT, file=sys.stderr)
         return 2
+    if args.install_desktop_entry:
+        if not sys.platform.startswith("linux"):
+            print("polmon-client: --install-desktop-entry is for Linux desktops", file=sys.stderr)
+            return 2
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # drawing the icon needs no display
+        from PySide6.QtGui import QGuiApplication
+
+        from polmon.client.desktop import install_desktop_entry
+
+        application = QGuiApplication.instance() or QGuiApplication([sys.argv[0]])  # noqa: F841
+        for path in install_desktop_entry():
+            print(f"wrote {path}")
+        return 0
     if args.self_test:
         from polmon.client.selftest import self_test
 
