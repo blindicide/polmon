@@ -53,6 +53,11 @@ class ScenariosPage(Page):
         self.validated_source: str | None = None
         self.running_id: str | None = None
         self.last_record: dict[str, object] | None = None
+        # Results of the last run, kept while the scenario text is unchanged, so background
+        # re-validation (e.g. after a refresh) never wipes what the operator just saw.
+        self.run_source: str | None = None
+        self.run_statuses: dict[str, tuple[str, str]] = {}
+        self.run_report: dict[str, object] | None = None
         self._auto = QTimer(self)
         self._auto.setSingleShot(True)
         self._auto.setInterval(700)
@@ -92,6 +97,7 @@ class ScenariosPage(Page):
         )
         self.conditions = make_table(("Role", "Action", "Field", "Expected", "Outcome"), stretch=4)
         self.problems = make_table(("Line", "Location", "Problem"), stretch=2)
+        self.problems.setWordWrap(True)
         self.problems.itemActivated.connect(self._goto_problem)
         self.tabs.addTab(self.summary, "Summary")
         self.tabs.addTab(self.sequence, "Sequence")
@@ -231,6 +237,7 @@ class ScenariosPage(Page):
         self.result = None
         self.validated_source = source
         fill_table(self.problems, rows)
+        self.problems.resizeRowsToContents()
         self.tabs.setTabText(3, f"Problems ({len(rows)})")
         self.tabs.setCurrentWidget(self.problems)
         self.badge.set_status("invalid")
@@ -253,8 +260,12 @@ class ScenariosPage(Page):
         if self.tabs.currentWidget() is self.problems:
             self.tabs.setCurrentWidget(self.summary)
         self._refresh_summary()
-        self._fill_sequence({})
-        self._fill_conditions(None)
+        if source == self.run_source and not self.running_id:
+            self._fill_sequence(self.run_statuses)
+            self._fill_conditions(self.run_report)
+        elif not self.running_id:
+            self._fill_sequence({})
+            self._fill_conditions(None)
         self.refresh_actions()
 
     def _check(self) -> dict[str, object]:
@@ -411,6 +422,9 @@ class ScenariosPage(Page):
             return {"record": record, "report": report_document}
 
         self.running_id = experiment_id
+        self.run_source = source
+        self.run_statuses = {}
+        self.run_report = None
         self.session.active_experiment = experiment_id
         self.outcome.set_status("running")
         self.run_detail.setText(f"{experiment_id}: submitted")
@@ -471,8 +485,10 @@ class ScenariosPage(Page):
             item["action_id"]: ("ok" if item["success"] else "failed", item["detail"])
             for item in record.get("observations") or []
         }
+        self.run_statuses = statuses
+        self.run_report = report if isinstance(report, dict) else None
         self._fill_sequence(statuses)
-        self._fill_conditions(report if isinstance(report, dict) else None)
+        self._fill_conditions(self.run_report)
         errors = record.get("errors") or []
         failure = record.get("error")
         if isinstance(failure, dict):

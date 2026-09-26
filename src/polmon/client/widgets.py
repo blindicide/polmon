@@ -106,6 +106,14 @@ def make_table(headers: Sequence[str], *, stretch: int | None = None) -> QTableW
     return table
 
 
+def cell_text(value: object) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 def fill_table(
     table: QTableWidget,
     rows: Iterable[Sequence[object]],
@@ -119,7 +127,8 @@ def fill_table(
     table.setRowCount(len(rows))
     for row_index, row in enumerate(rows):
         for column, value in enumerate(row):
-            item = QTableWidgetItem("—" if value is None else str(value))
+            item = QTableWidgetItem(cell_text(value))
+            item.setToolTip(item.text() if len(item.text()) > 40 else "")
             if colors and column in colors:
                 item.setForeground(theme.color(theme.status_color(str(value))))
             if data is not None and column == 0:
@@ -267,7 +276,9 @@ class Sparkline(QWidget):
         fill.lineTo(area.right(), area.bottom())
         fill.lineTo(area.left() + offset, area.bottom())
         fill.closeSubpath()
-        painter.fillPath(fill, QColor(theme.hex_color("chart_fill")))
+        tint = theme.color("chart")
+        tint.setAlpha(51)
+        painter.fillPath(fill, tint)
         painter.setPen(QPen(theme.color("chart"), 1.5))
         painter.drawPath(path)
 

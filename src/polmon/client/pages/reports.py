@@ -25,7 +25,14 @@ from polmon.client.formatting import (
 )
 from polmon.client.pages import Context, Page
 from polmon.client.tasks import CancelToken
-from polmon.client.widgets import JsonTree, StatusBadge, fill_table, make_table, muted
+from polmon.client.widgets import (
+    JsonTree,
+    StatusBadge,
+    cell_text,
+    fill_table,
+    make_table,
+    muted,
+)
 
 
 class ReportsPage(Page):
@@ -93,12 +100,12 @@ class ReportsPage(Page):
         self.tabs.addTab(self.comparison, "Expected vs actual")
         self.tabs.addTab(self.observations, "Observations")
         self.tabs.addTab(self.errors, "Errors")
-        self.tabs.addTab(self.resources, "Resources & capture")
+        self.tabs.addTab(self.resources, "Resources && capture")
         self.tabs.addTab(self.rendered, "Report")
         self.tabs.addTab(self.json, "JSON")
         right_layout.addWidget(self.tabs, 1)
         splitter.addWidget(right)
-        splitter.setSizes([430, 690])
+        splitter.setSizes([520, 700])
         self.root.addWidget(splitter, 1)
 
         self.session.experiments_changed.connect(self._fill_list)
@@ -206,8 +213,8 @@ class ReportsPage(Page):
                     item["role"].replace("_", " "),
                     item["action"],
                     item["field"],
-                    item["expected"],
-                    item["actual"],
+                    cell_text(item["expected"]),
+                    cell_text(item["actual"]),
                     item["outcome"].replace(" ", "_"),
                 )
                 for item in comparisons  # type: ignore[union-attr]

@@ -71,6 +71,10 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     qtbot.waitUntil(lambda: scenarios.outcome.status == "succeeded", timeout=30_000)
     assert [scenarios.sequence.item(r, 5).text() for r in range(3)] == ["ok", "ok", "ok"]
     assert scenarios.conditions.item(0, 4).text() == "met"
+    scenarios.validate(quiet=True)  # background re-validation must not wipe the run results
+    qtbot.wait(500)
+    assert [scenarios.sequence.item(r, 5).text() for r in range(3)] == ["ok", "ok", "ok"]
+    assert scenarios.conditions.item(0, 4).text() == "met"
     experiment_id = scenarios.last_record["experiment_id"]
 
     scenarios.telemetry_button.click()

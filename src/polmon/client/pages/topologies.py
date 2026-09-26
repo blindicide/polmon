@@ -152,6 +152,7 @@ class TopologiesPage(Page):
         self.nodes.setAlternatingRowColors(True)
         self.networks = make_table(("Network", "IPv4 subnet", "Interfaces", "Members"), stretch=3)
         self.problems = make_table(("Line", "Location", "Problem"), stretch=2)
+        self.problems.setWordWrap(True)
         self.problems.itemActivated.connect(self._goto_problem)
         self.tabs.addTab(self.summary, "Summary")
         self.tabs.addTab(self.nodes, "Nodes")
@@ -306,6 +307,7 @@ class TopologiesPage(Page):
         self.result = None
         self.validated_source = source
         fill_table(self.problems, rows)
+        self.problems.resizeRowsToContents()
         self.problems.setProperty("count", len(rows))
         self.tabs.setTabText(3, f"Problems ({len(rows)})")
         self.tabs.setCurrentWidget(self.problems)

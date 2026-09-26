@@ -536,11 +536,12 @@ class MainWindow(QMainWindow):
 
     def _append_log(self, level: str, message: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
-        tone = {"error": "danger", "warning": "warning"}.get(level, "text")
+        tone = {"error": "danger", "warning": "warning"}.get(level)
         text = html.escape(message).replace("\n", "<br>&nbsp;&nbsp;")
+        # Ordinary lines carry no colour so they follow the palette when the theme changes.
+        body = f"<span style='color:{theme.hex_color(tone)}'>{text}</span>" if tone else text
         self.log_view.appendHtml(
-            f"<span style='color:{theme.hex_color('muted')}'>{stamp}</span> "
-            f"<span style='color:{theme.hex_color(tone)}'>{text}</span>"
+            f"<span style='color:{theme.hex_color('muted')}'>{stamp}</span> {body}"
         )
 
     # -- theme --------------------------------------------------------------------------------

@@ -28,7 +28,6 @@ COLORS = {
         "banner_info": "#ddf4ff",
         "banner_success": "#dafbe1",
         "chart": "#1f6feb",
-        "chart_fill": "#1f6feb33",
     },
     "dark": {
         "window": "#1b1f24",
@@ -49,7 +48,6 @@ COLORS = {
         "banner_info": "#12263d",
         "banner_success": "#12301b",
         "chart": "#58a6ff",
-        "chart_fill": "#58a6ff33",
     },
 }
 
