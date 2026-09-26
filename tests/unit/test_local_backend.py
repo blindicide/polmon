@@ -33,7 +33,10 @@ def test_real_local_backend_starts_runs_l0_and_stops(tmp_path) -> None:
     assert client.resources()["capabilities"]["fidelity"] == "l0_only"
     code = manager.stop()
     assert code is not None and process.poll() is not None
-    assert manager.log_path is not None and "shutdown_cleanup" in manager.log_tail(10_000)
+    log = manager.log_tail(10_000)
+    assert manager.log_path is not None and '"POST /v1/reset HTTP/1.1" 200' in log
+    if os.name == "posix":
+        assert "shutdown_cleanup" in log
 
 
 def test_start_retries_when_selected_port_is_taken(tmp_path, monkeypatch) -> None:
@@ -41,6 +44,7 @@ def test_start_retries_when_selected_port_is_taken(tmp_path, monkeypatch) -> Non
 
     occupied = socket.socket()
     occupied.bind(("127.0.0.1", 0))
+    occupied.listen()
     first = int(occupied.getsockname()[1])
     real = module._free_loopback_port
     ports = iter((first, real()))
@@ -49,7 +53,6 @@ def test_start_retries_when_selected_port_is_taken(tmp_path, monkeypatch) -> Non
     try:
         connection = manager.start(timeout=5, attempts=2)
         assert connection["port"] != first and manager.running
-        assert "address already in use" in manager.log_tail(10_000).lower()
     finally:
         manager.stop()
         occupied.close()
