@@ -205,7 +205,8 @@ class TelemetryStore:
         }
 
     def close(self) -> None:
-        self._connection.close()
+        with self._lock:
+            self._connection.close()
 
 
 class TelemetrySession:

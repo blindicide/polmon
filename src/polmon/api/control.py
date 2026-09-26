@@ -611,6 +611,10 @@ class ControlPlane:
         self.benchmarks.shutdown()
         return self.reset_all()
 
+    def close(self) -> None:
+        """Release the telemetry database handle (Windows cannot delete open files)."""
+        self.telemetry.close()
+
     def resource_status(self) -> dict[str, object]:
         snapshot = self._sample()
         return {

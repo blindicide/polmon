@@ -164,7 +164,12 @@ jobs:
             dist/polmon-*-windows-x64.exe.sha256
             dist/polmon-*-windows-x64-portable.zip
             dist/polmon-*-windows-x64-portable.zip.sha256
-            windows-*-local-backend.txt
+          if-no-files-found: error
+      # Separate artifact: root-level evidence beside dist/ files would keep the dist/ prefix.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-local-backend-evidence
+          path: windows-*-local-backend.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

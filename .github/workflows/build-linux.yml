@@ -148,6 +148,13 @@ jobs:
             dist/polmon-*-py3-none-any.whl
             dist/polmon-backend.service
             dist/polmon-backend-bundled.service
+          if-no-files-found: error
+      # Evidence lives in its own artifact: mixing root files into the one above would make
+      # upload-artifact keep the dist/ prefix and break every consumer's flat layout.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-backend-evidence
+          path: |
             linux-backend-selftest.txt
             linux-backend-readiness.json
             linux-backend-e2e.json

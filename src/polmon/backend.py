@@ -76,7 +76,17 @@ def create_app(control: ControlPlane | None = None, *, api_token: str | None = N
     return application
 
 
-app = create_app()
+def __getattr__(name: str) -> FastAPI:
+    """Build the default ``app`` (``uvicorn polmon.backend:app``) on first use only.
+
+    Importing this module must not create ``./var`` or open its database: the packaged
+    executable is often started from a read-only directory just for ``--version``.
+    """
+    if name == "app":
+        application = create_app()
+        globals()["app"] = application
+        return application
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -179,22 +189,26 @@ cleanup_policy: never
     try:
         with tempfile.TemporaryDirectory(prefix="polmon-backend-selftest-") as work:
             plane = ControlPlane(work, l0_only=True)
-            application = create_app(plane)
-            config = uvicorn.Config(application, host="127.0.0.1", port=0, log_level="error")
-            assert config.app is application
-            parsed = parse_scenario(scenario)
-            assert parsed.required_topology == "self-test"
-            plane.load_topology(topology)
-            deployed = plane.deploy("self-test")
-            result = plane.run_experiment("backend-self-test", "self-test", scenario)
-            telemetry = plane.experiment_telemetry("backend-self-test")
-            report = plane.experiment_report("backend-self-test")
-            reset = plane.reset_all()
-            assert deployed["backend"] == "synthetic"
-            assert result["status"] == "succeeded"
-            assert telemetry and report["status"] == "succeeded"
-            assert reset["deployments_destroyed"] == 1
-            plane.shutdown()
+            try:
+                application = create_app(plane)
+                config = uvicorn.Config(application, host="127.0.0.1", port=0, log_level="error")
+                assert config.app is application
+                parsed = parse_scenario(scenario)
+                assert parsed.required_topology == "self-test"
+                plane.load_topology(topology)
+                deployed = plane.deploy("self-test")
+                result = plane.run_experiment("backend-self-test", "self-test", scenario)
+                telemetry = plane.experiment_telemetry("backend-self-test")
+                report = plane.experiment_report("backend-self-test")
+                reset = plane.reset_all()
+                assert deployed["backend"] == "synthetic"
+                assert result["status"] == "succeeded"
+                assert telemetry and report["status"] == "succeeded"
+                assert reset["deployments_destroyed"] == 1
+                plane.shutdown()
+            finally:
+                # The directory is removed on exit; Windows refuses while SQLite holds it open.
+                plane.close()
     except Exception as error:
         print(f"polmon {__version__} backend self-test: FAIL {type(error).__name__}: {error}")
         return 1
@@ -241,11 +255,11 @@ def main(argv: list[str] | None = None) -> int:
         extra={"event": "api_auth"},
     )
     l0_only = args.local_l0_only or sys.platform == "win32"
-    uvicorn.run(
-        create_app(ControlPlane(limits=limits, l0_only=l0_only), api_token=token),
-        host=args.host,
-        port=args.port,
-    )
+    control = ControlPlane(limits=limits, l0_only=l0_only)
+    try:
+        uvicorn.run(create_app(control, api_token=token), host=args.host, port=args.port)
+    finally:
+        control.close()
     return 0
 
 
