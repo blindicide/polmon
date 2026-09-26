@@ -502,7 +502,7 @@ class ScenariosPage(Page):
         progress = record.get("progress") or {}
         current = progress.get("current_action") if isinstance(progress, dict) else None
         scenario = (self.result or {}).get("scenario") or {}
-        sequence = scenario.get("sequence") or [] if isinstance(scenario, dict) else []
+        sequence = (scenario.get("sequence") or []) if isinstance(scenario, dict) else []
         statuses = {action["id"]: ("done", "") for action in sequence[: update.completed]}
         self._fill_sequence(statuses, current=current)
         self.run_detail.setText(

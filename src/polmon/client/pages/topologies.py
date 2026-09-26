@@ -47,7 +47,9 @@ class DocumentLibrary(QGroupBox):
         layout = QVBoxLayout(self)
         self.folder_label = muted()
         self.list = QListWidget()
-        self.list.itemActivated.connect(lambda item: page.open_path(Path(item.data(256))))
+        self.list.itemActivated.connect(
+            lambda item: page.open_path(Path(item.data(Qt.ItemDataRole.UserRole)))
+        )
         buttons = QHBoxLayout()
         self.open_button = QPushButton("Open file…")
         self.folder_button = QPushButton("Folder…")
@@ -77,7 +79,7 @@ class DocumentLibrary(QGroupBox):
             paths = []
         for path in paths[:500]:
             item = QListWidgetItem(path.name)
-            item.setData(256, str(path))
+            item.setData(Qt.ItemDataRole.UserRole, str(path))
             item.setToolTip(str(path))
             self.list.addItem(item)
 
@@ -203,7 +205,7 @@ class TopologiesPage(Page):
         return self.editor.toPlainText()
 
     def open_loaded(self, item: QListWidgetItem) -> None:
-        topology_id = str(item.data(256))
+        topology_id = str(item.data(Qt.ItemDataRole.UserRole))
         client = self.session.client()
         self.context.run(
             f"Fetch topology {topology_id}",
@@ -477,7 +479,7 @@ class TopologiesPage(Page):
             topology_id = str(item.get("topology_id"))
             marker = "  ● deployed" if item.get("deployed") else ""
             entry = QListWidgetItem(f"{topology_id}{marker}")
-            entry.setData(256, topology_id)
+            entry.setData(Qt.ItemDataRole.UserRole, topology_id)
             entry.setToolTip(
                 f"{item.get('node_count')} nodes, {item.get('network_count')} networks"
             )

@@ -105,6 +105,17 @@ class TelemetryModel(QAbstractTableModel):
         return len(fresh)
 
 
+def search_text(event: dict[str, object]) -> str:
+    """Lower-cased event, node and payload text that the text filter matches against."""
+    return " ".join(
+        (
+            str(event.get("event") or ""),
+            str(event.get("node_id") or ""),
+            compact_json(event.get("payload") or {}, limit=4000),
+        )
+    ).lower()
+
+
 class TelemetryFilter(QSortFilterProxyModel):
     """Category set plus case-insensitive text over event, node and payload."""
 
@@ -112,6 +123,11 @@ class TelemetryFilter(QSortFilterProxyModel):
         super().__init__(parent)
         self.categories = set(CATEGORIES)
         self.text = ""
+        self._search: dict[object, str] = {}  # sequence -> search text, computed once
+
+    def setSourceModel(self, model) -> None:  # noqa: N802, ANN001 - Qt override
+        super().setSourceModel(model)
+        model.modelReset.connect(self._search.clear)
 
     def set_categories(self, categories: set[str]) -> None:
         self.beginFilterChange()
@@ -131,11 +147,8 @@ class TelemetryFilter(QSortFilterProxyModel):
             return False
         if not self.text:
             return True
-        haystack = " ".join(
-            (
-                str(event.get("event") or ""),
-                str(event.get("node_id") or ""),
-                compact_json(event.get("payload") or {}, limit=4000),
-            )
-        ).lower()
-        return self.text in haystack
+        key = event.get("sequence")
+        text = self._search.get(key)
+        if text is None:
+            text = self._search[key] = search_text(event)
+        return self.text in text
