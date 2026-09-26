@@ -4,7 +4,18 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- L1 deployment runs one privileged `ip -batch` on the host plus one per namespace instead of about
+  ten `sudo ip` calls per namespace; teardown is a single forced batch. Measured on the development
+  host (5 repeats, `benchmarks/results/SUMMARY-wave4-batched-ip.md`): 2-namespace creation median
+  1.321 s → 0.184 s, teardown 0.119 s → 0.087 s; 50 L0 + 2 L1 deployment 1.493 s → 0.453 s.
+
 ### Fixed
+
+- Rollback leaked a host veth pair whose peer had not yet moved into its namespace.
+- Deployment now refuses when an object with a generated name already exists, instead of adopting
+  it and deleting it on rollback.
 
 - A hung privileged command raised `TimeoutExpired`, which could abort best-effort teardown midway
   or crash a probe; timeouts now return exit code 124 (or raise a clear error when checked).

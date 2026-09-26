@@ -78,3 +78,8 @@ The results of each milestone's recorded run, with host description, workload, l
 commit, and limitations, are in `benchmarks/results/`; `benchmarks/results/SUMMARY-*.md` renders
 them as tables. See the v0.0.14 milestone report for the run that established the Phase I
 baseline.
+
+Comparisons between runs are generated the same way, by passing several result files to
+`summarize`; for example `SUMMARY-wave4-batched-ip.md` compares L1 and target runs before (commit
+e947d53) and after (commit fe92909) batching the privileged `ip` commands.
+
