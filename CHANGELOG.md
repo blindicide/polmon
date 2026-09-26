@@ -4,6 +4,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Scenario `initial_conditions` were parsed but never checked, so a scenario declaring
+  `services_started` ran against dead services. The control plane now verifies each declared
+  condition against the live deployment before the first action; unmet or unverifiable conditions
+  fail the experiment without running actions.
+
 ### Security
 
 - ICMP probes, ping statistics, and TCP probes inside lab namespaces ran as root; they now run as

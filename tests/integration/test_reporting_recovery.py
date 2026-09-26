@@ -44,3 +44,41 @@ def test_real_experiment_reports_resets_and_repeats(tmp_path) -> None:
         assert not plane.deployments
     finally:
         plane.reset_all()
+
+
+@pytest.mark.integration
+@pytest.mark.privileged
+def test_dead_service_fails_the_services_started_precondition(tmp_path) -> None:
+    if not namespace_available():
+        pytest.skip("NOT RUN — environment unavailable: namespace privileges required")
+    import os
+    import signal
+
+    from polmon.benchmarks.common import process_tree
+
+    plane = ControlPlane(tmp_path)
+    topology_id = str(plane.load_topology(TOPOLOGY.read_text(encoding="utf-8"))["topology_id"])
+    try:
+        plane.deploy(topology_id)
+        backend = plane.deployments[topology_id].backend
+        launcher = next(iter(backend.services.values()))
+        # Wait (bounded) until sudo has started the unprivileged service, then stop it; the
+        # privileged launcher exits with it.
+        import time
+
+        deadline = time.monotonic() + 10
+        while len(tree := process_tree([launcher.pid])) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert len(tree) >= 2, "service process never started"
+        for pid in tree[1:]:
+            os.kill(pid, signal.SIGTERM)
+        launcher.wait(timeout=10)
+        result = plane.run_experiment(
+            "dead-service", topology_id, SCENARIO.read_text(encoding="utf-8")
+        )
+        assert result["status"] == "failed"
+        assert not result["observations"]
+        assert "initial conditions not satisfied: services_started" in result["errors"][0]
+        assert plane.experiment_report("dead-service")["status"] == "failed"
+    finally:
+        plane.reset_all()

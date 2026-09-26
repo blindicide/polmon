@@ -36,7 +36,13 @@ def test_controlled_recon_runs_against_l1_and_cleans_up() -> None:
     control.create()
     control.start()
     result = ScenarioEngine().run(
-        load_scenario(SCENARIO), topology, NamespaceScenarioExecutor(backend), control.destroy
+        load_scenario(SCENARIO),
+        topology,
+        NamespaceScenarioExecutor(backend),
+        control.destroy,
+        # Checked against the live backend: running and every declared service process alive.
+        precondition=lambda condition: bool(backend.running)
+        and all(process.poll() is None for process in backend.services.values()),
     )
     assert result.status is ExecutionStatus.SUCCEEDED
     assert [item.success for item in result.observations] == [True, True]

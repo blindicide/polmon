@@ -15,12 +15,13 @@ from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.core.diagnostics import ResourceSnapshot, resource_snapshot
 from polmon.core.errors import ConfigurationError
 from polmon.orchestration import Orchestrator
+from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
 from polmon.scenarios import ScenarioEngine, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation
 from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
-from polmon.scenarios.models import ActionKind, Scenario, ScenarioAction
+from polmon.scenarios.models import ActionKind, InitialCondition, Scenario, ScenarioAction
 from polmon.telemetry.models import EventCategory
 from polmon.telemetry.store import EXPERIMENT_ID, TelemetrySession, TelemetryStore
 from polmon.topology import dump_topology, parse_topology
@@ -255,6 +256,7 @@ class ControlPlane:
                 executor,
                 cleanup,
                 reset_cancellation=False,
+                precondition=lambda condition: self._precondition(topology, condition),
             )
         except Exception as error:
             try:
@@ -311,6 +313,33 @@ class ControlPlane:
         }
         self.experiments[experiment_id] = record
         return record
+
+    def _precondition(self, topology: Topology, condition: InitialCondition) -> bool:
+        """Verify one declared initial condition against the live deployment."""
+        with self._lock:
+            control = self.deployments.get(topology.id)
+        if control is None or control.inspect().state != LifecycleState.RUNNING:
+            return False
+        if condition is InitialCondition.TOPOLOGY_DEPLOYED:
+            return True
+        if condition is InitialCondition.SERVICES_STARTED:
+            declared = [
+                (node.id, service.id)
+                for node in topology.nodes
+                if node.node_class is NodeClass.L1
+                for service in node.services
+            ]
+            backend = control.backend
+            namespace = backend.namespace if isinstance(backend, HybridBackend) else backend
+            if not declared:
+                return True
+            if not isinstance(namespace, NamespaceBackend):
+                return False
+            return all(
+                key in namespace.services and namespace.services[key].poll() is None
+                for key in declared
+            )
+        return False
 
     def cancel_experiment(self, experiment_id: str) -> dict[str, object]:
         with self._lock:

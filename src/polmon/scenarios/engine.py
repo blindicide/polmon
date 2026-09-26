@@ -15,6 +15,7 @@ from polmon.scenarios.models import (
     ActionKind,
     CleanupPolicy,
     Condition,
+    InitialCondition,
     Scenario,
     ScenarioAction,
 )
@@ -102,7 +103,13 @@ class ScenarioEngine:
         cleanup: Callable[[], None],
         *,
         reset_cancellation: bool = True,
+        precondition: Callable[[InitialCondition], bool] | None = None,
     ) -> ScenarioResult:
+        """Execute the sequence; ``precondition`` verifies each declared initial condition.
+
+        Without a checker every declared initial condition is treated as unverifiable and the run
+        fails before any action: a declared precondition is never assumed to hold.
+        """
         self.validate_against(scenario, topology)
         if reset_cancellation:
             self.reset_cancellation()
@@ -113,39 +120,47 @@ class ScenarioEngine:
         status = ExecutionStatus.FAILED
         cleaned = False
         try:
-            for action in scenario.sequence:
-                if self._cancelled.is_set():
-                    status = ExecutionStatus.CANCELLED
-                    break
-                remaining = scenario.timeout_seconds - (self.clock() - start)
-                if remaining <= 0:
-                    status = ExecutionStatus.TIMED_OUT
-                    break
-                try:
-                    observations.append(executor.execute(action, topology, remaining))
-                except TimeoutError:
-                    status = ExecutionStatus.TIMED_OUT
-                    errors.append(f"action '{action.id}' timed out")
-                    break
-                except Exception as error:
-                    errors.append(f"action '{action.id}' failed: {type(error).__name__}")
-                    status = ExecutionStatus.FAILED
-                    break
+            unmet = [
+                condition.value
+                for condition in scenario.initial_conditions
+                if precondition is None or not precondition(condition)
+            ]
+            if unmet:
+                errors.append(f"initial conditions not satisfied: {', '.join(unmet)}")
             else:
-                by_action = {item.action_id: item for item in observations}
-                success = all(
-                    self._matches(condition, by_action)
-                    for condition in scenario.success_conditions
-                )
-                failure = any(
-                    self._matches(condition, by_action)
-                    for condition in scenario.failure_conditions
-                )
-                status = (
-                    ExecutionStatus.SUCCEEDED
-                    if success and not failure
-                    else ExecutionStatus.FAILED
-                )
+                for action in scenario.sequence:
+                    if self._cancelled.is_set():
+                        status = ExecutionStatus.CANCELLED
+                        break
+                    remaining = scenario.timeout_seconds - (self.clock() - start)
+                    if remaining <= 0:
+                        status = ExecutionStatus.TIMED_OUT
+                        break
+                    try:
+                        observations.append(executor.execute(action, topology, remaining))
+                    except TimeoutError:
+                        status = ExecutionStatus.TIMED_OUT
+                        errors.append(f"action '{action.id}' timed out")
+                        break
+                    except Exception as error:
+                        errors.append(f"action '{action.id}' failed: {type(error).__name__}")
+                        status = ExecutionStatus.FAILED
+                        break
+                else:
+                    by_action = {item.action_id: item for item in observations}
+                    success = all(
+                        self._matches(condition, by_action)
+                        for condition in scenario.success_conditions
+                    )
+                    failure = any(
+                        self._matches(condition, by_action)
+                        for condition in scenario.failure_conditions
+                    )
+                    status = (
+                        ExecutionStatus.SUCCEEDED
+                        if success and not failure
+                        else ExecutionStatus.FAILED
+                    )
         finally:
             should_clean = scenario.cleanup_policy is CleanupPolicy.ALWAYS or (
                 scenario.cleanup_policy is CleanupPolicy.ON_FAILURE

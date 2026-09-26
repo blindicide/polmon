@@ -12,3 +12,10 @@ sequence, errors expose exception types rather than arbitrary text, and `always`
 `finally` path. Results preserve timestamps, action observations, status, safe errors, and whether
 cleanup completed.
 
+Initial conditions are verified, never assumed. Before the first action the control plane checks
+each declared condition against the live deployment: `topology_deployed` requires the deployment
+to be running; `services_started` additionally requires every service declared on an L1 node to
+have a live process. An unmet condition fails the experiment with
+`initial conditions not satisfied: ...` before any action runs, and the cleanup policy still
+applies. Callers of `ScenarioEngine.run` that pass no `precondition` checker get the same failure.
+

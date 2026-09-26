@@ -24,11 +24,19 @@ class Executor:
         return Observation(action.id, not self.fail, "reachable" if not self.fail else "blocked")
 
 
+def ALL_MET(condition) -> bool:
+    return True
+
+
 def test_controlled_recon_executes_in_order_and_cleans_up() -> None:
     cleaned = []
     executor = Executor()
     result = ScenarioEngine().run(
-        load_scenario(SCENARIO), load_topology(TOPOLOGY), executor, lambda: cleaned.append(True)
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        executor,
+        lambda: cleaned.append(True),
+        precondition=ALL_MET,
     )
     assert result.status is ExecutionStatus.SUCCEEDED
     assert executor.actions == ["reach-server", "inspect-web"]
@@ -37,7 +45,11 @@ def test_controlled_recon_executes_in_order_and_cleans_up() -> None:
 
 def test_failed_observations_produce_failed_result_and_cleanup() -> None:
     result = ScenarioEngine().run(
-        load_scenario(SCENARIO), load_topology(TOPOLOGY), Executor(fail=True), lambda: None
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        Executor(fail=True),
+        lambda: None,
+        precondition=ALL_MET,
     )
     assert result.status is ExecutionStatus.FAILED
     assert result.cleanup_performed
@@ -45,7 +57,11 @@ def test_failed_observations_produce_failed_result_and_cleanup() -> None:
 
 def test_executor_timeout_terminates_sequence_and_cleans_up() -> None:
     result = ScenarioEngine().run(
-        load_scenario(SCENARIO), load_topology(TOPOLOGY), Executor(timeout=True), lambda: None
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        Executor(timeout=True),
+        lambda: None,
+        precondition=ALL_MET,
     )
     assert result.status is ExecutionStatus.TIMED_OUT
     assert len(result.observations) == 0
@@ -55,7 +71,13 @@ def test_executor_timeout_terminates_sequence_and_cleans_up() -> None:
 def test_pre_cancel_is_cleared_for_new_run() -> None:
     engine = ScenarioEngine()
     engine.cancel()
-    result = engine.run(load_scenario(SCENARIO), load_topology(TOPOLOGY), Executor(), lambda: None)
+    result = engine.run(
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        Executor(),
+        lambda: None,
+        precondition=ALL_MET,
+    )
     assert result.status is ExecutionStatus.SUCCEEDED
 
 
@@ -69,7 +91,11 @@ def test_cooperative_cancel_stops_before_second_action() -> None:
             return result
 
     result = engine.run(
-        load_scenario(SCENARIO), load_topology(TOPOLOGY), CancellingExecutor(), lambda: None
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        CancellingExecutor(),
+        lambda: None,
+        precondition=ALL_MET,
     )
     assert result.status is ExecutionStatus.CANCELLED
     assert len(result.observations) == 1
@@ -111,7 +137,32 @@ def test_cleanup_failure_is_reported_without_masking_result() -> None:
         raise RuntimeError("injected")
 
     result = ScenarioEngine().run(
-        load_scenario(SCENARIO), load_topology(TOPOLOGY), Executor(), broken_cleanup
+        load_scenario(SCENARIO),
+        load_topology(TOPOLOGY),
+        Executor(),
+        broken_cleanup,
+        precondition=ALL_MET,
     )
     assert result.status is ExecutionStatus.FAILED
     assert result.errors == ("cleanup failed: RuntimeError",)
+
+
+def test_unverified_or_unmet_initial_conditions_fail_before_any_action() -> None:
+    for precondition in (None, lambda condition: condition.value != "services_started"):
+        executor = Executor()
+        cleaned: list[bool] = []
+
+        def cleanup(record: list[bool] = cleaned) -> None:
+            record.append(True)
+
+        result = ScenarioEngine().run(
+            load_scenario(SCENARIO),
+            load_topology(TOPOLOGY),
+            executor,
+            cleanup,
+            precondition=precondition,
+        )
+        assert result.status is ExecutionStatus.FAILED
+        assert result.observations == () and executor.actions == []
+        assert any("services_started" in error for error in result.errors)
+        assert result.cleanup_performed and cleaned == [True]  # cleanup policy still applies

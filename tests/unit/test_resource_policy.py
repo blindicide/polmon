@@ -99,6 +99,7 @@ def test_monitor_signal_cancels_scenario_before_next_action() -> None:
         Executor(),
         lambda: None,
         reset_cancellation=False,
+        precondition=lambda condition: True,
     )
     assert result.status is ExecutionStatus.CANCELLED
     assert not actions
