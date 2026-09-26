@@ -33,6 +33,7 @@ These routes back the desktop client; all are additive and existing clients are 
 | `POST /v1/topologies/validate`, `POST /v1/topologies` | Responses also carry `topology`: the structured, normalized definition (nodes with `class`, interfaces with `network`, `mac`, `ipv4`; networks; services). |
 | `GET /v1/topologies` | Loaded definitions with `deployed`, `node_count`, `network_count` and the resource estimate. |
 | `GET /v1/topologies/{topology_id}` | One loaded definition (`normalized_yaml`, `topology`, `resources`, `deployed`). |
+| `DELETE /v1/topologies/{topology_id}` | Forget a loaded definition; HTTP 422 while it is deployed (v0.2.4). |
 | `POST /v1/scenarios/validate` | `{"yaml": ...}` → the structured scenario (`permitted_actions` sorted) and `topology_check` (`loaded`, `deployed`, `compatible`, `problems`) against the loaded required topology. |
 | `POST /v1/experiments` with `"wait": false` | Validation, deployment checks and admission run first (errors are returned directly); the experiment then runs on a backend thread and the call returns HTTP 202 with `status: running`. |
 | `GET /v1/experiments/{experiment_id}` | While active: `status` `running`/`cancelling` and `progress` (`total_actions`, `completed_actions`, `current_action`, `elapsed_seconds`, `timeout_seconds`). When finished: the full record plus final `progress`; a background failure is `status: error` with an `error` document. Experiments run by an earlier backend process are returned from SQLite with `persisted: true` (a run that never finished reads `interrupted`). |

@@ -4,6 +4,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `DELETE /v1/topologies/{id}` forgets a loaded definition (refused while deployed); the
+  Topologies page's *Loaded on backend* list gains *Unload*.
+
 ## [0.2.3] - 2026-09-26
 
 Capture download, workflow shortcuts and the operator guide.

@@ -138,6 +138,17 @@ class ControlPlane:
             for topology in sorted(loaded, key=lambda item: item.id)
         ]
 
+    def unload_topology(self, topology_id: str) -> dict[str, object]:
+        """Forget a loaded definition; a deployed topology must be destroyed first."""
+        with self._lock:
+            self._topology(topology_id)
+            if topology_id in self.deployments:
+                raise ConfigurationError(
+                    f"topology '{topology_id}' is deployed; destroy the deployment first"
+                )
+            self.topologies.pop(topology_id, None)
+        return {"topology_id": topology_id, "state": "unloaded"}
+
     def topology_detail(self, topology_id: str) -> dict[str, object]:
         with self._lock:
             topology = self._topology(topology_id)

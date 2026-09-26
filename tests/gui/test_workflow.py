@@ -362,3 +362,20 @@ def test_deploy_eta_baseline_follows_the_namespace_count() -> None:
     assert baseline_deploy_seconds({"l1_namespaces": 8}) == 2.2
     assert baseline_deploy_seconds({"l1_namespaces": 0}) == 0.2
     assert baseline_deploy_seconds(None) is None
+
+
+def test_loaded_definition_can_be_unloaded_from_the_client(
+    window, qtbot, live_backend, tmp_path
+) -> None:
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    page = window.pages["topologies"]
+    window.navigate("topologies", write(tmp_path, "t.yml", l0_topology()))
+    qtbot.waitUntil(lambda: page.result is not None, timeout=10_000)
+    page.load_to_backend()
+    qtbot.waitUntil(lambda: page.loaded.count() == 1, timeout=10_000)
+    page.loaded.setCurrentRow(0)
+    assert page.unload_button.isEnabled()
+    page.unload_button.click()
+    qtbot.waitUntil(lambda: page.loaded.count() == 0, timeout=10_000)
+    assert not window.session.loaded("hybrid-small")

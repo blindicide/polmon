@@ -63,6 +63,11 @@ def topology_detail(topology_id: TopologyId, request: Request) -> dict[str, obje
     return control(request).topology_detail(topology_id)
 
 
+@router.delete("/topologies/{topology_id}")
+def unload_topology(topology_id: TopologyId, request: Request) -> dict[str, object]:
+    return control(request).unload_topology(topology_id)
+
+
 @router.post("/scenarios/validate")
 def validate_scenario(document: YamlDocument, request: Request) -> dict[str, object]:
     return control(request).validate_scenario(document.yaml)

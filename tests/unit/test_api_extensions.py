@@ -375,3 +375,16 @@ def test_experiment_capture_downloads_as_pcap(tmp_path) -> None:
     assert response.headers["content-type"] == "application/vnd.tcpdump.pcap"
     assert response.content[:4] in {b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4"}  # pcap magic
     assert client.get("/v1/experiments/unknown/capture").status_code == 422
+
+
+def test_loaded_topologies_can_be_unloaded_unless_deployed(tmp_path) -> None:
+    client = deployed_client(tmp_path)
+    refused = client.delete("/v1/topologies/hybrid-small")
+    assert (
+        refused.status_code == 422
+        and "destroy the deployment" in refused.json()["error"]["message"]
+    )
+    client.delete("/v1/deployments/hybrid-small")
+    assert client.delete("/v1/topologies/hybrid-small").json()["state"] == "unloaded"
+    assert client.get("/v1/topologies").json() == []
+    assert client.delete("/v1/topologies/hybrid-small").status_code == 422

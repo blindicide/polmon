@@ -112,6 +112,13 @@ class TopologiesPage(Page):
         self.loaded.setToolTip("Double-click to open the backend's normalized copy")
         self.loaded.itemActivated.connect(self.open_loaded)
         loaded_layout.addWidget(self.loaded)
+        self.unload_button = QPushButton("Unload")
+        self.unload_button.setToolTip(
+            "Remove the selected definition from the backend (it must not be deployed)"
+        )
+        self.unload_button.clicked.connect(self.unload_selected)
+        self.loaded.itemSelectionChanged.connect(self.refresh_actions)
+        loaded_layout.addWidget(self.unload_button)
         left_layout.addWidget(loaded_box, 2)
         splitter.addWidget(left)
 
@@ -213,6 +220,23 @@ class TopologiesPage(Page):
             on_success=lambda result: self._opened_loaded(result),  # type: ignore[arg-type]
             banner=self.banner,
         )
+
+    def unload_selected(self) -> None:
+        item = self.loaded.currentItem()
+        if item is None:
+            return
+        topology_id = str(item.data(Qt.ItemDataRole.UserRole))
+        client = self.session.client()
+        self.context.run(
+            f"Unload topology {topology_id}",
+            lambda token, report: client.unload_topology(topology_id),
+            on_success=lambda result: self._unloaded(topology_id),
+            banner=self.banner,
+        )
+
+    def _unloaded(self, topology_id: str) -> None:
+        self.session.known_topologies.discard(topology_id)
+        self.context.navigate("refresh")
 
     def _opened_loaded(self, result: dict[str, object]) -> None:
         self.path = None
@@ -496,6 +520,11 @@ class TopologiesPage(Page):
         self.deploy_button.setEnabled(connected and has_text and not self.context.busy)
         self.save_button.setEnabled(has_text)
         self.loaded.setEnabled(connected)
+        current = self.loaded.currentItem()
+        deployed = current is not None and self.session.deployed(
+            str(current.data(Qt.ItemDataRole.UserRole))
+        )
+        self.unload_button.setEnabled(connected and current is not None and not deployed)
 
     def activated(self, argument: object = None) -> None:
         if isinstance(argument, Path):

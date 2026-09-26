@@ -166,6 +166,9 @@ class ApiClient:
     def topology(self, topology_id: str) -> dict[str, object]:
         return self._dict("GET", f"/v1/topologies/{_segment(topology_id)}")
 
+    def unload_topology(self, topology_id: str) -> dict[str, object]:
+        return self._dict("DELETE", f"/v1/topologies/{_segment(topology_id)}")
+
     def validate_scenario(self, source: str) -> dict[str, object]:
         return self._dict("POST", "/v1/scenarios/validate", {"yaml": source})
 
