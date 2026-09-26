@@ -184,3 +184,21 @@ def test_yaml_editor_highlights_keys_comments_and_strings(qtbot) -> None:
     assert theme.hex_color("warning") not in {f.format.foreground().color().name() for f in address}
     number = editor.document().findBlockByNumber(1).layout().formats()
     assert theme.hex_color("warning") in {f.format.foreground().color().name() for f in number}
+
+
+def test_current_backend_cpu_is_derived_from_poll_deltas(qtbot, monkeypatch) -> None:
+    from polmon.client.pages import dashboard
+    from polmon.client.pages.dashboard import ResourceTiles
+
+    class FakeContext:
+        from polmon.client.state import Session
+
+        session = Session()
+
+    tiles = ResourceTiles(FakeContext())
+    qtbot.addWidget(tiles)
+    clock = iter([100.0, 102.0, 104.0])
+    monkeypatch.setattr(dashboard.time, "monotonic", lambda: next(clock))
+    assert tiles._current_cpu(10.0) is None  # first sample
+    assert tiles._current_cpu(11.0) == 50.0  # 1 CPU second in 2 wall seconds
+    assert tiles._current_cpu(5.0) is None  # counter went backwards: backend restarted

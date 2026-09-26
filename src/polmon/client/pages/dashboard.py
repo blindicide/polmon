@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from polmon.client.formatting import format_bytes, format_percent, format_seconds
@@ -35,7 +37,8 @@ class ResourceTiles(QWidget):
         self.namespaces = CounterTile("Active namespaces", sparkline=True)
         self.workload = CounterTile("Deployments / experiments")
         self.rss = CounterTile("Backend RSS", sparkline=True)
-        self.cpu = CounterTile("Backend CPU (lifetime avg)", sparkline=True)
+        self.cpu = CounterTile("Backend CPU (current)", sparkline=True)
+        self._cpu_sample: tuple[float, float] | None = None  # (process CPU seconds, wall time)
         self.headroom = CounterTile("Memory headroom", sparkline=True)
         self.swap = CounterTile("Swap used")
         self.data = CounterTile("Data directory")
@@ -54,9 +57,20 @@ class ResourceTiles(QWidget):
         self.session.resources_changed.connect(self.refresh)
         self.session.connection_changed.connect(self.refresh)
 
+    def _current_cpu(self, seconds: object) -> float | None:
+        """CPU use since the previous poll, as a percentage of one core."""
+        if not isinstance(seconds, int | float):
+            return None
+        now = time.monotonic()
+        previous, self._cpu_sample = self._cpu_sample, (float(seconds), now)
+        if previous is None or now - previous[1] < 0.5 or seconds < previous[0]:
+            return None  # first sample, too close together, or the backend restarted
+        return max(0.0, (float(seconds) - previous[0]) / (now - previous[1]) * 100)
+
     def refresh(self) -> None:
         resources = self.session.resources
         if not resources or self.session.state is ConnectionState.DISCONNECTED:
+            self._cpu_sample = None
             for tile in self.findChildren(CounterTile):
                 tile.set("—")
                 if tile.sparkline is not None:
@@ -81,9 +95,14 @@ class ResourceTiles(QWidget):
         )
         rss = snapshot.get("process_rss_bytes")
         self.rss.set(format_bytes(rss), "resident set size", rss if isinstance(rss, int) else None)
-        cpu = snapshot.get("process_cpu_percent")
+        lifetime = snapshot.get("process_cpu_percent")
         seconds = snapshot.get("process_cpu_seconds")
-        self.cpu.set(format_percent(cpu), f"{format_seconds(seconds)} CPU time", cpu)
+        current = self._current_cpu(seconds)
+        self.cpu.set(
+            format_percent(current) if current is not None else "…",
+            f"lifetime avg {format_percent(lifetime)} · {format_seconds(seconds)} CPU time",
+            current,
+        )
         available = snapshot.get("available_memory_bytes")
         reserve = int(limits.get("memory_safety_threshold_mb") or 0) * 1_048_576
         if isinstance(available, int):

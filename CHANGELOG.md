@@ -11,6 +11,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Scenarios page: *Deploy required topology* when the scenario's topology is loaded but not
   deployed. Deployments show an ETA from measured per-namespace creation cost until the client
   has observed the backend's own deployment times.
+- The backend CPU tile shows current load (CPU-seconds delta between polls) with the lifetime
+  average as secondary information.
 
 ## [0.2.2] - 2026-09-26
 
