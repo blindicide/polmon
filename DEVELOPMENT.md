@@ -17,3 +17,10 @@ Use `pytest tests/unit` for the rootless unit gate, `pytest -m integration` for 
 integration coverage, and select privileged tests explicitly with `pytest -m privileged` only in
 an authorized isolated laboratory. CI excludes `privileged` and `performance`, publishes JUnit and
 coverage XML artifacts, and writes a count summary to the workflow run.
+
+`scripts/check.sh` runs the same lint and rootless gate as CI. `scripts/privileged-tests.sh` runs
+the privileged selection and fails if the default route, the host's non-lab interfaces, iptables
+rules, or the nft ruleset (counters normalised) changed, or if any platform-named namespace or
+interface remains; `scripts/lab-cleanup.sh` lists such leftovers and removes them with `--apply`.
+Performance tests live in `tests/performance/` and run only with `pytest -m performance`; they use
+small sizes, and the 100/250-endpoint runs require `polmon-benchmark l0 --large`.

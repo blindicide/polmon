@@ -149,6 +149,17 @@ class SyntheticEngine:
             raise SyntheticEngineError(f"endpoint '{destination_id}' receive queue is full")
         destination.inbox.append(bytes(payload))
 
+    def take_delivered(self, endpoint_id: str) -> bytes:
+        """Remove and return the frame most recently delivered to ``endpoint_id``.
+
+        Synchronous protocol stacks call this right after ``dispatch`` to process the frame they
+        delivered, so the bounded receive queue measures backlog, not lifetime traffic.
+        """
+        endpoint = self._get(endpoint_id)
+        if not endpoint.inbox:
+            raise SyntheticEngineError(f"endpoint '{endpoint_id}' has no delivered frame")
+        return endpoint.inbox.pop()
+
     def destroy_all(self) -> None:
         for endpoint_id in tuple(self.endpoints):
             self.destroy_endpoint(endpoint_id)

@@ -12,9 +12,17 @@ Requirements: Linux, `/usr/bin/python3.12`, `uv`, and `iproute2` for later privi
 ```bash
 uv venv --python /usr/bin/python3.12
 uv pip install -e '.[dev]'
-.venv/bin/pytest
+scripts/check.sh              # lint + rootless tests
 .venv/bin/polmon-backend
 ```
+
+Helper scripts in `scripts/`: `check.sh` (ordinary gate), `privileged-tests.sh` (laboratory tests
+with a before/after proof that the host network was untouched), `lab-cleanup.sh` (list or remove
+leftover platform-named namespaces and interfaces), `run-benchmarks.sh` (recorded benchmark suite),
+and `verify-release.sh` (download a release and check its SHA-256).
+
+Benchmarks run only on explicit request: `.venv/bin/polmon-benchmark l0|l1|target|summarize`. See
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) for limits, method, and the retained raw results.
 
 Run `.venv/bin/polmon-client --version` or `--self-test` without a display. The GUI can be
 opened with `.venv/bin/polmon-client`; it starts independently of the backend.

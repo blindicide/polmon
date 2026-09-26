@@ -130,3 +130,6 @@ class SyntheticProtocolNetwork:
         EthernetFrame.from_bytes(raw)
         self.capture.append(raw)
         self.engine.dispatch(source.id, target.id, raw)
+        # The receiving stack handles the frame synchronously; consume it from the bounded queue.
+        if self.engine.take_delivered(target.id) != raw:
+            raise SyntheticEngineError("delivered frame does not match the transmitted frame")

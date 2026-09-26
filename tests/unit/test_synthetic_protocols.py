@@ -43,3 +43,22 @@ def test_ping_rejects_unknown_or_cross_network_address() -> None:
     with pytest.raises(SyntheticEngineError, match="no endpoint"):
         network.ping("alpha", "10.0.1.1")
 
+
+
+def test_sustained_traffic_does_not_exhaust_bounded_receive_queues() -> None:
+    from polmon.benchmarks.synthetic import build_topology
+
+    topology = build_topology(250)
+    engine = SyntheticEngine()
+    for node in topology.nodes:
+        interface = node.interfaces[0]
+        engine.create_endpoint(
+            node.id, network=interface.network, mac=interface.mac, ipv4=interface.ipv4
+        )
+    network = SyntheticProtocolNetwork(engine)
+    source = topology.nodes[0].id
+    for _ in range(2):  # 2 x 249 echoes + 249 ARP exchanges exceed the 256-frame queue
+        for target in topology.nodes[1:]:
+            network.ping(source, target.interfaces[0].ipv4)
+    assert engine.stats().queued_packet_count == 0
+    engine.destroy_all()

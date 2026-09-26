@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -13,6 +14,28 @@ from pathlib import Path
 from polmon.backends.namespace.runner import CommandRunner
 from polmon.orchestration.base import BackendInspection
 from polmon.topology.models import NodeClass, Topology
+
+_TRANSMITTED = re.compile(r"(\d+) packets transmitted, (\d+) (?:packets )?received")
+_RTT = re.compile(r"= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms")
+
+
+def parse_ping_summary(output: str) -> dict[str, float | int | None]:
+    """Parse the iputils ``ping`` summary lines; RTT fields are None when nothing returned."""
+    counts = _TRANSMITTED.search(output)
+    if counts is None:
+        raise ValueError("ping output has no packet summary")
+    transmitted, received = int(counts.group(1)), int(counts.group(2))
+    rtt = _RTT.search(output)
+    values = [float(item) for item in rtt.groups()] if rtt else [None, None, None, None]
+    return {
+        "transmitted": transmitted,
+        "received": received,
+        "loss_percent": ((transmitted - received) / transmitted) * 100 if transmitted else 0.0,
+        "rtt_min_ms": values[0],
+        "rtt_avg_ms": values[1],
+        "rtt_max_ms": values[2],
+        "rtt_mdev_ms": values[3],
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +224,38 @@ class NamespaceBackend:
             timeout=5,
         )
         return result.returncode == 0
+
+    def ping_statistics(
+        self, source_node: str, destination: str, *, count: int = 5, interval: float = 0.2
+    ) -> dict[str, float | int | None]:
+        """Send ``count`` kernel ICMP echoes inside the lab and return loss and RTT figures."""
+        if not 1 <= count <= 100:
+            raise ValueError("ping count must be between 1 and 100")
+        if not 0.2 <= interval <= 5:
+            raise ValueError("ping interval must be between 0.2 and 5 seconds")
+        namespace = self._namespace(source_node)
+        result = self.runner.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                namespace,
+                "ping",
+                "-n",
+                "-q",
+                "-c",
+                str(count),
+                "-i",
+                f"{interval:g}",
+                "-W",
+                "2",
+                destination,
+            ],
+            privileged=True,
+            check=False,
+            timeout=count * interval + 10,
+        )
+        return parse_ping_summary(result.stdout)
 
     def probe_tcp(self, source_node: str, destination: str, port: int) -> bool:
         namespace = self._namespace(source_node)
