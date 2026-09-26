@@ -18,6 +18,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   peer. It is now a standalone standard-library responder that returns a fixed body, never touches
   the filesystem, bounds request size, time, and concurrency, and runs in an isolated interpreter
   (`python -I -S`). `static_http` declared with a non-TCP protocol is rejected.
+  Measured side effect (`benchmarks/results/SUMMARY-wave5-static-http.md`): service tree RSS
+  26.6 → 19.4 MiB per service; 50 L0 + 2 L1 attributed memory 54.5 → 39.1 MiB.
 
 ### Fixed
 
