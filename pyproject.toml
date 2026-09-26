@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "polmon"
+version = "0.0.1"
+description = "Resource-efficient isolated network attack simulation platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+authors = [{name = "polmon contributors"}]
+dependencies = [
+  "fastapi==0.115.6",
+  "pydantic==2.10.4",
+  "PyYAML==6.0.2",
+  "uvicorn==0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx==0.28.1",
+  "pytest==8.3.4",
+  "pytest-cov==6.0.0",
+  "ruff==0.8.6",
+]
+build = ["pyinstaller==6.11.1"]
+
+[project.scripts]
+polmon-backend = "polmon.backend:main"
+polmon-client = "polmon.client.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/polmon"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "integration: integration tests",
+  "privileged: requires authorized laboratory networking privileges",
+  "performance: explicit performance tests",
+  "smoke: smoke tests",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
