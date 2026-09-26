@@ -13,3 +13,7 @@ Keep unit, integration, privileged, performance, and smoke tests explicitly mark
 must fit two CPU cores and 2 GB RAM. Add dependencies only with a documented purpose and resource
 cost. Source, documentation, generated reports, and logs use UTF-8.
 
+Use `pytest tests/unit` for the rootless unit gate, `pytest -m integration` for non-privileged
+integration coverage, and select privileged tests explicitly with `pytest -m privileged` only in
+an authorized isolated laboratory. CI excludes `privileged` and `performance`, publishes JUnit and
+coverage XML artifacts, and writes a count summary to the workflow run.

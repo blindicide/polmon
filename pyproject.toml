@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "polmon"
-version = "0.0.1"
+version = "0.0.2"
 description = "Resource-efficient isolated network attack simulation platform"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -28,6 +28,7 @@ build = ["pyinstaller==6.11.1"]
 [project.scripts]
 polmon-backend = "polmon.backend:main"
 polmon-client = "polmon.client.app:main"
+polmon-diagnostics = "polmon.core.diagnostics:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/polmon"]

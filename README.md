@@ -19,6 +19,10 @@ uv pip install -e '.[dev]'
 Run `.venv/bin/polmon-client --version` or `--self-test` without a display. The GUI can be
 opened with `.venv/bin/polmon-client`; it starts independently of the backend.
 
+Use `.venv/bin/polmon-diagnostics --json` to inspect the Python version, host capabilities,
+network-tool availability, and an allow-listed resource snapshot without exposing environment
+variables or credentials. The backend emits structured JSON startup and shutdown logs.
+
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md), and
 [SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
 the repository owner makes an explicit licensing decision.
