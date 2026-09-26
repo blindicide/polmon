@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.10] - 2026-09-26
+
+### Added
+
+- SQLite experiment metadata and ordered structured events with secret-key redaction.
+- Resource samples and bounded classic PCAP capture with drop/truncation accounting.
+- Foreign-key association and tcpdump interoperability coverage.
+
 ## [0.0.9] - 2026-09-26
 
 ### Added
