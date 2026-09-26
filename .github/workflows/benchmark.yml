@@ -1,0 +1,62 @@
+name: Benchmark
+
+# Manual only. Small L0 sizes by default; the 100/250-endpoint sizes need the explicit "large"
+# input. Hosted runners are not the development host: results characterise the runner only.
+on:
+  workflow_dispatch:
+    inputs:
+      counts:
+        description: Space-separated L0 endpoint counts (above 50 requires "large")
+        required: false
+        type: string
+        default: "10 25"
+      repeats:
+        description: Repeats per count (1-5)
+        required: false
+        type: string
+        default: "1"
+      large:
+        description: Allow counts above 50 (explicit opt-in)
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+jobs:
+  l0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install --disable-pip-version-check -e .
+      - name: Run the bounded L0 benchmark
+        env:
+          COUNTS: ${{ inputs.counts }}
+          REPEATS: ${{ inputs.repeats }}
+          LARGE: ${{ inputs.large }}
+        run: |
+          [[ "$COUNTS" =~ ^[0-9]+( [0-9]+)*$ ]] || { echo "counts must be integers"; exit 1; }
+          [[ "$REPEATS" =~ ^[1-5]$ ]] || { echo "repeats must be 1-5"; exit 1; }
+          args=(l0 --counts $COUNTS --repeats "$REPEATS" --max-run-seconds 120
+                --max-incremental-mb 512 --memory-reserve-mb 256 --output-dir bench-out)
+          if [[ "$LARGE" == "true" ]]; then args+=(--large); else args+=(--max-endpoints 50); fi
+          polmon-benchmark "${args[@]}"
+          polmon-benchmark summarize bench-out/*.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-results
+          path: bench-out
+          if-no-files-found: error
