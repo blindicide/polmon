@@ -25,6 +25,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Added
 
+- Storage admission: experiments are refused (HTTP 429) when the data directory would exceed
+  `--max-data-mb` or free disk would fall below `--disk-reserve-mb`; artefacts are never deleted
+  automatically. `GET /v1/resources` reports `data_directory_bytes`.
 - `polmon-diagnostics --lab`: read-only privileged-lab readiness checks with a non-zero exit
   status when the host is not ready.
 - Operator runbook (`docs/OPERATIONS.md`) and an example systemd user unit

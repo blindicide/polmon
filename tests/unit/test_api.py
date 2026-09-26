@@ -253,3 +253,44 @@ def test_oversized_bodies_are_rejected_before_parsing(tmp_path) -> None:
     )
     assert chunked.status_code == 413
     assert client.get("/v1/health").status_code == 200  # the server keeps serving
+
+
+def test_experiments_are_refused_when_storage_bounds_would_be_crossed(tmp_path) -> None:
+    from polmon.resources import ResourceLimits
+
+    scenario = """id: storage
+required_topology: hybrid-small
+initial_conditions: [topology_deployed]
+permitted_actions: [icmp_probe]
+sequence:
+  - {id: ping, kind: icmp_probe, source: sensor-1, target: service-1}
+timeout_seconds: 5
+success_conditions:
+  - {action: ping, field: success, equals: true}
+"""
+    cases = {
+        "data_directory": ResourceLimits(max_data_directory_mb=1),
+        "disk_free": ResourceLimits(disk_free_reserve_mb=10_485_760),
+    }
+    for violation, limits in cases.items():
+        directory = tmp_path / violation
+        control = ControlPlane(directory, limits=limits)
+        (directory / "earlier-artifacts.bin").write_bytes(b"\0" * 600_000)
+        client = TestClient(create_app(control))
+        topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()[
+            "topology_id"
+        ]
+        client.post(f"/v1/deployments/{topology_id}")
+        response = client.post(
+            "/v1/experiments",
+            json={
+                "experiment_id": "blocked",
+                "topology_id": topology_id,
+                "scenario_yaml": scenario,
+            },
+        )
+        assert response.status_code == 429, violation
+        assert violation in response.json()["error"]["details"]
+        assert not (directory / "reports").exists() and not (directory / "captures").exists()
+        assert client.get("/v1/resources").json()["data_directory_bytes"] >= 600_000
+        client.post("/v1/reset")

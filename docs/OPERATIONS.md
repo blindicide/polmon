@@ -77,6 +77,8 @@ token into *API token*, and press *Connect*. Verify a downloaded executable firs
   script; polmon never adopts objects it did not create.
 - **HTTP 429 `resource_limit`**: the request exceeds configured limits or would leave less than the
   memory reserve; reduce the topology or raise the limit deliberately.
+  Storage violations (`data_directory`, `disk_free`) mean `var/` or the disk is full: archive
+  old captures and reports under `var/`, then retry.
 
 ## 6. Upgrades
 

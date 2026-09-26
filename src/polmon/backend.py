@@ -108,6 +108,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=defaults.memory_safety_threshold_mb,
     )
+    parser.add_argument(
+        "--max-data-mb",
+        type=int,
+        default=defaults.max_data_directory_mb,
+        help="refuse new experiments once telemetry/captures/reports would exceed this",
+    )
+    parser.add_argument(
+        "--disk-reserve-mb",
+        type=int,
+        default=defaults.disk_free_reserve_mb,
+        help="refuse new experiments that would leave less free disk than this",
+    )
     return parser
 
 
@@ -124,6 +136,8 @@ def main() -> None:
         max_capture_bytes=args.max_capture_bytes,
         max_experiment_duration_seconds=args.max_experiment_seconds,
         memory_safety_threshold_mb=args.memory_reserve_mb,
+        max_data_directory_mb=args.max_data_mb,
+        disk_free_reserve_mb=args.disk_reserve_mb,
     )
     try:
         token = resolve_token(args.api_token_file)

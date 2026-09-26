@@ -18,6 +18,7 @@ from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
+from polmon.resources.policy import directory_size_bytes
 from polmon.scenarios import ScenarioEngine, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation
 from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
@@ -198,7 +199,9 @@ class ControlPlane:
         with self._lock:
             if experiment_id in self.active_experiments or experiment_id in self.experiments:
                 raise ConfigurationError(f"experiment '{experiment_id}' already exists")
-            self.admission.admit_experiment(scenario, len(self.active_experiments))
+            self.admission.admit_experiment(
+                scenario, len(self.active_experiments), data_directory=self.data_directory
+            )
             self.active_experiments[experiment_id] = engine
 
         try:
@@ -353,6 +356,7 @@ class ControlPlane:
         snapshot = self._sample()
         return {
             "limits": self.limits.model_dump(mode="json"),
+            "data_directory_bytes": directory_size_bytes(self.data_directory),
             "active_deployments": len(self.deployments),
             "active_experiments": len(self.active_experiments),
             "snapshot": asdict(snapshot),

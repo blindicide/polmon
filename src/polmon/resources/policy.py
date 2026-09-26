@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from collections.abc import Callable, Iterable
+from pathlib import Path
 from threading import Event, Thread
 
 from pydantic import Field
@@ -26,6 +29,10 @@ class ResourceLimits(StrictModel):
     max_experiment_duration_seconds: float = Field(default=300, gt=0, le=86_400)
     memory_safety_threshold_mb: int = Field(default=256, ge=0, le=1_048_576)
     monitor_interval_seconds: float = Field(default=0.25, gt=0, le=60)
+    # Experiment artefacts (telemetry, captures, reports) are never deleted automatically; new
+    # experiments are refused instead once either storage bound would be crossed.
+    max_data_directory_mb: int = Field(default=1_024, ge=1, le=10_485_760)
+    disk_free_reserve_mb: int = Field(default=512, ge=0, le=10_485_760)
 
 
 class AdmissionController:
@@ -71,8 +78,12 @@ class AdmissionController:
                 "topology exceeds configured resource limits", details=violations
             )
 
-    def admit_experiment(self, scenario: Scenario, active_count: int) -> None:
+    def admit_experiment(
+        self, scenario: Scenario, active_count: int, *, data_directory: Path | None = None
+    ) -> None:
         violations: dict[str, object] = {}
+        if data_directory is not None:
+            violations.update(self._storage_violations(data_directory))
         if active_count >= self.limits.max_concurrent_experiments:
             violations["concurrent_experiments"] = {
                 "active": active_count,
@@ -87,6 +98,40 @@ class AdmissionController:
             raise ResourceLimitError(
                 "experiment exceeds configured resource limits", details=violations
             )
+
+
+    def _storage_violations(self, data_directory: Path) -> dict[str, object]:
+        """Room for one more experiment: its capture ceiling fits both storage bounds."""
+        violations: dict[str, object] = {}
+        needed = self.limits.max_capture_bytes
+        used = directory_size_bytes(data_directory)
+        limit = self.limits.max_data_directory_mb * 1_048_576
+        if used + needed > limit:
+            violations["data_directory"] = {
+                "used_mb": round(used / 1_048_576, 1),
+                "next_experiment_capture_limit_mb": round(needed / 1_048_576, 1),
+                "limit_mb": self.limits.max_data_directory_mb,
+            }
+        free = shutil.disk_usage(data_directory).free
+        reserve = self.limits.disk_free_reserve_mb * 1_048_576
+        if free - needed < reserve:
+            violations["disk_free"] = {
+                "free_mb": free // 1_048_576,
+                "reserve_mb": self.limits.disk_free_reserve_mb,
+            }
+        return violations
+
+
+def directory_size_bytes(path: Path) -> int:
+    """Apparent size of all regular files below ``path`` (symlinks are not followed)."""
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).lstat().st_size
+            except OSError:
+                continue
+    return total
 
 
 class ResourceMonitor:

@@ -23,3 +23,9 @@ dropped frames.
 Admission failure occurs before backend validation or resource creation. Deployment failures invoke
 orchestrator rollback. Reset continues across independent deployments and retains any teardown that
 failed so an operator can correct the cause and retry.
+
+Storage is bounded the same way. Experiment artefacts (telemetry database, captures, reports) are
+never deleted automatically; instead a new experiment is refused with HTTP 429 when its capture
+ceiling would push the data directory above `--max-data-mb` (default 1024) or leave less free disk
+than `--disk-reserve-mb` (default 512). `GET /v1/resources` reports `data_directory_bytes`. Archive
+or remove old artefacts deliberately to make room.
