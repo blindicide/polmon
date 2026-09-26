@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import asdict
 from ipaddress import IPv4Address
+from pathlib import Path
 from typing import Protocol
 
 from polmon.backends.hybrid.tap import TapPort
@@ -23,6 +25,7 @@ from polmon.topology.models import NodeClass, Topology
 ETHERTYPE_IPV4 = 0x0800
 ETHERTYPE_ARP = 0x0806
 BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
+BRIDGE_PORT_FORWARDING = "3"
 
 
 class TapLike(Protocol):
@@ -39,6 +42,19 @@ class TapFactory(Protocol):
     def __call__(self, name: str) -> TapLike: ...
 
 
+def sysfs_bridge_port_states(bridge: str) -> dict[str, str]:
+    """Return the kernel STP state of every port enslaved to ``bridge`` (readable rootless)."""
+
+    ports = Path("/sys/class/net") / bridge / "brif"
+    states: dict[str, str] = {}
+    for port in sorted(ports.iterdir()) if ports.is_dir() else ():
+        try:
+            states[port.name] = (port / "state").read_text(encoding="ascii").strip()
+        except OSError:
+            states[port.name] = "missing"
+    return states
+
+
 class HybridBackend:
     name = "hybrid"
 
@@ -51,8 +67,12 @@ class HybridBackend:
         require_linux: bool = True,
         owner_uid: int | None = None,
         owner_gid: int | None = None,
+        bridge_port_states: Callable[[str], dict[str, str]] = sysfs_bridge_port_states,
+        port_ready_timeout: float = 5.0,
     ) -> None:
         self.runner = runner or CommandRunner()
+        self.bridge_port_states = bridge_port_states
+        self.port_ready_timeout = port_ready_timeout
         self.namespace = NamespaceBackend(
             runner=self.runner,
             require_linux=require_linux,
@@ -126,10 +146,36 @@ class HybridBackend:
                 )
                 self.runner.run(["ip", "link", "set", "dev", name, "up"], privileged=True)
                 self.taps[network_id] = self.tap_factory(name)
+            for network_id in sorted(self.tap_names):
+                self._wait_for_forwarding(
+                    self.namespace.names.bridges[network_id],  # type: ignore[union-attr]
+                    self.tap_names[network_id],
+                )
         except Exception:
             self.destroy()
             raise
         return resources
+
+    def _wait_for_forwarding(self, bridge: str, tap_name: str) -> None:
+        """Block until the TAP and every other port of ``bridge`` forwards frames.
+
+        Attaching the TAP file descriptor raises carrier asynchronously (kernel linkwatch), so
+        the bridge can briefly keep the port disabled and silently drop the first frames.
+        """
+
+        deadline = time.monotonic() + self.port_ready_timeout
+        while True:
+            states = self.bridge_port_states(bridge)
+            if tap_name in states and all(
+                state == BRIDGE_PORT_FORWARDING for state in states.values()
+            ):
+                return
+            if time.monotonic() >= deadline:
+                raise SyntheticEngineError(
+                    f"bridge {bridge} ports did not reach forwarding state within "
+                    f"{self.port_ready_timeout:g}s: {states}"
+                )
+            time.sleep(0.01)
 
     def start(self) -> None:
         self.namespace.start()
