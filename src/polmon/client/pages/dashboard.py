@@ -118,7 +118,10 @@ class ResourceTiles(QWidget):
         else:
             self.headroom.set("—", "not reported by this host")
         swap = snapshot.get("swap_used_bytes")
-        self.swap.set(format_bytes(swap), "host swap in use")
+        self.swap.set(
+            format_bytes(swap),
+            "host swap in use" if isinstance(swap, int) else "not reported by this host",
+        )
         used = resources.get("data_directory_bytes")
         limit_mb = limits.get("max_data_directory_mb")
         share = (

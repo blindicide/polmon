@@ -107,5 +107,6 @@ On Windows the backend reports its RSS itself: the PID a launcher sees is PyInst
 bootloader (about 8 MiB), whose Python child does the work and exits with it (it watches the
 launcher and shuts down gracefully if the launcher is killed). L0 endpoint allocations remain
 governed by the admission and per-endpoint measurements above; the Windows local backend never
-creates namespaces. The Windows backend currently reports no memory-headroom or swap figures
-(procfs-only probes); admission's memory reserve therefore cannot refuse on Windows.
+creates namespaces. v0.3.0's Windows backend reported no memory figures (procfs-only probes), so
+its admission memory reserve could not refuse; from v0.3.1 it reports available physical memory
+and enforces the reserve like Linux (swap remains unreported on Windows).

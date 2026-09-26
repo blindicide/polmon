@@ -1,5 +1,8 @@
 import json
 import logging
+import sys
+
+import pytest
 
 from polmon.core.diagnostics import collect_diagnostics, main, resource_snapshot
 from polmon.core.logging import JsonFormatter
@@ -31,6 +34,19 @@ def test_resource_snapshot_has_nonzero_process_metrics() -> None:
     assert snapshot.process_cpu_percent is None or snapshot.process_cpu_percent >= 0
     assert snapshot.active_endpoints == 3
     assert snapshot.active_namespaces == 1
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32" and not sys.platform.startswith("linux"),
+    reason="NOT RUN — environment unavailable: host memory probes exist for Linux and Windows",
+)
+def test_host_memory_and_process_cpu_are_reported() -> None:
+    # Windows used to report neither, which silently disabled the admission memory reserve.
+    snapshot = resource_snapshot()
+    assert snapshot.available_memory_bytes is not None and snapshot.available_memory_bytes > 0
+    assert snapshot.process_cpu_percent is not None and snapshot.process_cpu_percent >= 0
+    if sys.platform == "win32":
+        assert snapshot.swap_used_bytes is None  # the page file is not swap; never guessed
 
 
 def test_diagnostics_json_cli(capsys) -> None:

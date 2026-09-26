@@ -226,3 +226,5 @@ def test_resource_tiles_warn_when_headroom_or_storage_runs_low(qtbot) -> None:
     assert theme.hex_color("warning") in tiles.headroom.value.styleSheet()  # 4 MiB above reserve
     assert theme.hex_color("danger") in tiles.data.value.styleSheet()  # 96 % of the limit
     assert "96% used" in tiles.data.secondary.text()
+    # No swap figure in the snapshot (a Windows backend): say so instead of implying zero use.
+    assert tiles.swap.secondary.text() == "not reported by this host"

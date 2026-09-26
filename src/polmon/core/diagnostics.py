@@ -21,7 +21,7 @@ from polmon.version import __version__
 
 @dataclass(frozen=True, slots=True)
 class ResourceSnapshot:
-    """Small resource sample using the standard library and Linux procfs."""
+    """Small resource sample: Linux procfs, or the Win32 API through ctypes on Windows."""
 
     process_rss_bytes: int
     process_cpu_seconds: float
@@ -33,7 +33,37 @@ class ResourceSnapshot:
     topology_deployment_seconds: float | None = None
 
 
+def _windows_available_memory() -> int | None:
+    """Physical memory available to new allocations (``GlobalMemoryStatusEx``)."""
+    from ctypes import wintypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = [
+            ("length", wintypes.DWORD),
+            ("memory_load", wintypes.DWORD),
+            ("total_phys", ctypes.c_uint64),
+            ("avail_phys", ctypes.c_uint64),
+            ("total_page_file", ctypes.c_uint64),
+            ("avail_page_file", ctypes.c_uint64),
+            ("total_virtual", ctypes.c_uint64),
+            ("avail_virtual", ctypes.c_uint64),
+            ("avail_extended_virtual", ctypes.c_uint64),
+        ]
+
+    status = MemoryStatusEx()
+    status.length = ctypes.sizeof(status)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(MemoryStatusEx)]
+    kernel32.GlobalMemoryStatusEx.restype = wintypes.BOOL
+    return int(status.avail_phys) if kernel32.GlobalMemoryStatusEx(ctypes.byref(status)) else None
+
+
 def _proc_memory() -> tuple[int | None, int | None]:
+    if sys.platform == "win32":
+        # Windows has no swap partition to report (the page file backs committed memory, which
+        # is not the same figure), so only availability is given; admission then enforces its
+        # memory reserve on Windows too.
+        return _windows_available_memory(), None
     path = Path("/proc/meminfo")
     if not path.exists():
         return None, None
@@ -51,8 +81,35 @@ def _proc_memory() -> tuple[int | None, int | None]:
     return available, swap_used
 
 
+def _windows_process_cpu_percent() -> float | None:
+    """Average CPU utilization over this process lifetime (``GetProcessTimes``)."""
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE, *[ctypes.POINTER(wintypes.FILETIME)] * 4]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.GetSystemTimeAsFileTime.argtypes = [ctypes.POINTER(wintypes.FILETIME)]
+    times = [wintypes.FILETIME() for _ in range(4)]
+    if not kernel32.GetProcessTimes(
+        kernel32.GetCurrentProcess(), *[ctypes.byref(item) for item in times]
+    ):
+        return None
+    now = wintypes.FILETIME()
+    kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
+
+    def ticks(value: wintypes.FILETIME) -> int:  # 100 ns units
+        return (value.dwHighDateTime << 32) | value.dwLowDateTime
+
+    creation, _exit, kernel, user = times
+    elapsed = ticks(now) - ticks(creation)
+    return round((ticks(kernel) + ticks(user)) / elapsed * 100, 3) if elapsed > 0 else 0.0
+
+
 def _process_cpu_percent() -> float | None:
-    """Calculate average CPU utilization over this process lifetime on Linux."""
+    """Calculate average CPU utilization over this process lifetime (Linux procfs, Windows)."""
+    if sys.platform == "win32":
+        return _windows_process_cpu_percent()
     try:
         fields = Path("/proc/self/stat").read_text(encoding="utf-8").split()
         uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])

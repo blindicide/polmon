@@ -4,6 +4,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows backends reported no host memory, which silently disabled the admission memory
+  reserve on the local backend. They now report available physical memory
+  (`GlobalMemoryStatusEx`) and lifetime CPU utilisation (`GetProcessTimes`); swap stays
+  unreported on Windows (the page file is not swap) and the dashboard says "not reported by this
+  host" instead of implying none is used.
+
 ## [0.3.0] - 2026-09-26
 
 Phase III: self-contained backend artifacts and client-owned local execution.
