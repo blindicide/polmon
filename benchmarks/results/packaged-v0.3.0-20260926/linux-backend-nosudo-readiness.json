@@ -1,0 +1,34 @@
+{
+  "checks": {
+    "passwordless_sudo_ip": {
+      "detail": "sudo or ip missing",
+      "ok": false
+    },
+    "ping_unprivileged": {
+      "detail": "getcap unavailable; not verified",
+      "ok": true
+    },
+    "tool_ip": {
+      "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/ip",
+      "ok": true
+    },
+    "tool_ping": {
+      "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/ping",
+      "ok": true
+    },
+    "tool_setpriv": {
+      "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/setpriv",
+      "ok": true
+    },
+    "tool_sudo": {
+      "detail": "not installed",
+      "ok": false
+    },
+    "tun_device": {
+      "detail": "/dev/net/tun (hybrid TAP boundary)",
+      "ok": true
+    }
+  },
+  "hybrid_ready": false,
+  "l1_ready": false
+}

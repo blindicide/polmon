@@ -1,0 +1,3 @@
+PASS uvicorn application graph
+PASS L0 deploy -> scenario -> telemetry -> report -> reset
+polmon 0.3.0 backend self-test: PASS

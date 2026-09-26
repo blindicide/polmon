@@ -126,6 +126,10 @@ jobs:
       run:
         shell: bash
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
       - name: Download the published release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -177,8 +181,13 @@ jobs:
             test -f "$portable_backend"
             "$portable_backend" --self-test | tee portable-backend-selftest.txt
             grep -q "backend self-test: PASS" portable-backend-selftest.txt
-            pwsh -NoProfile -Command \
-              'if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { exit 1 }'
+            "./polmon-backend-${version}-windows-x64.exe" --self-test | tee backend-selftest.txt
+            grep -q "backend self-test: PASS" backend-selftest.txt
+            "$client" --local-backend-gui-probe gui-probe.json | tee gui-probe.txt
+            grep -q "local-backend GUI probe: PASS" gui-probe.txt
+            tasks="$(tasklist //FI "IMAGENAME eq polmon-backend.exe" //NH | tr -d '\r')"
+            echo "tasklist after the published-EXE workflows: $tasks"
+            if grep -q "polmon-backend.exe" <<< "$tasks"; then exit 1; fi
           else
             backend_tar="polmon-backend-${version}-linux-x64.tar.gz"
             tar -xzf "$backend_tar"
@@ -186,6 +195,8 @@ jobs:
             env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --self-test \
               | tee published-backend-selftest.txt
             grep -q "backend self-test: PASS" published-backend-selftest.txt
+            "$GITHUB_WORKSPACE/scripts/packaged-backend-e2e.sh" "$backend" published-backend
+            jq -e '.experiment_status == "succeeded"' published-backend-e2e.json
           fi
           echo "Published ${RELEASE_TAG} client verified on ${RUNNER_OS} (platform ${platform})" \
             >> "$GITHUB_STEP_SUMMARY"

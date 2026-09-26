@@ -1,0 +1,43 @@
+{
+  "backend_killed": {
+    "backend_pid": 3908,
+    "exit_code": 1,
+    "ui_detail": "The owned backend exited unexpectedly with code 1.",
+    "ui_title": "Local backend stopped"
+  },
+  "backend_refusal": {
+    "code": "configuration_error",
+    "details": {
+      "fidelity": "l0_only",
+      "requires": "linux_network_namespaces"
+    },
+    "http_status": 422,
+    "message": "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with network namespace privileges."
+  },
+  "connected": {
+    "backend_pid": 4476,
+    "backend_rss_bytes": 63746048,
+    "l0_only": true,
+    "state_label": "Local backend \u2014 L0 only",
+    "status_bar": "Local backend \u2014 L0 only \u00b7 http://127.0.0.1:50042 \u00b7 backend 0.3.0"
+  },
+  "disconnect": {
+    "backend_pid": 4476,
+    "exit_code": 1
+  },
+  "label": "Local backend \u2014 L0 only",
+  "screenshot": "windows-local-backend-refusal.png",
+  "seconds_to_connected": [
+    2.042,
+    1.69,
+    1.696
+  ],
+  "ui_refusal": {
+    "detail": "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with network namespace privileges.",
+    "title": "Local backend \u2014 L0 only"
+  },
+  "window_closed": {
+    "backend_pid": 6104,
+    "exit_code": 1
+  }
+}

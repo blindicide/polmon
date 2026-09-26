@@ -1,0 +1,25 @@
+{
+  "backend": "synthetic",
+  "backend_killed": {
+    "exit_code": 1,
+    "pid": 1228,
+    "url": "http://127.0.0.1:50035"
+  },
+  "backend_pid": 7320,
+  "backend_rss_bytes": 64606208,
+  "experiment_status": "succeeded",
+  "l1_refusal": "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with network namespace privileges.",
+  "label": "Local backend \u2014 L0 only",
+  "launcher_rss_bytes": 8220672,
+  "log_path": "C:\\Users\\runneradmin\\AppData\\Local\\polmon\\sessions\\20260926T231727Z-5368-2a6866\\polmon-backend.log",
+  "markdown_bytes": 4529,
+  "normal_stop_exit_code": 1,
+  "report_status": "succeeded",
+  "reset": {
+    "deployments_destroyed": 1,
+    "state": "reset"
+  },
+  "telemetry_events": 5
+}
+local-backend self-test: PASS
+

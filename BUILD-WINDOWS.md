@@ -14,8 +14,10 @@ starts Qt, not merely that it exits 0:
 | `--self-test` | offscreen platform; lists the bundled `qwindows` and `qoffscreen` platform plugins; builds, renders and destroys the main window; `self-test: PASS` |
 | `--smoke-start 3` | shows the real window on the runner desktop with platform `windows`, reports it visible and exposed |
 | backend `--self-test` | loads uvicorn/FastAPI under PyInstaller and completes deploy → scenario → telemetry → report → reset |
+| standalone backend | `polmon-backend.exe` started on its own (no client) serves a real L0 workflow over HTTP (`scripts/packaged-backend-smoke.sh` via Git Bash: deploy → scenario → telemetry → JSON/Markdown report → reset) and answers an L1 deploy with HTTP 422; then only its one-file launcher PID is killed and its Python child must log `launcher_exit` and `shutdown_cleanup` and leave by itself |
 | client `--local-backend-self-test` | starts the embedded backend through the client manager, completes the real L0 HTTP workflow, verifies exact L1 refusal and reaps it |
-| cleanup | process queries find no `polmon-backend`; a deliberate `os._exit` client crash proves the Windows Job Object kills its child |
+| client `--local-backend-gui-probe` | drives the real main window off screen: Local preset connect, L1 refused by the backend (422) and in the UI (exact banner text, screenshot), then disconnect, backend killed and window closed |
+| cleanup | after every exit path (normal stop, disconnect, backend killed, client killed with `os._exit`, window closed; one-file and portable) `tasklist /FI "IMAGENAME eq polmon-backend.exe"` must report no task; each result is kept in `windows-cleanup-proof.txt` |
 | SHA-256 | written next to the EXE (`.exe.sha256`) |
 | Start-up and memory | `scripts/measure-client.py` (3 launches, 10 s idle) uploaded as `windows-client-measurements` |
 

@@ -1,0 +1,103 @@
+{
+  "health": {
+    "name": "polmon",
+    "version": "0.3.0",
+    "status": "ok",
+    "capabilities": {
+      "fidelity": "linux_lab",
+      "l0": true,
+      "l1": true,
+      "l2": false,
+      "hybrid_tap": true
+    }
+  },
+  "deployment": {
+    "topology_id": "l0-office",
+    "state": "running",
+    "backend": "synthetic",
+    "resources": [
+      "synthetic:l0-office:badge-reader",
+      "synthetic:l0-office:nas-1",
+      "synthetic:l0-office:printer-1",
+      "synthetic:l0-office:sensor-1",
+      "synthetic:l0-office:ws-1",
+      "synthetic:l0-office:ws-2",
+      "synthetic:l0-office:ws-3",
+      "synthetic:l0-office:ws-4"
+    ],
+    "deployment_seconds": 0.00018942399998422843,
+    "details": {
+      "running": true,
+      "stats": {
+        "endpoint_count": 8,
+        "network_count": 1,
+        "scheduled_event_count": 0,
+        "queued_packet_count": 0,
+        "estimated_state_bytes": 8018
+      }
+    }
+  },
+  "experiment_status": "succeeded",
+  "telemetry_events": 11,
+  "report_status": "succeeded",
+  "reset": {
+    "state": "reset",
+    "deployments_destroyed": 1
+  },
+  "backend_rss_bytes": 59518976,
+  "capabilities": {
+    "fidelity": "linux_lab",
+    "l0": true,
+    "l1": true,
+    "l2": false,
+    "hybrid_tap": true
+  },
+  "readiness": {
+    "checks": {
+      "passwordless_sudo_ip": {
+        "detail": "sudo or ip missing",
+        "ok": false
+      },
+      "ping_unprivileged": {
+        "detail": "getcap unavailable; not verified",
+        "ok": true
+      },
+      "tool_ip": {
+        "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/ip",
+        "ok": true
+      },
+      "tool_ping": {
+        "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/ping",
+        "ok": true
+      },
+      "tool_setpriv": {
+        "detail": "/tmp/tmp.vrXpT0TAdI/nosudo-bin/setpriv",
+        "ok": true
+      },
+      "tool_sudo": {
+        "detail": "not installed",
+        "ok": false
+      },
+      "tun_device": {
+        "detail": "/dev/net/tun (hybrid TAP boundary)",
+        "ok": true
+      }
+    },
+    "hybrid_ready": false,
+    "l1_ready": false
+  },
+  "l1_outcome": "NOT RUN - environment unavailable",
+  "l1_result": {
+    "error": {
+      "code": "configuration_error",
+      "message": "L1/hybrid deployment requires a Linux host with iproute2, unprivileged ping, and passwordless sudo restricted to network namespace operations.",
+      "details": {
+        "requires": "linux_network_namespaces",
+        "unavailable_checks": [
+          "tool_sudo",
+          "passwordless_sudo_ip"
+        ]
+      }
+    }
+  }
+}

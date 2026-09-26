@@ -42,6 +42,12 @@ The local backend never silently lowers fidelity. Deploying a topology containin
 the same actionable refusal in the UI and API: “Local backend supports L0 synthetic nodes only;
 L1/L2 requires a polmon backend on a Linux host with network namespace privileges.”
 
+![The packaged Windows client refusing an L1 topology on its local backend](ui/local-backend-refusal-windows.png)
+
+*Rendered by the packaged `polmon-<version>-windows-x64.exe --local-backend-gui-probe` on a hosted
+Windows runner (Build Windows run 36278743140); the probe also records the backend's HTTP 422
+answer and that no `polmon-backend.exe` remains after disconnect, backend death or window close.*
+
 The LED and the status bar show the connection: *connected*, *unauthorized* (token missing or
 wrong — the token field stays editable), or *lost* (the backend stopped answering; the client
 retries every 5 s and disables actions until it is back). An older backend connects with an

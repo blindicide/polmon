@@ -37,6 +37,22 @@ Phase III: self-contained backend artifacts and client-owned local execution.
   one-file client embeds the same independently built backend. Release notes and artifacts state
   fidelity explicitly. Unsigned/SmartScreen reality is documented.
 
+### Fixed
+
+- Packaged Windows backend `--self-test` failed with `WinError 32`: the control plane never
+  closed its SQLite telemetry handle, so the temporary directory could not be removed. The
+  handle is now released (`ControlPlane.close()`), and importing `polmon.backend` no longer
+  creates `./var` (the default ASGI app is built on first use).
+- Killing the one-file `polmon-backend.exe` launcher (e.g. `Stop-Process`) left its Python child
+  serving. The child now watches its launcher and shuts down gracefully when it disappears; the
+  client also reaps a dead local backend immediately.
+- Sidebar entries overlapped on a normal launch (rows laid out 14 px apart, drawn 30 px tall)
+  because rows were added before the themed list was polished.
+- Build artifacts mixed `dist/` files with root-level evidence, so the uploaded artifact kept a
+  `dist/` prefix and the verify/release jobs could not find the files; evidence now has its own
+  artifacts. Packaged backend RSS is read from the backend itself (the launched Windows PID is
+  the one-file bootloader).
+
 ## [0.2.3] - 2026-09-26
 
 Capture download, workflow shortcuts and the operator guide.

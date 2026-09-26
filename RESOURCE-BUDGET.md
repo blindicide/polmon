@@ -82,14 +82,30 @@ follows a running experiment, and never overlaps polls.
 
 ## Self-contained backend (v0.3.0)
 
-The backend is frozen separately and explicitly excludes PySide6. Preliminary development-host
-measurement of the Linux one-folder build (same pinned PyInstaller graph as CI): 32,640,077 bytes
-extracted, 15,676,797-byte gzip tarball, and 59,764,736 bytes RSS after reaching HTTP health in an
-`env -i` process. Starting the Local preset therefore adds one roughly 57 MiB backend process to
-the existing client working set; L0 endpoint allocations remain governed by the admission and
-per-endpoint measurements above. The client itself does not import this graph.
+The backend is frozen separately and explicitly excludes PySide6 (the builds fail if any Qt file
+is found in it). Measured on hosted runners at commit 07f07d7 — Build Windows run 36278743140,
+Build Linux run 36278744673; raw files in `benchmarks/results/packaged-v0.3.0-20260926/`:
 
-Authoritative Windows/Linux hosted-runner bundle sizes, backend RSS, updated client startup, and
-the combined Local-backend cost are recorded by the v0.3.0 build workflows and will be copied into
-the milestone report after those runs. These local numbers are retained as measured preliminary
-evidence, not substituted for hosted measurements.
+| Item | Windows (windows-latest) | Linux (ubuntu-22.04) |
+|---|---:|---:|
+| Backend artifact | `polmon-backend-0.3.0-windows-x64.exe` 16,433,265 B (one-file) | `polmon-backend-0.3.0-linux-x64.tar.gz` 15,740,585 B; 31,957,796 B extracted (one-folder) |
+| Start to HTTP health, standalone | 2.03 s (one-file unpacks on every start) | 0.73 s (`env -i`) |
+| Backend RSS after a full L0 workflow | 62.2 MiB (65,183,744 B, backend's own report) + 7.8 MiB one-file launcher | 56.7 MiB (59,437,056 B) |
+| Client artifact | one-file EXE 51,027,301 B; portable zip 51,909,456 B | client tarball 49,768,161 B |
+| Client launch to window (3 runs) | EXE 2.55 s median (2.26–2.84); portable 0.98 s median (0.93–2.32) | 0.58 s median (0.579–0.589) |
+| Client idle RSS after 10 s | 92.9 MiB (EXE), 92.8 MiB (portable) | 93.2 MiB |
+
+**Cost of the Local-backend flow** (Windows, `--local-backend-gui-probe`, three connects each):
+pressing *Connect* to a connected, polled window takes 1.69–2.04 s (one-file) and 1.70–2.00 s
+(portable), almost all of it the backend's own start. The flow adds one backend process of about
+61 MiB (60.8 MiB reported at connect, 61.4–61.6 MiB after the L0 workflow) plus the 7.8 MiB
+one-file launcher: roughly 69 MiB on top of the client's 93 MiB. Embedding the backend grows the
+one-file client from 34.8 MB (v0.2.3) to 51.0 MB, and each one-file start (client or backend)
+unpacks its runtime to a temporary directory; the portable build avoids both costs at start-up.
+
+On Windows the backend reports its RSS itself: the PID a launcher sees is PyInstaller's one-file
+bootloader (about 8 MiB), whose Python child does the work and exits with it (it watches the
+launcher and shuts down gracefully if the launcher is killed). L0 endpoint allocations remain
+governed by the admission and per-endpoint measurements above; the Windows local backend never
+creates namespaces. The Windows backend currently reports no memory-headroom or swap figures
+(procfs-only probes); admission's memory reserve therefore cannot refuse on Windows.

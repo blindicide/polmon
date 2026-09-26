@@ -1,0 +1,34 @@
+{
+  "checks": {
+    "passwordless_sudo_ip": {
+      "detail": "sudo or ip missing",
+      "ok": false
+    },
+    "ping_unprivileged": {
+      "detail": "getcap unavailable; not verified",
+      "ok": true
+    },
+    "tool_ip": {
+      "detail": "not installed",
+      "ok": false
+    },
+    "tool_ping": {
+      "detail": "C:\\Windows\\system32\\ping.EXE",
+      "ok": true
+    },
+    "tool_setpriv": {
+      "detail": "not installed",
+      "ok": false
+    },
+    "tool_sudo": {
+      "detail": "not installed",
+      "ok": false
+    },
+    "tun_device": {
+      "detail": "/dev/net/tun (hybrid TAP boundary)",
+      "ok": false
+    }
+  },
+  "hybrid_ready": false,
+  "l1_ready": false
+}

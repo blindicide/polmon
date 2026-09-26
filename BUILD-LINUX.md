@@ -23,10 +23,14 @@ fresh virtual environment, checks every backend entry point's version, starts th
 
 The backend tarball is separately extracted and run under `env -i` with only system utility paths:
 `--version`, `--self-test` (uvicorn graph plus L0 deploy/scenario/telemetry/report/reset), then a
-real listening-server workflow driven over HTTP. `--lab-readiness` records whether the runner can
-provide L1; the job either deploys/destroys the two-node L1 topology or records the exact clean
-HTTP 422 refusal as `NOT RUN - environment unavailable`. The build rejects any PySide6/Qt file in
-the backend bundle and uploads its RSS, extracted size, readiness JSON, E2E record and log.
+real listening-server workflow driven over HTTP (`scripts/packaged-backend-e2e.sh`). It runs twice:
+with `/usr/bin:/bin` (the hosted runner has passwordless sudo, so `--lab-readiness` reports L1
+available and the two-node L1 topology is really deployed and destroyed), and as a negative
+control with a `PATH` holding only `ip`, `ping` and `setpriv`, where readiness reports L1
+unavailable and the deploy must be refused cleanly with HTTP 422 naming the missing checks
+(recorded as `NOT RUN - environment unavailable`). The build rejects any PySide6/Qt file in the
+backend bundle and uploads its RSS, extracted size, readiness JSON, E2E records and logs as
+`linux-backend-evidence`. The fresh-runner job repeats both runs on the downloaded tarball.
 
 ## Running the bundle
 

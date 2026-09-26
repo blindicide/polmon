@@ -1,0 +1,7 @@
+[2026-09-26T23:16:22.3750066Z] after standalone backend launcher killed (pid 3612) (waited 0.43 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:17:32.2570134Z] after one-file workflow: normal stop and backend killed (waited 0.06 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:17:44.1571204Z] after one-file GUI: disconnect, backend killed, window closed (waited 0.05 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:17:47.5493434Z] after one-file client killed (os._exit, backend pid 5308) (waited 0.06 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:18:49.3644550Z] after portable workflow: normal stop and backend killed (waited 0.05 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:18:56.0569633Z] after portable GUI: disconnect, backend killed, window closed (waited 0.06 s): INFO: No tasks are running which match the specified criteria.
+[2026-09-26T23:18:58.5343772Z] after portable client killed (os._exit, backend pid 2976) (waited 0.06 s): INFO: No tasks are running which match the specified criteria.

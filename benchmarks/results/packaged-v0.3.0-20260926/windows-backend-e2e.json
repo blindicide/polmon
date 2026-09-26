@@ -1,0 +1,100 @@
+{
+  "health": {
+    "name": "polmon",
+    "version": "0.3.0",
+    "status": "ok",
+    "capabilities": {
+      "fidelity": "l0_only",
+      "l0": true,
+      "l1": false,
+      "l2": false,
+      "hybrid_tap": false
+    }
+  },
+  "deployment": {
+    "topology_id": "l0-office",
+    "state": "running",
+    "backend": "synthetic",
+    "resources": [
+      "synthetic:l0-office:badge-reader",
+      "synthetic:l0-office:nas-1",
+      "synthetic:l0-office:printer-1",
+      "synthetic:l0-office:sensor-1",
+      "synthetic:l0-office:ws-1",
+      "synthetic:l0-office:ws-2",
+      "synthetic:l0-office:ws-3",
+      "synthetic:l0-office:ws-4"
+    ],
+    "deployment_seconds": 0.00016529999999193024,
+    "details": {
+      "running": true,
+      "stats": {
+        "endpoint_count": 8,
+        "network_count": 1,
+        "scheduled_event_count": 0,
+        "queued_packet_count": 0,
+        "estimated_state_bytes": 8018
+      }
+    }
+  },
+  "experiment_status": "succeeded",
+  "telemetry_events": 11,
+  "report_status": "succeeded",
+  "reset": {
+    "state": "reset",
+    "deployments_destroyed": 1
+  },
+  "backend_rss_bytes": 65183744,
+  "capabilities": {
+    "fidelity": "l0_only",
+    "l0": true,
+    "l1": false,
+    "l2": false,
+    "hybrid_tap": false
+  },
+  "readiness": {
+    "checks": {
+      "passwordless_sudo_ip": {
+        "detail": "sudo or ip missing",
+        "ok": false
+      },
+      "ping_unprivileged": {
+        "detail": "getcap unavailable; not verified",
+        "ok": true
+      },
+      "tool_ip": {
+        "detail": "not installed",
+        "ok": false
+      },
+      "tool_ping": {
+        "detail": "C:\\Windows\\system32\\ping.EXE",
+        "ok": true
+      },
+      "tool_setpriv": {
+        "detail": "not installed",
+        "ok": false
+      },
+      "tool_sudo": {
+        "detail": "not installed",
+        "ok": false
+      },
+      "tun_device": {
+        "detail": "/dev/net/tun (hybrid TAP boundary)",
+        "ok": false
+      }
+    },
+    "hybrid_ready": false,
+    "l1_ready": false
+  },
+  "l1_outcome": "NOT RUN - environment unavailable",
+  "l1_result": {
+    "error": {
+      "code": "configuration_error",
+      "message": "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with network namespace privileges.",
+      "details": {
+        "fidelity": "l0_only",
+        "requires": "linux_network_namespaces"
+      }
+    }
+  }
+}

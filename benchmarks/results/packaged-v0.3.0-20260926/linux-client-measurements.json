@@ -1,0 +1,38 @@
+{
+  "command": [
+    "/tmp/tmp.Um8gnbHN5s/polmon-0.3.0-linux-x64/polmon-client"
+  ],
+  "runs": [
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.589,
+      "idle_rss_mib": 93.2,
+      "platform": "xcb",
+      "summary": "polmon 0.3.0 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.321s idle-rss-after-10s=93.2MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.58,
+      "idle_rss_mib": 93.2,
+      "platform": "xcb",
+      "summary": "polmon 0.3.0 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.321s idle-rss-after-10s=93.2MiB"
+    },
+    {
+      "exit_code": 0,
+      "cold_start_seconds": 0.579,
+      "idle_rss_mib": 93.3,
+      "platform": "xcb",
+      "summary": "polmon 0.3.0 smoke-start: PASS platform=xcb visible=True exposed=True in-process-startup=0.317s idle-rss-after-10s=93.3MiB"
+    }
+  ],
+  "cold_start_seconds": {
+    "median": 0.58,
+    "min": 0.579,
+    "max": 0.589
+  },
+  "idle_rss_mib": {
+    "median": 93.2,
+    "min": 93.2,
+    "max": 93.3
+  }
+}
