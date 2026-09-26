@@ -220,6 +220,7 @@ class DeploymentPage(Page):
                 token.raise_if_cancelled()
             report(ProgressUpdate(steps - 1, steps, f"deploying {identifier}", eta=expected))
             result = client.deploy(identifier)
+            result.setdefault("topology_id", identifier)
             if token.cancelled:  # the UI has moved on: honour "cancel and roll back"
                 client.destroy(identifier)
                 return {"rolled_back": identifier}
@@ -234,6 +235,8 @@ class DeploymentPage(Page):
         )
 
     def _deployed(self, result: object) -> None:
+        if isinstance(result, dict) and result.get("topology_id"):
+            self.session.known_topologies.add(str(result["topology_id"]))
         if isinstance(result, dict):
             seconds = format_seconds(result.get("deployment_seconds"))
             self.session.log(

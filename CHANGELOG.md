@@ -4,6 +4,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- The client connects to pre-v0.2.0 backends instead of refusing: routes they lack (topology and
+  experiment listing, scenario validation, Markdown report, benchmark jobs) degrade to a single
+  "Older backend" warning naming the missing features; deployments the client loads stay
+  tracked and the Reports page works without the Markdown route.
+
 ## [0.2.1] - 2026-09-26
 
 Improvement waves after v0.2.0: faster Windows start, smaller Linux bundle, client conveniences.

@@ -44,6 +44,10 @@ class Session(QObject):
         self.experiments: list[dict[str, object]] = []
         self.active_experiment: str | None = None
         self.active_benchmark: str | None = None
+        # Topologies this client loaded; polled directly when the backend cannot list them.
+        self.known_topologies: set[str] = set()
+        # Features the connected backend does not provide (older backend version).
+        self.unsupported: set[str] = set()
 
     # -- connection ---------------------------------------------------------------------------
 
@@ -64,6 +68,7 @@ class Session(QObject):
         elif state is not ConnectionState.LOST:
             self.lost_since = None
         if state is ConnectionState.DISCONNECTED:
+            self.unsupported = set()
             self.backend_version = None
             self.latency = None
             self.resources = None

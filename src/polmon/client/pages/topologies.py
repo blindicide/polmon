@@ -286,6 +286,7 @@ class TopologiesPage(Page):
         )
 
     def _loaded(self, source: str, result: dict[str, object]) -> None:
+        self.session.known_topologies.add(str(result.get("topology_id")))
         self._show_result(source, result)
         self.session.log(f"Topology {result.get('topology_id')} loaded on the backend")
         self.context.navigate("refresh")

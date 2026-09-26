@@ -413,6 +413,7 @@ class MainWindow(QMainWindow):
         if self._poll_handle is not None:
             return
         client = self.session.client()
+        known = sorted(self.session.known_topologies)
         include_experiments = initial or self._poll_count % 3 == 0
         self._poll_count += 1
 
@@ -426,7 +427,21 @@ class MainWindow(QMainWindow):
                     code="malformed_response",
                 )
             resources = client.resources()
-            topologies = client.topologies()
+            missing: set[str] = set()
+
+            def optional(feature: str, call):  # noqa: ANN001, ANN202
+                """Older backends lack the v0.2.0 listing routes: degrade, never fail."""
+                try:
+                    return call()
+                except ApiClientError as error:
+                    if error.status in {404, 405}:
+                        missing.add(feature)
+                        return None
+                    raise
+
+            topologies = optional("topology listing", client.topologies)
+            if topologies is None:
+                topologies = [{"topology_id": item, "deployed": True} for item in known]
             deployments: dict[str, dict[str, object]] = {}
             for item in topologies:
                 if item.get("deployed"):
@@ -436,8 +451,14 @@ class MainWindow(QMainWindow):
                     except ApiClientError as error:
                         if error.status is None:
                             raise
-                        # destroyed between the two calls: the next poll settles it
-            experiments = client.experiments() if include_experiments else None
+                        # not (or no longer) deployed: the next poll settles it
+            if "topology listing" in missing:
+                topologies = [
+                    {"topology_id": item, "deployed": item in deployments} for item in known
+                ]
+            experiments = (
+                optional("experiment listing", client.experiments) if include_experiments else None
+            )
             return {
                 "health": health,
                 "latency": latency,
@@ -445,6 +466,7 @@ class MainWindow(QMainWindow):
                 "topologies": topologies,
                 "deployments": deployments,
                 "experiments": experiments,
+                "missing": missing,
             }
 
         self._poll_handle = self.runner.submit(
@@ -478,6 +500,21 @@ class MainWindow(QMainWindow):
                         "warning",
                     )
             self.pages["dashboard"].banner.clear()
+        missing = result.get("missing") or set()
+        assert isinstance(missing, set)
+        if missing - session.unsupported:
+            session.unsupported |= missing
+            detail = (
+                f"Backend {session.backend_version} does not provide: "
+                f"{', '.join(sorted(session.unsupported))}. Deployments this client loads are "
+                "still tracked; scenario inspection, live experiment progress and benchmark jobs "
+                "need a backend of the same version as the client."
+            )
+            session.log(detail, "warning")
+            self.pages["dashboard"].banner.show_problem(
+                Problem("Older backend", detail, f"Upgrade the backend to polmon {__version__}."),
+                "warning",
+            )
         session.set_resources(result["resources"])  # type: ignore[arg-type]
         session.set_topologies(result["topologies"])  # type: ignore[arg-type]
         session.set_deployments(result["deployments"])  # type: ignore[arg-type]

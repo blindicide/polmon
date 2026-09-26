@@ -6,6 +6,7 @@ selected so the suite still runs headless.
 """
 
 import os
+import re
 import socket
 import sys
 import threading
@@ -59,10 +60,53 @@ def ping_scenario(actions: int = 1, timeout: float = 10, cleanup: str = "never")
     )
 
 
+# Routes added in v0.2.0; answering them with FastAPI's 404 emulates a v0.1.x backend.
+V020_ROUTES = (
+    ("GET", re.compile(r"^/v1/topologies(/[^/]+)?$")),
+    ("POST", re.compile(r"^/v1/scenarios/validate$")),
+    ("GET", re.compile(r"^/v1/experiments$")),
+    ("GET", re.compile(r"^/v1/experiments/[^/]+/report/markdown$")),
+    ("*", re.compile(r"^/v1/benchmarks(/.*)?$")),
+)
+
+
+def legacy(app):
+    """Wrap an ASGI app so that the v0.2.0 routes do not exist."""
+
+    async def wrapper(scope, receive, send):
+        if scope["type"] == "http" and any(
+            method in {"*", scope["method"]} and pattern.match(scope["path"])
+            for method, pattern in V020_ROUTES
+        ):
+            body = b'{"detail":"Not Found"}'
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+        await app(scope, receive, send)
+
+    return wrapper
+
+
 class LiveBackend:
     """A real FastAPI backend on a free loopback port, in a thread of this process."""
 
-    def __init__(self, data_directory: Path, *, token: str | None = TOKEN, **plane_options):
+    def __init__(
+        self,
+        data_directory: Path,
+        *,
+        token: str | None = TOKEN,
+        legacy_api: bool = False,
+        **plane_options,
+    ):
         import uvicorn
 
         from polmon.api.control import ControlPlane
@@ -72,9 +116,12 @@ class LiveBackend:
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.token = token
+        application = create_app(self.plane, api_token=token)
+        if legacy_api:
+            application = legacy(application)
         self.server = uvicorn.Server(
             uvicorn.Config(
-                create_app(self.plane, api_token=token),
+                application,
                 host="127.0.0.1",
                 port=self.port,
                 log_level="error",

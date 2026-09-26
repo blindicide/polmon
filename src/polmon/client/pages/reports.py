@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from polmon.client.api import ApiClientError
 from polmon.client.formatting import (
     duration_between,
     format_bytes,
@@ -155,10 +156,17 @@ class ReportsPage(Page):
         client = self.session.client()
 
         def work(token: CancelToken, report) -> dict[str, object]:  # noqa: ANN001
-            return {
-                "report": client.report(experiment_id),
-                "markdown": client.report_markdown(experiment_id),
-            }
+            document = client.report(experiment_id)
+            try:
+                markdown = client.report_markdown(experiment_id)
+            except ApiClientError as error:
+                if error.status not in {404, 405}:
+                    raise
+                markdown = (
+                    "*This backend does not serve the Markdown report (older version); the "
+                    "JSON report and the other tabs are complete.*"
+                )
+            return {"report": document, "markdown": markdown}
 
         self.title_label.setText(experiment_id)
         self.meta.setText("Loading report…")

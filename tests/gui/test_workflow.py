@@ -300,3 +300,25 @@ def test_last_page_is_restored(window, qtbot, tmp_path) -> None:
         assert second.current_page.key == "reports"
     finally:
         second.shutdown(wait_ms=2000)
+
+
+def test_older_backend_is_usable_with_a_clear_warning(
+    window, qtbot, backend_factory, tmp_path
+) -> None:
+    """A v0.1.x backend lacks the v0.2.0 routes: connect, deploy, destroy and warn, not fail."""
+    backend = backend_factory(legacy_api=True)
+    probe = backend.url
+    connect(qtbot, window, backend)
+    wait_connected(qtbot, window)
+    banner = window.pages["dashboard"].banner
+    qtbot.waitUntil(lambda: banner.isVisible(), timeout=10_000)
+    assert banner.problem.title == "Older backend"
+    assert "topology listing" in banner.problem.detail
+    open_and_validate_topology(qtbot, window, write(tmp_path, "t.yml", l0_topology()))
+    deploy_from_editor(qtbot, window)  # tracked through the topology the client loaded
+    deployment = window.pages["deployment"]
+    qtbot.waitUntil(lambda: deployment.table.rowCount() == 1, timeout=10_000)
+    deployment.destroy()
+    qtbot.waitUntil(lambda: not window.session.deployments, timeout=20_000)
+    assert window.session.state.value == "connected" and probe
+    assert "Traceback" not in log_text(window)
