@@ -67,8 +67,22 @@ jobs:
           pytest -m "not privileged and not performance and not gui" -p no:cacheprovider "${args[@]}"
           # --no-qt-log: see ci.yml (pytest capture + pytest-qt Qt-log capture abort on Windows).
           QT_QPA_PLATFORM=offscreen pytest -m gui -p no:cacheprovider --no-qt-log "${args[@]}"
+      - name: Build and verify the Qt-free backend executable
+        shell: pwsh
+        run: |
+          pyinstaller --clean --noconfirm packaging/windows/polmon-backend.spec
+          $version = python -c "from polmon.version import __version__; print(__version__)"
+          $backend = "dist/polmon-backend.exe"
+          if (-not (Test-Path $backend)) { throw "Missing executable: $backend" }
+          if ((& $backend --version) -ne "polmon $version") { throw "backend --version failed" }
+          $selftest = & $backend --self-test | Out-String
+          $selftest
+          if ($LASTEXITCODE -ne 0 -or -not $selftest.Contains("PASS uvicorn application graph") -or -not $selftest.Contains("L0 deploy -> scenario -> telemetry -> report -> reset")) { throw "backend self-test failed" }
+          $archive = pyi-archive_viewer -l $backend | Out-String
+          if ($archive -match "PySide6|shiboken6") { throw "Qt leaked into backend executable" }
+          Copy-Item $backend "dist/polmon-backend-$version-windows-x64.exe"
       - run: pyinstaller --clean --noconfirm packaging/windows/polmon.spec
-      - name: Verify the executable starts Qt
+      - name: Verify the executable starts Qt and drives its embedded backend
         shell: pwsh
         run: |
           $version = python -c "from polmon.version import __version__; print(__version__)"
@@ -88,6 +102,17 @@ jobs:
           $smoke
           if ($LASTEXITCODE -ne 0) { throw "--smoke-start failed: $LASTEXITCODE" }
           if (-not $smoke.Contains("smoke-start: PASS platform=windows")) { throw "native Qt platform did not start" }
+          $local = & $exe --local-backend-self-test | Out-String
+          $local | Tee-Object -FilePath windows-onefile-local-backend.txt
+          if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS") -or -not $local.Contains("L1/L2 requires a polmon backend on a Linux host")) { throw "embedded backend workflow failed" }
+          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after one-file workflow" }
+          $probe = Join-Path $env:RUNNER_TEMP "onefile-crash.json"
+          & $exe --local-backend-crash-test $probe
+          if ($LASTEXITCODE -ne 77) { throw "crash probe did not emulate client failure" }
+          $child = (Get-Content $probe | ConvertFrom-Json).pid
+          for ($i = 0; $i -lt 50 -and (Get-Process -Id $child -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
+          if (Get-Process -Id $child -ErrorAction SilentlyContinue) { throw "backend $child orphaned after client crash" }
+          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "tasklist found an orphan after crash" }
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash *polmon-$version-windows-x64.exe" | Out-File -Encoding ascii "$exe.sha256"
           "sha256: $hash"
@@ -97,11 +122,17 @@ jobs:
           pyinstaller --noconfirm packaging/windows/polmon-portable.spec
           $version = python -c "from polmon.version import __version__; print(__version__)"
           $name = "polmon-$version-windows-x64-portable"
+          Copy-Item dist/polmon-backend.exe "dist/$name/polmon-backend.exe"
           $zip = "dist/$name.zip"
           Compress-Archive -Path "dist/$name" -DestinationPath $zip
           $check = Join-Path $env:RUNNER_TEMP "portable-check"
           Expand-Archive -Path $zip -DestinationPath $check
           $exe = Join-Path $check "$name/polmon-client.exe"
+          $backend = Join-Path $check "$name/polmon-backend.exe"
+          if (-not (Test-Path $backend)) { throw "portable backend is not beside the client" }
+          if ((& $backend --version) -ne "polmon $version") { throw "portable backend failed" }
+          $backendSelf = & $backend --self-test | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $backendSelf.Contains("backend self-test: PASS")) { throw "portable backend self-test failed" }
           $out = & $exe --version
           if ($out -ne "polmon $version") { throw "--version printed '$out'" }
           $selftest = & $exe --self-test | Out-String
@@ -110,13 +141,17 @@ jobs:
           $smoke = & $exe --smoke-start 3 | Out-String
           $smoke
           if ($LASTEXITCODE -ne 0 -or -not $smoke.Contains("smoke-start: PASS platform=windows")) { throw "portable smoke start failed" }
+          $local = & $exe --local-backend-self-test | Out-String
+          $local | Tee-Object -FilePath windows-portable-local-backend.txt
+          if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "portable local workflow failed" }
+          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after portable workflow" }
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
           "$hash *$name.zip" | Out-File -Encoding ascii "$zip.sha256"
           "portable zip: $((Get-Item $zip).Length) bytes, sha256 $hash"
       - name: Measure cold start and idle memory of both packaged forms
         shell: bash
         run: |
-          exe="$(ls dist/polmon-*-windows-x64.exe)"
+          exe="$(ls dist/polmon-[0-9]*-windows-x64.exe)"
           portable="$(ls -d "$RUNNER_TEMP"/portable-check/polmon-*-portable)/polmon-client.exe"
           python scripts/measure-client.py --runs 3 --idle 10 -- "$exe" | tee windows-client-measurements.json
           python scripts/measure-client.py --runs 3 --idle 10 -- "$portable" \
@@ -129,6 +164,7 @@ jobs:
             dist/polmon-*-windows-x64.exe.sha256
             dist/polmon-*-windows-x64-portable.zip
             dist/polmon-*-windows-x64-portable.zip.sha256
+            windows-*-local-backend.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -148,7 +184,8 @@ jobs:
       - name: Verify checksum and smoke-test the downloaded executable on a fresh runner
         shell: pwsh
         run: |
-          $exe = Get-ChildItem artifact/polmon-*-windows-x64.exe | Select-Object -First 1
+          $exe = Get-ChildItem artifact/polmon-*-windows-x64.exe |
+            Where-Object Name -NotLike 'polmon-backend-*' | Select-Object -First 1
           $expected = (Get-Content "$($exe.FullName).sha256").Split(" ")[0]
           $actual = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLower()
           if ($expected -ne $actual) { throw "checksum mismatch: $expected != $actual" }
@@ -161,17 +198,25 @@ jobs:
           $smoke = & $exe.FullName --smoke-start 3 | Out-String
           $smoke
           if ($LASTEXITCODE -ne 0 -or -not $smoke.Contains("platform=windows")) { throw "smoke start failed" }
+          $local = & $exe.FullName --local-backend-self-test | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "published-form local workflow failed" }
+          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after downloaded one-file workflow" }
           $zip = Get-ChildItem artifact/polmon-*-windows-x64-portable.zip | Select-Object -First 1
           $zipExpected = (Get-Content "$($zip.FullName).sha256").Split(" ")[0]
           $zipActual = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLower()
           if ($zipExpected -ne $zipActual) { throw "portable checksum mismatch" }
           Expand-Archive -Path $zip.FullName -DestinationPath portable
           $portable = Get-ChildItem portable/*/polmon-client.exe | Select-Object -First 1
+          $portableBackend = Get-ChildItem portable/*/polmon-backend.exe | Select-Object -First 1
+          if (-not $portableBackend) { throw "portable archive lacks polmon-backend.exe" }
           $portableSelf = & $portable.FullName --self-test | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $portableSelf.Contains("self-test: PASS")) { throw "portable self-test failed" }
           $portableSmoke = & $portable.FullName --smoke-start 3 | Out-String
           $portableSmoke
           if ($LASTEXITCODE -ne 0 -or -not $portableSmoke.Contains("platform=windows")) { throw "portable smoke start failed" }
+          $portableLocal = & $portable.FullName --local-backend-self-test | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $portableLocal.Contains("local-backend self-test: PASS")) { throw "portable local workflow failed" }
+          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after downloaded portable workflow" }
           "## Windows artifacts verified on a fresh runner" >> $env:GITHUB_STEP_SUMMARY
           "| File | Size (bytes) | SHA-256 |" >> $env:GITHUB_STEP_SUMMARY
           "|---|---:|---|" >> $env:GITHUB_STEP_SUMMARY

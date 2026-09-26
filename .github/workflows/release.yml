@@ -71,10 +71,13 @@ jobs:
           version="${version%%+*}"
           assets=(
             "polmon-${version}-windows-x64.exe"
+            "polmon-backend-${version}-windows-x64.exe"
             "polmon-${version}-windows-x64-portable.zip"
             "polmon-${version}-linux-x64.tar.gz"
+            "polmon-backend-${version}-linux-x64.tar.gz"
             "polmon-${version}-py3-none-any.whl"
             "polmon-backend.service"
+            "polmon-backend-bundled.service"
           )
           for asset in "${assets[@]}"; do
             test -f "$asset" || { echo "missing $asset for ${RELEASE_TAG}"; ls -l; exit 1; }
@@ -93,15 +96,21 @@ jobs:
         run: |
           version="${RELEASE_TAG#v}"
           version="${version%%+*}"
-          notes=()
-          if [[ -n "$RELEASE_NOTES" ]]; then notes=(--notes "$RELEASE_NOTES"); fi
+          fidelity_notes="Windows client artifacts include an owned local backend: L0 synthetic fidelity only. L1/L2 is refused and requires a Linux backend host. The self-contained Linux backend needs no Python install and supports L0; L1/hybrid additionally require the documented Linux namespace privileges. Unsigned Windows executables can trigger SmartScreen."
+          if [[ -n "$RELEASE_NOTES" ]]; then
+            fidelity_notes="$(printf '%s\n\n%s' "$RELEASE_NOTES" "$fidelity_notes")"
+          fi
           gh release create "$RELEASE_TAG" \
             "dist/polmon-${version}-windows-x64.exe" \
+            "dist/polmon-backend-${version}-windows-x64.exe" \
             "dist/polmon-${version}-windows-x64-portable.zip" \
             "dist/polmon-${version}-linux-x64.tar.gz" \
+            "dist/polmon-backend-${version}-linux-x64.tar.gz" \
             "dist/polmon-${version}-py3-none-any.whl" \
-            dist/polmon-backend.service dist/SHA256SUMS.txt \
-            --generate-notes --verify-tag "${notes[@]}"
+            dist/polmon-backend.service dist/polmon-backend-bundled.service \
+            dist/SHA256SUMS.txt \
+            --generate-notes --verify-tag \
+            --notes "$fidelity_notes"
 
   verify-release:
     needs: release
@@ -162,6 +171,21 @@ jobs:
             grep -q "self-test: PASS" portable-selftest.txt
             "$portable" --smoke-start 3 | tee portable-smoke.txt
             grep -q "smoke-start: PASS platform=windows" portable-smoke.txt
+            "$client" --local-backend-self-test | tee local-backend.txt
+            grep -q "local-backend self-test: PASS" local-backend.txt
+            portable_backend="portable/polmon-${version}-windows-x64-portable/polmon-backend.exe"
+            test -f "$portable_backend"
+            "$portable_backend" --self-test | tee portable-backend-selftest.txt
+            grep -q "backend self-test: PASS" portable-backend-selftest.txt
+            pwsh -NoProfile -Command \
+              'if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { exit 1 }'
+          else
+            backend_tar="polmon-backend-${version}-linux-x64.tar.gz"
+            tar -xzf "$backend_tar"
+            backend="./polmon-backend-${version}-linux-x64/polmon-backend"
+            env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --self-test \
+              | tee published-backend-selftest.txt
+            grep -q "backend self-test: PASS" published-backend-selftest.txt
           fi
           echo "Published ${RELEASE_TAG} client verified on ${RUNNER_OS} (platform ${platform})" \
             >> "$GITHUB_STEP_SUMMARY"

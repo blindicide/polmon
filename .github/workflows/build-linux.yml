@@ -49,26 +49,33 @@ jobs:
       - name: Install Qt runtime libraries and Xvfb
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends xvfb $QT_LIBS
+          sudo apt-get install -y -q --no-install-recommends xvfb jq iproute2 iputils-ping \
+            sudo util-linux $QT_LIBS
       - run: python -m pip install -e ".[dev,gui,build]"
       - run: ruff check .
       - name: Run tests (rootless, then GUI under Xvfb)
         run: |
           pytest -m "not privileged and not performance and not gui" -p no:cacheprovider
           xvfb-run -a pytest -m gui -p no:cacheprovider
-      - name: Build the client bundle, tarball and wheel
+      - name: Build the client, self-contained backend, tarballs and wheel
         run: |
           version="$(python -c 'from polmon.version import __version__; print(__version__)')"
           name="polmon-${version}-linux-x64"
+          backend_name="polmon-backend-${version}-linux-x64"
           pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec
+          pyinstaller --clean --noconfirm packaging/linux/polmon-backend.spec
           export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${SOURCE_DATE_EPOCH}" \
             -C dist -cf - "$name" | gzip -n -9 > "dist/${name}.tar.gz"
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${SOURCE_DATE_EPOCH}" \
+            -C dist -cf - "$backend_name" | gzip -n -9 > "dist/${backend_name}.tar.gz"
           (cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256")
+          (cd dist && sha256sum "${backend_name}.tar.gz" > "${backend_name}.tar.gz.sha256")
           python -m pip wheel --no-deps --wheel-dir dist .
           cp packaging/linux/polmon-backend.service dist/
+          cp packaging/linux/polmon-backend-bundled.service dist/
           ls -l dist
-          du -sb "dist/$name"
+          du -sb "dist/$name" "dist/$backend_name"
       - name: Smoke-test the extracted bundle
         run: |
           version="$(python -c 'from polmon.version import __version__; print(__version__)')"
@@ -85,6 +92,53 @@ jobs:
           grep -q "^Exec=$scratch/$name/polmon-client$" "$scratch/xdg/applications/polmon-client.desktop"
           xvfb-run -a python scripts/measure-client.py --runs 3 --idle 10 -- "$client" \
             | tee linux-client-measurements.json
+      - name: Prove the extracted backend runs without Python and complete a real L0 workflow
+        run: |
+          version="$(python -c 'from polmon.version import __version__; print(__version__)')"
+          name="polmon-backend-${version}-linux-x64"
+          scratch="$(mktemp -d)"
+          tar -xzf "dist/${name}.tar.gz" -C "$scratch"
+          backend="$scratch/$name/polmon-backend"
+          test "$(env -i PATH=/usr/bin:/bin LANG=C.UTF-8 "$backend" --version)" = "polmon ${version}"
+          env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$scratch" "$backend" --self-test \
+            | tee linux-backend-selftest.txt
+          grep -q "PASS uvicorn application graph" linux-backend-selftest.txt
+          set +e
+          env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$scratch" "$backend" --lab-readiness \
+            > linux-backend-readiness.json
+          readiness_status=$?
+          set -e
+          test "$readiness_status" = 0 -o "$readiness_status" = 2
+          port="$(python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          token="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          mkdir "$scratch/data"
+          (cd "$scratch/data" && exec env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$scratch" \
+            POLMON_API_TOKEN="$token" "$backend" --host 127.0.0.1 --port "$port") \
+            > linux-backend.log 2>&1 &
+          backend_pid=$!
+          trap 'kill -TERM "$backend_pid" 2>/dev/null || true; wait "$backend_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 100); do
+            if curl -fsS "http://127.0.0.1:${port}/v1/health" >/dev/null; then break; fi
+            sleep 0.1
+          done
+          scripts/packaged-backend-smoke.sh "http://127.0.0.1:${port}" "$token" \
+            linux-backend-readiness.json linux-backend-e2e.json
+          rss_kib="$(ps -o rss= -p "$backend_pid" | tr -d ' ')"
+          bundle_bytes="$(du -sb "$scratch/$name" | cut -f1)"
+          jq -n --argjson rss_kib "$rss_kib" --argjson bundle_bytes "$bundle_bytes" \
+            '{backend_rss_bytes: ($rss_kib * 1024), extracted_bundle_bytes: $bundle_bytes}' \
+            > linux-backend-measurements.json
+          kill -TERM "$backend_pid"
+          set +e
+          wait "$backend_pid"
+          stop_status=$?
+          set -e
+          test "$stop_status" = 0 -o "$stop_status" = 143
+          trap - EXIT
+          grep -q '"event":"shutdown_cleanup"' linux-backend.log
+          if find "$scratch/$name" \( -iname '*PySide*' -o -iname '*Qt6*' \) | grep -q .; then
+            echo "Qt leaked into the backend bundle" >&2; exit 1
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: polmon-linux-x64
@@ -93,11 +147,21 @@ jobs:
             dist/polmon-*-linux-x64.tar.gz.sha256
             dist/polmon-*-py3-none-any.whl
             dist/polmon-backend.service
+            dist/polmon-backend-bundled.service
+            linux-backend-selftest.txt
+            linux-backend-readiness.json
+            linux-backend-e2e.json
+            linux-backend.log
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-client-measurements
           path: linux-client-measurements.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-backend-measurements
+          path: linux-backend-measurements.json
           if-no-files-found: error
 
   verify-linux-artifact:
@@ -106,6 +170,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: polmon-linux-x64
@@ -116,12 +184,13 @@ jobs:
       - name: Install a display server and Qt's xcb system libraries
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends xvfb $QT_LIBS
+          sudo apt-get install -y -q --no-install-recommends xvfb jq iproute2 iputils-ping \
+            sudo util-linux $QT_LIBS
       - name: Verify checksum and smoke-test the downloaded bundle on a fresh runner
         working-directory: artifact
         run: |
           sha256sum --check --strict polmon-*-linux-x64.tar.gz.sha256
-          tarball="$(ls polmon-*-linux-x64.tar.gz)"
+          tarball="$(ls polmon-[0-9]*-linux-x64.tar.gz)"
           name="${tarball%.tar.gz}"
           version="${name#polmon-}"; version="${version%-linux-x64}"
           tar -xzf "$tarball"
@@ -130,11 +199,45 @@ jobs:
           grep -q "self-test: PASS" selftest.txt
           xvfb-run -a "./$name/polmon-client" --smoke-start 3 | tee smoke.txt
           grep -q "smoke-start: PASS platform=xcb" smoke.txt
+          backend_tarball="$(ls polmon-backend-*-linux-x64.tar.gz)"
+          sha256sum --check --strict "${backend_tarball}.sha256"
+          backend_name="${backend_tarball%.tar.gz}"
+          tar -xzf "$backend_tarball"
+          backend="./$backend_name/polmon-backend"
+          env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --self-test \
+            | tee backend-selftest.txt
+          set +e
+          env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --lab-readiness \
+            > backend-readiness.json
+          readiness_status=$?
+          set -e
+          test "$readiness_status" = 0 -o "$readiness_status" = 2
+          port="$(python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          token="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          mkdir backend-data
+          (cd backend-data && exec env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" \
+            POLMON_API_TOKEN="$token" "$OLDPWD/$backend" --port "$port") > backend.log 2>&1 &
+          backend_pid=$!
+          trap 'kill -TERM "$backend_pid" 2>/dev/null || true; wait "$backend_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 100); do
+            curl -fsS "http://127.0.0.1:${port}/v1/health" >/dev/null && break
+            sleep 0.1
+          done
+          "$GITHUB_WORKSPACE/scripts/packaged-backend-smoke.sh" "http://127.0.0.1:${port}" \
+            "$token" backend-readiness.json backend-e2e.json
+          kill -TERM "$backend_pid"
+          set +e
+          wait "$backend_pid"
+          stop_status=$?
+          set -e
+          test "$stop_status" = 0 -o "$stop_status" = 143
+          trap - EXIT
           {
             echo "## Linux artifacts verified on a fresh runner"
             echo "| File | Size (bytes) | SHA-256 |"
             echo "|---|---:|---|"
-            for file in "$tarball" polmon-*-py3-none-any.whl polmon-backend.service; do
+            for file in "$tarball" "$backend_tarball" polmon-*-py3-none-any.whl \
+                        polmon-backend.service polmon-backend-bundled.service; do
               echo "| $file | $(stat -c %s "$file") | \`$(sha256sum "$file" | cut -d' ' -f1)\` |"
             done
           } >> "$GITHUB_STEP_SUMMARY"

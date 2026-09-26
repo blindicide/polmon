@@ -1,0 +1,20 @@
+# Example systemd user unit for the extracted self-contained backend bundle.
+# Install the bundle as %h/polmon-backend and this file under
+# %h/.config/systemd/user/polmon-backend-bundled.service.
+[Unit]
+Description=polmon self-contained laboratory backend
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=%h/polmon-data
+ExecStart=%h/polmon-backend/polmon-backend --host 127.0.0.1 --port 8080 --token-file %h/.config/polmon/api-token
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=false
+MemoryMax=1536M
+
+[Install]
+WantedBy=default.target

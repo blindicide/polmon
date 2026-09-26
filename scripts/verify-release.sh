@@ -25,6 +25,11 @@ fi
 if (( major > 0 || minor > 2 || (minor == 2 && patch >= 1) )); then
   expected+=("polmon-${version}-windows-x64-portable.zip")
 fi
+if (( major > 0 || minor >= 3 )); then
+  expected+=("polmon-backend-${version}-windows-x64.exe"
+             "polmon-backend-${version}-linux-x64.tar.gz"
+             "polmon-backend-bundled.service")
+fi
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT

@@ -12,6 +12,9 @@ sys.path.insert(0, str(project_root / "packaging"))
 from qt_bundle import EXCLUDED_MODULES, prune  # noqa: E402
 
 name = f"polmon-{__version__}-windows-x64"
+backend_executable = project_root / "dist/polmon-backend.exe"
+if not backend_executable.is_file():
+    raise SystemExit("build packaging/windows/polmon-backend.spec before the client")
 # The executable's icon is drawn by the client's own icon code (no binary asset in the repo).
 icon_path = Path(workpath) / "polmon.ico"
 icon_path.parent.mkdir(parents=True, exist_ok=True)
@@ -24,7 +27,9 @@ analysis = Analysis(
     [str(project_root / "src/polmon/client/app.py")],
     pathex=[str(project_root / "src")],
     binaries=[],
-    datas=[],
+    # The one-file client extracts the independently built, Qt-free backend beside its runtime
+    # files; LocalBackendManager resolves it from sys._MEIPASS.
+    datas=[(str(backend_executable), ".")],
     # The self-test and page modules are imported lazily; list them for static analysis.
     hiddenimports=["polmon.client.selftest", "polmon.client.mainwindow"],
     hookspath=[],
