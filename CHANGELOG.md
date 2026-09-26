@@ -11,6 +11,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   host (5 repeats, `benchmarks/results/SUMMARY-wave4-batched-ip.md`): 2-namespace creation median
   1.321 s → 0.184 s, teardown 0.119 s → 0.087 s; 50 L0 + 2 L1 deployment 1.493 s → 0.453 s.
 
+### Security
+
+- The built-in L1 `static_http` service ran `python -m http.server` in the backend's working
+  directory and listed it — including `.git/`, `.venv/`, reports, and telemetry — to every lab
+  peer. It is now a standalone standard-library responder that returns a fixed body, never touches
+  the filesystem, bounds request size, time, and concurrency, and runs in an isolated interpreter
+  (`python -I -S`). `static_http` declared with a non-TCP protocol is rejected.
+
 ### Fixed
 
 - Rollback leaked a host veth pair whose peer had not yet moved into its namespace.

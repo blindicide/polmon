@@ -15,6 +15,8 @@ from polmon.backends.namespace.runner import CommandRunner
 from polmon.orchestration.base import BackendInspection
 from polmon.topology.models import NodeClass, Topology
 
+# Run by path in an isolated interpreter: no cwd, environment, or site-packages inside the lab.
+STATIC_HTTP_SCRIPT = Path(__file__).resolve().with_name("static_http.py")
 _TRANSMITTED = re.compile(r"(\d+) packets transmitted, (\d+) (?:packets )?received")
 _RTT = re.compile(r"= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms")
 
@@ -115,6 +117,8 @@ class NamespaceBackend:
             for service in node.services:
                 if service.implementation != "static_http":
                     raise ValueError(f"unsupported built-in service '{service.implementation}'")
+                if service.protocol != "tcp":
+                    raise ValueError("built-in service 'static_http' is TCP only")
         if not Path(self.python_executable).is_file():
             raise ValueError("configured Python executable does not exist")
         self.names = self._names(topology)
@@ -334,11 +338,13 @@ class NamespaceBackend:
             str(self.owner_gid),
             "--clear-groups",
             self.python_executable,
-            "-m",
-            "http.server",
-            str(port),
+            "-I",
+            "-S",
+            str(STATIC_HTTP_SCRIPT),
             "--bind",
             address,
+            "--port",
+            str(port),
         ]
         self.services[(node_id, service_id)] = self.runner.start(command, privileged=True)
 

@@ -11,3 +11,10 @@ names are deterministic, platform-prefixed, and at most 15 characters. Services 
 the namespace. Stop tracks processes, while destroy removes namespaces before bridges and is safe to
 repeat. Privileged tests are opt-in with `pytest -m privileged`.
 
+The built-in `static_http` service (`polmon/backends/namespace/static_http.py`) is a standalone
+standard-library responder run by path with `python -I -S` after `setpriv` drops to the invoking
+user. It answers `GET`/`HEAD` with a fixed plain-text body, `405` for other methods, and `400` for
+malformed or oversized (> 8 KiB) requests; request paths are ignored and no file is ever read, so
+a lab peer cannot see the backend's working directory. Reads time out after 5 s and at most 32
+connections are served concurrently.
+
