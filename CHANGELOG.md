@@ -2,7 +2,9 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
-## [Unreleased]
+## [0.1.2] - 2026-09-26
+
+Hardening, security, and bidirectional hybrid networking after v0.1.1.
 
 ### Added
 
