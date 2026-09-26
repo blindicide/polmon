@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import importlib
 import json
 import os
 import platform
-import resource
 import shutil
 import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -60,15 +62,51 @@ def _process_cpu_percent() -> float | None:
         return None
 
 
+def _process_rss_bytes() -> int:
+    """Return current resident memory using a platform-native standard-library path."""
+    if sys.platform.startswith("linux"):
+        try:
+            resident_pages = int(Path("/proc/self/statm").read_text(encoding="utf-8").split()[1])
+            return resident_pages * os.sysconf("SC_PAGE_SIZE")
+        except (OSError, ValueError, IndexError):
+            return 0
+    if sys.platform == "win32":
+        from ctypes import wintypes
+
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("page_fault_count", wintypes.DWORD),
+                ("peak_working_set_size", ctypes.c_size_t),
+                ("working_set_size", ctypes.c_size_t),
+                ("quota_peak_paged_pool_usage", ctypes.c_size_t),
+                ("quota_paged_pool_usage", ctypes.c_size_t),
+                ("quota_peak_non_paged_pool_usage", ctypes.c_size_t),
+                ("quota_non_paged_pool_usage", ctypes.c_size_t),
+                ("pagefile_usage", ctypes.c_size_t),
+                ("peak_pagefile_usage", ctypes.c_size_t),
+            ]
+
+        counters = ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        handle = ctypes.windll.kernel32.GetCurrentProcess()  # type: ignore[attr-defined]
+        success = ctypes.windll.psapi.GetProcessMemoryInfo(  # type: ignore[attr-defined]
+            handle, ctypes.byref(counters), counters.cb
+        )
+        return int(counters.working_set_size) if success else 0
+    try:
+        usage = importlib.import_module("resource").getrusage(0)
+        return int(usage.ru_maxrss) if sys.platform == "darwin" else int(usage.ru_maxrss) * 1024
+    except (ImportError, AttributeError, OSError):
+        return 0
+
+
 def resource_snapshot(**counts: int | float | None) -> ResourceSnapshot:
     """Capture the current process and host memory state without subprocesses."""
-    usage = resource.getrusage(resource.RUSAGE_SELF)
-    # Linux reports KiB; macOS reports bytes. Python 3.12 exposes no portable discriminator.
-    rss = usage.ru_maxrss if sys.platform == "darwin" else usage.ru_maxrss * 1024
     available, swap_used = _proc_memory()
     return ResourceSnapshot(
-        process_rss_bytes=rss,
-        process_cpu_seconds=usage.ru_utime + usage.ru_stime,
+        process_rss_bytes=_process_rss_bytes(),
+        process_cpu_seconds=time.process_time(),
         process_cpu_percent=_process_cpu_percent(),
         available_memory_bytes=available,
         swap_used_bytes=swap_used,
