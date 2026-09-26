@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.11] - 2026-09-26
+
+### Added
+
+- Versioned FastAPI contracts for topology, deployment, experiment, status, telemetry, and reset.
+- Stateful Linux control plane connecting validated models to L0/L1/hybrid backends and telemetry.
+- Responsive Tkinter client with background HTTP operations, explicit timeouts, and useful errors.
+
 ## [0.0.10] - 2026-09-26
 
 ### Added

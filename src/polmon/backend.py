@@ -11,6 +11,8 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from polmon.api.control import ControlPlane
+from polmon.api.routes import router
 from polmon.core.diagnostics import collect_diagnostics
 from polmon.core.errors import PolmonError
 from polmon.core.logging import configure_logging
@@ -27,10 +29,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info("polmon backend stopped", extra={"event": "shutdown"})
 
 
-app = FastAPI(title="polmon", version=__version__, lifespan=lifespan)
-
-
-@app.exception_handler(PolmonError)
 async def handle_polmon_error(_: Request, error: PolmonError) -> JSONResponse:
     """Return consistent safe errors without leaking traces or local state."""
     return JSONResponse(
@@ -39,10 +37,21 @@ async def handle_polmon_error(_: Request, error: PolmonError) -> JSONResponse:
     )
 
 
-@app.get("/")
 def root() -> dict[str, str]:
     """Return a small, stable health response."""
     return {"name": "polmon", "version": __version__, "status": "ok"}
+
+
+def create_app(control: ControlPlane | None = None) -> FastAPI:
+    application = FastAPI(title="polmon", version=__version__, lifespan=lifespan)
+    application.state.control = control or ControlPlane()
+    application.add_exception_handler(PolmonError, handle_polmon_error)
+    application.add_api_route("/", root, methods=["GET"])
+    application.include_router(router)
+    return application
+
+
+app = create_app()
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -17,5 +17,5 @@ dist/
 *.pcap
 benchmark-results/
 reports/
+var/
 SUPERVISOR-BRIEF-polmon.md
-
