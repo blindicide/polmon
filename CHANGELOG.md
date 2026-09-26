@@ -13,6 +13,7 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Client: Ctrl+S saves the topology or scenario being edited (with an unsaved-changes marker; the
   Scenarios page gains *Save as…*), *Export CSV…* writes the telemetry events currently shown
   (filters applied), and the last page is restored on start.
+- The backend URL field remembers the last eight backends connected to (editable drop-down).
 - Application icon, drawn with QPainter (no binary asset): window and task-bar icon on both
   platforms, embedded in the Windows executables at build time (`python -m polmon.client.icon`).
 

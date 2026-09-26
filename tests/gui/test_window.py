@@ -159,3 +159,15 @@ def test_application_icon_is_drawn_and_exportable(window, tmp_path) -> None:
     target = tmp_path / "polmon.ico"
     assert main([str(target)]) == 0
     assert target.read_bytes()[:4] == b"\x00\x00\x01\x00"  # ICO header
+
+
+def test_connected_backends_are_remembered(window, qtbot, live_backend) -> None:
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    assert window.recent_urls()[0] == live_backend.url
+    box = window.bar.url_box
+    assert box.findText(live_backend.url) == 0
+    window.disconnect_backend()
+    window.bar.url.setText("http://10.0.0.9:8080")
+    box.setCurrentIndex(0)  # picking a recent entry fills the field
+    assert window.bar.url.text() == live_backend.url

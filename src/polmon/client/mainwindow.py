@@ -11,6 +11,7 @@ from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDockWidget,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -46,6 +47,7 @@ from polmon.client.widgets import Led, OperationProgress
 from polmon.version import __version__
 
 POLL_INTERVAL_MS = 3000
+MAX_RECENT_URLS = 8
 LOST_POLL_INTERVAL_MS = 5000
 PAGES = (
     DashboardPage,
@@ -87,10 +89,18 @@ class ConnectionBar(QToolBar):
         self.setObjectName("connectionBar")
         self.setMovable(False)
         self.addWidget(QLabel(" Backend "))
-        self.url = QLineEdit(DEFAULT_URL)
-        self.url.setMinimumWidth(260)
-        self.url.setToolTip("Backend base URL, e.g. http://192.168.1.10:8080 (Ctrl+L)")
-        self.addWidget(self.url)
+        # Editable combo: type a URL or pick one of the recently connected backends.
+        self.url_box = QComboBox()
+        self.url_box.setEditable(True)
+        self.url_box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.url_box.setMinimumWidth(280)
+        self.url_box.setToolTip(
+            "Backend base URL, e.g. http://192.168.1.10:8080 (Ctrl+L); the list holds recently "
+            "connected backends"
+        )
+        self.url = self.url_box.lineEdit()
+        self.url.setText(DEFAULT_URL)
+        self.addWidget(self.url_box)
         self.addWidget(QLabel("  Token "))
         self.token = QLineEdit()
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
@@ -367,6 +377,26 @@ class MainWindow(QMainWindow):
         session.log(f"Connecting to {session.url}…")
         self.poll(initial=True)
 
+    def _remember_url(self, url: str) -> None:
+        recent = [item for item in self.recent_urls() if item != url]
+        recent = [url, *recent][:MAX_RECENT_URLS]
+        self.settings.setValue("connection/recent", recent)
+        self._fill_recent(recent, current=url)
+
+    def recent_urls(self) -> list[str]:
+        value = self.settings.value("connection/recent", [])
+        if isinstance(value, str):  # QSettings returns a bare string for one-element lists
+            value = [value]
+        return [str(item) for item in value or [] if str(item).strip()]
+
+    def _fill_recent(self, recent: list[str], *, current: str) -> None:
+        box = self.bar.url_box
+        box.blockSignals(True)
+        box.clear()
+        box.addItems(recent)
+        self.bar.url.setText(current)
+        box.blockSignals(False)
+
     def disconnect_backend(self) -> None:
         self.poll_timer.stop()
         if self._poll_handle is not None:
@@ -440,6 +470,7 @@ class MainWindow(QMainWindow):
                 session.log("Backend reachable again", "info")
             else:
                 session.log(f"Connected to {session.url} (backend {session.backend_version})")
+                self._remember_url(session.url)
                 if session.backend_version != __version__:
                     session.log(
                         f"Backend version {session.backend_version} differs from client "
@@ -507,7 +538,7 @@ class MainWindow(QMainWindow):
             else "Disconnect"
         )
         editable = state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}
-        for widget in (self.bar.url, self.bar.token, self.bar.timeout):
+        for widget in (self.bar.url_box, self.bar.token, self.bar.timeout):
             widget.setEnabled(editable)
         self._update_status()
         self._update_actions()
@@ -597,7 +628,9 @@ class MainWindow(QMainWindow):
 
     def _restore(self) -> None:
         settings = self.settings
-        self.bar.url.setText(str(settings.value("connection/url", DEFAULT_URL)))
+        self._fill_recent(
+            self.recent_urls(), current=str(settings.value("connection/url", DEFAULT_URL))
+        )
         try:
             self.bar.timeout.setValue(float(settings.value("connection/timeout", DEFAULT_TIMEOUT)))
         except (TypeError, ValueError):
