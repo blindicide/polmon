@@ -49,6 +49,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="start the packaged backend through the client lifecycle and run a real L0 workflow",
     )
     parser.add_argument(
+        "--local-backend-gui-probe",
+        type=Path,
+        metavar="RESULT_JSON",
+        help="drive the Local preset through the real window off screen: refusal and every exit "
+        "path, recording that no owned backend remains",
+    )
+    parser.add_argument(
+        "--probe-screenshot",
+        type=Path,
+        metavar="PNG",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--local-backend-crash-test",
         type=Path,
         metavar="PID_JSON",
@@ -149,6 +162,14 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print(MISSING_QT, file=sys.stderr)
         return 2
+    if args.local_backend_gui_probe:
+        from polmon.client.localprobe import gui_lifecycle_probe
+
+        return gui_lifecycle_probe(
+            args.local_backend_gui_probe,
+            args.backend_executable,
+            screenshot=args.probe_screenshot,
+        )
     if args.install_desktop_entry:
         if not sys.platform.startswith("linux"):
             print("polmon-client: --install-desktop-entry is for Linux desktops", file=sys.stderr)

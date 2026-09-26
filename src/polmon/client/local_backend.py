@@ -444,6 +444,9 @@ def packaged_workflow_self_test(
         telemetry = client.telemetry("packaged-local-smoke")
         report = client.report("packaged-local-smoke")
         markdown = client.report_markdown("packaged-local-smoke")
+        # The backend's own figure: on Windows the one-file executable is a small bootloader
+        # whose Python child does the work, so sampling the launched PID would under-report.
+        snapshot = client.resources().get("snapshot") or {}
         reset = client.reset_all()
         client.load_topology(_L1_TOPOLOGY)
         refusal = ""
@@ -470,7 +473,10 @@ def packaged_workflow_self_test(
             "reset": reset,
             "l1_refusal": refusal,
             "log_path": str(manager.log_path),
-            "backend_rss_bytes": _process_rss_bytes(process),
+            "backend_rss_bytes": snapshot.get("process_rss_bytes")
+            if isinstance(snapshot, dict)
+            else None,
+            "launcher_rss_bytes": _process_rss_bytes(process),
         }
     finally:
         manager.stop()

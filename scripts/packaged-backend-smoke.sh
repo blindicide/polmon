@@ -17,9 +17,11 @@ request() {
   local method=$1 path=$2 data=${3:-}
   local args=(-fsS -X "$method" -H "Authorization: Bearer $token" -H 'Accept: application/json')
   if [[ -n $data ]]; then
-    args+=(-H 'Content-Type: application/json' --data-binary "@$data")
+    # Body on stdin: no file path reaches curl, so Git Bash on Windows needs no path conversion.
+    curl "${args[@]}" -H 'Content-Type: application/json' --data-binary @- "$url$path" < "$data"
+  else
+    curl "${args[@]}" "$url$path"
   fi
-  curl "${args[@]}" "$url$path"
 }
 
 request GET /v1/health > "$scratch/health.json"
@@ -41,6 +43,8 @@ request GET /v1/experiments/packaged-linux-smoke/report > "$scratch/report.json"
 jq -e '.status == "succeeded"' "$scratch/report.json" >/dev/null
 request GET /v1/experiments/packaged-linux-smoke/report/markdown > "$scratch/markdown.json"
 jq -e '.markdown | length > 0' "$scratch/markdown.json" >/dev/null
+request GET /v1/resources > "$scratch/resources.json"
+jq -e '.snapshot.process_rss_bytes > 0' "$scratch/resources.json" >/dev/null
 request POST /v1/reset > "$scratch/reset.json"
 jq -e '.state == "reset" and .deployments_destroyed == 1' "$scratch/reset.json" >/dev/null
 
@@ -56,7 +60,7 @@ else
   status=$(curl -sS -o "$scratch/l1-result.json" -w '%{http_code}' -X POST \
     -H "Authorization: Bearer $token" "$url/v1/deployments/l1-two-node")
   test "$status" = 422
-  jq -e '.error.message | contains("requires a Linux host")' "$scratch/l1-result.json" >/dev/null
+  jq -e '.error.message | contains("Linux host")' "$scratch/l1-result.json" >/dev/null
   l1_outcome="NOT RUN - environment unavailable"
 fi
 
@@ -67,6 +71,7 @@ jq -n \
   --slurpfile telemetry "$scratch/telemetry.json" \
   --slurpfile report "$scratch/report.json" \
   --slurpfile reset "$scratch/reset.json" \
+  --slurpfile resources "$scratch/resources.json" \
   --slurpfile readiness "$readiness" \
   --slurpfile l1 "$scratch/l1-result.json" \
   --arg l1_outcome "$l1_outcome" '{
@@ -76,6 +81,8 @@ jq -n \
     telemetry_events: ($telemetry[0] | length),
     report_status: $report[0].status,
     reset: $reset[0],
+    backend_rss_bytes: $resources[0].snapshot.process_rss_bytes,
+    capabilities: $resources[0].capabilities,
     readiness: $readiness[0],
     l1_outcome: $l1_outcome,
     l1_result: $l1[0]

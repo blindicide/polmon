@@ -81,6 +81,46 @@ jobs:
           $archive = pyi-archive_viewer -l $backend | Out-String
           if ($archive -match "PySide6|shiboken6") { throw "Qt leaked into backend executable" }
           Copy-Item $backend "dist/polmon-backend-$version-windows-x64.exe"
+      - name: Run a real L0 experiment against the standalone packaged backend
+        shell: pwsh
+        run: |
+          . scripts/windows-proof.ps1
+          $backend = (Resolve-Path "dist/polmon-backend.exe").Path
+          $bash = "C:\Program Files\Git\bin\bash.exe"
+          if (-not (Get-Command jq -ErrorAction SilentlyContinue)) { throw "jq is not on PATH" }
+          & $backend --lab-readiness | Out-File -Encoding utf8 windows-backend-readiness.json
+          if ($LASTEXITCODE -ne 2) { throw "Windows lab readiness must report L1 unavailable (2), got $LASTEXITCODE" }
+          $port = python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])"
+          $env:POLMON_API_TOKEN = python -c "import secrets; print(secrets.token_urlsafe(32))"
+          $data = New-Item -ItemType Directory (Join-Path $env:RUNNER_TEMP "standalone-backend")
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          $proc = Start-Process -FilePath $backend -ArgumentList "--host","127.0.0.1","--port",$port `
+            -WorkingDirectory $data -NoNewWindow -PassThru `
+            -RedirectStandardOutput windows-backend.out.log -RedirectStandardError windows-backend.log
+          $healthy = $false
+          for ($i = 0; $i -lt 300 -and -not $healthy; $i++) {
+            try { Invoke-RestMethod "http://127.0.0.1:$port/v1/health" | Out-Null; $healthy = $true }
+            catch { Start-Sleep -Milliseconds 50 }
+          }
+          $seconds = $watch.Elapsed.TotalSeconds
+          if (-not $healthy) { Get-Content windows-backend.log; throw "standalone backend never became healthy" }
+          & $bash scripts/packaged-backend-smoke.sh "http://127.0.0.1:$port" $env:POLMON_API_TOKEN `
+            windows-backend-readiness.json windows-backend-e2e.json
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-backend.log; throw "standalone backend L0 workflow failed" }
+          $proc.Refresh()
+          $launcherRss = $proc.WorkingSet64
+          Stop-Process -Id $proc.Id -Force
+          $proc.WaitForExit(10000) | Out-Null
+          Remove-Item Env:POLMON_API_TOKEN
+          Assert-NoBackend "standalone backend stopped (pid $($proc.Id))"
+          $e2e = Get-Content windows-backend-e2e.json | ConvertFrom-Json
+          if ($e2e.experiment_status -ne "succeeded" -or $e2e.l1_result.error.message -notmatch "L0 synthetic nodes only") { throw "unexpected standalone E2E result" }
+          @{ backend_rss_bytes_after_workflow = $e2e.backend_rss_bytes; launcher_rss_bytes = $launcherRss;
+             seconds_to_healthy = [math]::Round($seconds, 3); executable_bytes = (Get-Item $backend).Length } |
+            ConvertTo-Json | Out-File -Encoding utf8 windows-backend-measurements.json
+          Get-Content windows-backend-measurements.json
+          # Probes above end with expected non-zero codes (2, 77); success is decided by the throws.
+          exit 0
       - run: pyinstaller --clean --noconfirm packaging/windows/polmon.spec
       - name: Verify the executable starts Qt and drives its embedded backend
         shell: pwsh
@@ -105,17 +145,24 @@ jobs:
           $local = & $exe --local-backend-self-test | Out-String
           $local | Tee-Object -FilePath windows-onefile-local-backend.txt
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS") -or -not $local.Contains("L1/L2 requires a polmon backend on a Linux host")) { throw "embedded backend workflow failed" }
-          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after one-file workflow" }
+          . scripts/windows-proof.ps1
+          Assert-NoBackend "one-file workflow: normal stop and backend killed"
+          $gui = & $exe --local-backend-gui-probe windows-onefile-gui-probe.json --probe-screenshot windows-local-backend-refusal.png | Out-String
+          $gui
+          if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "one-file GUI lifecycle probe failed" }
+          Assert-NoBackend "one-file GUI: disconnect, backend killed, window closed"
           $probe = Join-Path $env:RUNNER_TEMP "onefile-crash.json"
           & $exe --local-backend-crash-test $probe
           if ($LASTEXITCODE -ne 77) { throw "crash probe did not emulate client failure" }
           $child = (Get-Content $probe | ConvertFrom-Json).pid
           for ($i = 0; $i -lt 50 -and (Get-Process -Id $child -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
           if (Get-Process -Id $child -ErrorAction SilentlyContinue) { throw "backend $child orphaned after client crash" }
-          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "tasklist found an orphan after crash" }
+          Assert-NoBackend "one-file client killed (os._exit, backend pid $child)"
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash *polmon-$version-windows-x64.exe" | Out-File -Encoding ascii "$exe.sha256"
           "sha256: $hash"
+          # Probes above end with expected non-zero codes (2, 77); success is decided by the throws.
+          exit 0
       - name: Build and verify the portable (one-folder) client
         shell: pwsh
         run: |
@@ -144,10 +191,23 @@ jobs:
           $local = & $exe --local-backend-self-test | Out-String
           $local | Tee-Object -FilePath windows-portable-local-backend.txt
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "portable local workflow failed" }
-          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after portable workflow" }
+          . scripts/windows-proof.ps1
+          Assert-NoBackend "portable workflow: normal stop and backend killed"
+          $gui = & $exe --local-backend-gui-probe windows-portable-gui-probe.json | Out-String
+          $gui
+          if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "portable GUI lifecycle probe failed" }
+          Assert-NoBackend "portable GUI: disconnect, backend killed, window closed"
+          $probe = Join-Path $env:RUNNER_TEMP "portable-crash.json"
+          & $exe --local-backend-crash-test $probe
+          if ($LASTEXITCODE -ne 77) { throw "portable crash probe did not emulate client failure" }
+          $child = (Get-Content $probe | ConvertFrom-Json).pid
+          for ($i = 0; $i -lt 50 -and (Get-Process -Id $child -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
+          Assert-NoBackend "portable client killed (os._exit, backend pid $child)"
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
           "$hash *$name.zip" | Out-File -Encoding ascii "$zip.sha256"
           "portable zip: $((Get-Item $zip).Length) bytes, sha256 $hash"
+          # Probes above end with expected non-zero codes (2, 77); success is decided by the throws.
+          exit 0
       - name: Measure cold start and idle memory of both packaged forms
         shell: bash
         run: |
@@ -169,7 +229,15 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-local-backend-evidence
-          path: windows-*-local-backend.txt
+          path: |
+            windows-*-local-backend.txt
+            windows-*-gui-probe.json
+            windows-local-backend-refusal.png
+            windows-cleanup-proof.txt
+            windows-backend-readiness.json
+            windows-backend-e2e.json
+            windows-backend*.log
+            windows-backend-measurements.json
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -206,6 +274,12 @@ jobs:
           $local = & $exe.FullName --local-backend-self-test | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "published-form local workflow failed" }
           if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after downloaded one-file workflow" }
+          $gui = & $exe.FullName --local-backend-gui-probe downloaded-gui-probe.json | Out-String
+          $gui
+          if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "downloaded GUI lifecycle probe failed" }
+          $left = (tasklist /FI "IMAGENAME eq polmon-backend.exe" /NH | Out-String).Trim()
+          "tasklist after downloaded GUI probe: $left"
+          if ($left -match "polmon-backend\.exe") { throw "orphan after downloaded GUI probe: $left" }
           $zip = Get-ChildItem artifact/polmon-*-windows-x64-portable.zip | Select-Object -First 1
           $zipExpected = (Get-Content "$($zip.FullName).sha256").Split(" ")[0]
           $zipActual = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLower()
