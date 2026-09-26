@@ -1,6 +1,8 @@
 # Phase II plan: Qt desktop client and a fully exercised GitHub Actions pipeline
 
-Status: plan, committed before implementation (operator mandate, sequence step 1). Target
+Status: plan, committed before implementation (operator mandate, sequence step 1); updated at
+v0.2.0 where the implementation deviated: the screenshot and end-to-end drivers live in
+`scripts/` (dev tooling outside the client package, which must not import backend code). Target
 release: **v0.2.0**, continuing SemVer from v0.1.3. This document is the design of record; where
 the implementation deviates, the deviation is recorded here and in `CHANGELOG.md`.
 
@@ -66,9 +68,7 @@ Modules (all under `src/polmon/client/`):
 | `widgets/` | Reusable widgets: `ConnectionBar`, `OperationProgress`, `StatusBadge`, `Sparkline` (QPainter, no charting dependency), `CounterTile`, YAML editor with line numbers. |
 | `pages/` | One module per page listed above. |
 | `mainwindow.py` | Composition, menus, shortcuts, health polling, window-state persistence, About. |
-| `selftest.py` | Headless self-test (section 6). |
-| `screenshots.py` | Regenerates `docs/ui/*.png` from the real widgets. |
-| `e2e.py` | Live end-to-end demonstration driver (section 8). |
+| `selftest.py` | Headless self-test (section 6) and `--smoke-start`, the native-platform probe with start-up time and idle memory. |
 
 The client never imports Linux networking or backend modules (enforced by the existing module
 boundary tests plus a new import check).
@@ -132,8 +132,8 @@ experiment, Esc cancel the running operation, Ctrl+1..7 pages, Ctrl+Shift+T them
 | Evidence | How |
 |---|---|
 | `pytest-qt` suite marked `gui` | `tests/gui/`: widgets, error mapping, task cancellation, responsiveness (event loop keeps running while a slow backend stalls), real live-backend workflow. Linux CI: `xvfb-run` (platform `xcb`); Windows CI: `QT_QPA_PLATFORM=offscreen`. |
-| Real screenshots | `python -m polmon.client.screenshots docs/ui` renders every page from the running widgets against a real in-process backend (L0 topology, rootless) on the offscreen platform. Committed PNGs; CI regenerates them as an artifact. |
-| Live end-to-end demonstration | `python -m polmon.client.e2e --output-dir docs/ui/e2e` starts a real `polmon-backend` process with a token and drives the GUI through connect → validate → deploy → experiment → telemetry → report → reset by triggering the same actions a user clicks; writes the log, a JSON record and the report. The hybrid (L0+L1) variant runs when the privileged lab is available, otherwise it is reported NOT RUN. |
+| Real screenshots | `python scripts/ui_screenshots.py` renders every page from the running widgets against a real backend process (`l0-office`, rootless) on the offscreen platform. Committed PNGs; CI regenerates them as an artifact. |
+| Live end-to-end demonstration | `xvfb-run -a python scripts/ui_e2e.py` starts a real `polmon-backend` process with a token and drives the GUI through connect → validate → deploy → experiment → telemetry → report → reset by triggering the same actions a user clicks; writes the log, a JSON record and the report. The hybrid (L0+L1) variant runs when the privileged lab is available, otherwise it is reported NOT RUN. |
 | Resource cost | Wheel size, installed size, cold start, idle RSS of the client measured and recorded in `RESOURCE-BUDGET.md`; Windows numbers from the runner. |
 | Runner evidence | Run IDs, artifact names/sizes, SHA-256 values recorded in `docs/milestones/v0.2.0.md`. |
 | Tk removal | `git grep` shows no `tkinter`; hygiene test enforces it. |

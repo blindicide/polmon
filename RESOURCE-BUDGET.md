@@ -56,11 +56,19 @@ Windows and Linux). Measured cost:
 | Launch to window, Linux (source install) | 0.53 s median (0.49–0.56) | `scripts/measure-client.py`, 5 launches, Xvfb |
 | Launch to window, Linux bundle | 0.54 s median (0.53–0.56) | same |
 | Idle RSS after 10 s, Linux | 96.3 MiB (source), 93.0 MiB (bundle) | same |
+| Windows one-file EXE | 34.6 MB (34,574,625 bytes) | Build Windows run 36260899692 |
+| Launch to window, Windows EXE | 3.41 s median (3.39–3.63); in-process part 0.47–0.49 s | same run, `scripts/measure-client.py`, 3 launches on the hosted runner |
+| Idle working set after 10 s, Windows | 89.9 MiB (Python process; the one-file bootloader parent adds a few MiB) | same |
+
+On Windows almost all of the start-up time is the one-file bootloader unpacking the bundled Qt
+and Python runtime into a temporary directory on every launch; the client itself is on screen
+0.47 s after its interpreter starts.
 
 Launch times are with a warm page cache (dropping caches needs root, which the laboratory
 authorisation does not cover); the first launch after boot is slower. The development host is
 4 vCPU / 7.8 GiB and shared with other services. Raw files:
-`benchmarks/results/client-qt-linux-{source,bundle,appimage}-20260926.json`. The GUI itself is
+`benchmarks/results/client-qt-linux-{source,bundle,appimage}-20260926.json` and
+`benchmarks/results/client-qt-windows-exe-20260926.json`. The GUI itself is
 inexpensive for the backend: it polls `health`, `resources`, `topologies` and deployed topologies
 every 3 s (a few small JSON requests), telemetry once per second only while the Telemetry page
 follows a running experiment, and never overlaps polls.

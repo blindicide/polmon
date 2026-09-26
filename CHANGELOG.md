@@ -4,6 +4,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-26
+
 Phase II: a Qt desktop client for Windows and Linux, and a CI/CD pipeline that tests, packages,
 verifies and releases both platforms (operator mandate; design in `docs/UI-PLAN.md`).
 
