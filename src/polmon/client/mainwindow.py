@@ -10,6 +10,8 @@ from PySide6 import __version__ as pyside_version
 from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QDockWidget,
@@ -46,6 +48,13 @@ from polmon.client.tasks import CancelToken, TaskRunner
 from polmon.client.widgets import Led, OperationProgress
 from polmon.version import __version__
 
+ACCESSIBLE_KINDS = (
+    QLineEdit,
+    QComboBox,
+    QAbstractSpinBox,
+    QPlainTextEdit,
+    QAbstractItemView,
+)
 POLL_INTERVAL_MS = 3000
 MAX_RECENT_URLS = 8
 LOST_POLL_INTERVAL_MS = 5000
@@ -204,6 +213,7 @@ class MainWindow(QMainWindow):
         self.context.navigate_requested.connect(self.navigate)
         self.context.operation_changed.connect(self._update_actions)
         self._build_menus()
+        self._name_for_assistive_technology()
         self._restore()
         self._connection_changed()
         last_page = str(self.settings.value("window/page", "dashboard"))
@@ -310,6 +320,31 @@ class MainWindow(QMainWindow):
         help_menu = menus.addMenu("&Help")
         self._action(help_menu, "&Keyboard shortcuts", "F1", self.show_shortcuts)
         self._action(help_menu, "&About polmon", None, self.show_about)
+
+    def _name_for_assistive_technology(self) -> None:
+        """Give every input, editor and view an accessible name (screen readers, UI tests)."""
+        explicit = {
+            self.bar.url_box: "Backend URL",
+            self.bar.token: "API token",
+            self.bar.timeout: "Request timeout in seconds",
+            self.navigation: "Pages",
+            self.log_view: "Activity log",
+            self.progress.bar: "Operation progress",
+        }
+        for widget, name in explicit.items():
+            widget.setAccessibleName(name)
+        for page in self.pages.values():
+            page.setAccessibleName(f"{page.title} page")
+            for widget in page.findChildren(QWidget):
+                if widget.accessibleName() or not isinstance(widget, ACCESSIBLE_KINDS):
+                    continue
+                label = widget.toolTip() or getattr(widget, "placeholderText", lambda: "")()
+                if not label and isinstance(widget, QAbstractItemView):
+                    header = getattr(widget, "horizontalHeaderItem", None)
+                    first = header(0).text() if header and header(0) else ""
+                    label = f"{page.title}: {first} table" if first else f"{page.title} list"
+                if label:
+                    widget.setAccessibleName(label.split(" (")[0])
 
     # -- navigation ---------------------------------------------------------------------------
 

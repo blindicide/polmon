@@ -38,6 +38,7 @@ class DeploymentPage(Page):
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Topology"))
         self.target = QComboBox()
+        self.target.setAccessibleName("Topology to deploy")
         self.target.setMinimumWidth(260)
         self.target.currentIndexChanged.connect(self.refresh_actions)
         controls.addWidget(self.target)

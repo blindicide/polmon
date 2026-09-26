@@ -44,8 +44,21 @@ def test_title_shows_version_and_theme_toggles(window, qtbot) -> None:
 
 def test_documented_shortcuts_are_bound(window) -> None:
     bound = {action.shortcut().toString() for action in window.actions()}
-    for keys in ("Ctrl+O", "Ctrl+Shift+O", "Ctrl+Return", "F5", "Ctrl+D", "Ctrl+Shift+D",
-                 "Ctrl+Shift+R", "Ctrl+R", "Esc", "Ctrl+1", "Ctrl+7", "Ctrl+Shift+T", "Ctrl+Q"):
+    for keys in (
+        "Ctrl+O",
+        "Ctrl+Shift+O",
+        "Ctrl+Return",
+        "F5",
+        "Ctrl+D",
+        "Ctrl+Shift+D",
+        "Ctrl+Shift+R",
+        "Ctrl+R",
+        "Esc",
+        "Ctrl+1",
+        "Ctrl+7",
+        "Ctrl+Shift+T",
+        "Ctrl+Q",
+    ):
         assert QKeySequence(keys).toString() in bound, keys
 
 
@@ -188,3 +201,29 @@ def test_desktop_entry_is_installed_for_the_user(tmp_path, monkeypatch, capsys) 
     assert "Exec=" in entry and "Icon=polmon-client" in entry
     assert (tmp_path / "icons/hicolor/256x256/apps/polmon-client.png").stat().st_size > 1000
     assert "wrote" in capsys.readouterr().out
+
+
+def test_inputs_editors_and_views_have_accessible_names(window) -> None:
+    from PySide6.QtWidgets import (
+        QAbstractItemView,
+        QAbstractSpinBox,
+        QComboBox,
+        QLineEdit,
+        QPlainTextEdit,
+        QWidget,
+    )
+
+    kinds = (QLineEdit, QComboBox, QAbstractSpinBox, QPlainTextEdit, QAbstractItemView)
+    unnamed = []
+    for key in window.pages:
+        window.navigate(key)
+        for widget in window.findChildren(QWidget):
+            if not isinstance(widget, kinds) or not widget.isVisibleTo(window):
+                continue
+            owner = widget.parent()
+            if isinstance(widget, QLineEdit) and isinstance(owner, QComboBox | QAbstractSpinBox):
+                continue  # the owning combo box / spin box carries the name
+            if not widget.accessibleName():
+                unnamed.append(f"{key}: {type(widget).__name__} ({widget.toolTip()!r})")
+    assert not unnamed, sorted(set(unnamed))
+    assert window.bar.token.accessibleName() == "API token"

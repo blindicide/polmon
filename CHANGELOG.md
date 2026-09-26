@@ -4,6 +4,12 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Accessible names for every input, editor, table and list of the client (explicit for the
+  connection bar and editors, derived from tooltips, placeholders, form labels and table headers
+  elsewhere), enforced by a GUI test across all pages.
+
 ### Changed
 
 - The client connects to pre-v0.2.0 backends instead of refusing: routes they lack (topology and

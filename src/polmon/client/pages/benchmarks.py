@@ -92,6 +92,8 @@ class BenchmarksPage(Page):
         form.addRow("Settle between runs", self.settle)
         self.form = form
         left_layout.addWidget(workload)
+        for layout in (form,):
+            self._name_rows(layout)
 
         limits = QGroupBox("Explicit limits (checked against the backend's own limits)")
         limits_form = QFormLayout(limits)
@@ -105,6 +107,7 @@ class BenchmarksPage(Page):
         limits_form.addRow("Max seconds per run", self.max_run)
         limits_form.addRow("Max incremental memory", self.max_incremental)
         limits_form.addRow("Memory reserve", self.reserve)
+        self._name_rows(limits_form)
         left_layout.addWidget(limits)
 
         run_box = QGroupBox("Job")
@@ -154,6 +157,17 @@ class BenchmarksPage(Page):
         self._kind_changed()
 
     # -- form ---------------------------------------------------------------------------------
+
+    @staticmethod
+    def _name_rows(form: QFormLayout) -> None:
+        """Form fields are named after their row labels for assistive technology."""
+        for row in range(form.rowCount()):
+            label = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+            field = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+            if label and field and label.widget() and field.widget():
+                text = label.widget().text()
+                if text:
+                    field.widget().setAccessibleName(text)
 
     def _kind_changed(self) -> None:
         kind = self.kind.currentData()

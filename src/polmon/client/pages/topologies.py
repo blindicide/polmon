@@ -124,6 +124,7 @@ class TopologiesPage(Page):
         header.addWidget(self.badge)
         centre_layout.addLayout(header)
         self.editor = YamlEditor()
+        self.editor.setAccessibleName("Topology YAML editor")
         self.editor.textChanged.connect(self._edited)
         centre_layout.addWidget(self.editor, 1)
         actions = QHBoxLayout()
