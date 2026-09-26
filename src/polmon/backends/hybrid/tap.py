@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import os
 import select
@@ -17,6 +18,9 @@ IFF_NO_PI = 0x1000
 class TapPort:
     name: str
     file_descriptor: int
+    # Self-pipe so interrupt() can wake a reader blocked in select() immediately.
+    wake_read: int = -1
+    wake_write: int = -1
 
     @classmethod
     def attach(cls, name: str) -> TapPort:
@@ -28,7 +32,10 @@ class TapPort:
         except Exception:
             os.close(descriptor)
             raise
-        return cls(name, descriptor)
+        wake_read, wake_write = os.pipe()
+        os.set_blocking(wake_read, False)
+        os.set_blocking(wake_write, False)
+        return cls(name, descriptor, wake_read, wake_write)
 
     def write(self, frame: bytes) -> None:
         written = os.write(self.file_descriptor, frame)
@@ -36,11 +43,24 @@ class TapPort:
             raise OSError("partial TAP frame write")
 
     def read(self, timeout: float) -> bytes | None:
-        readable, _, _ = select.select([self.file_descriptor], [], [], timeout)
+        watched = [self.file_descriptor] + ([self.wake_read] if self.wake_read >= 0 else [])
+        readable, _, _ = select.select(watched, [], [], timeout)
+        if self.wake_read >= 0 and self.wake_read in readable:
+            with contextlib.suppress(BlockingIOError):
+                os.read(self.wake_read, 64)
+            return None
         return os.read(self.file_descriptor, 65535) if readable else None
 
+    def interrupt(self) -> None:
+        """Wake a concurrent ``read`` at once (used when stopping the TAP responder)."""
+        if self.wake_write >= 0:
+            with contextlib.suppress(BlockingIOError):  # a wake-up may already be pending
+                os.write(self.wake_write, b"\0")
+
     def close(self) -> None:
-        if self.file_descriptor >= 0:
-            os.close(self.file_descriptor)
-            self.file_descriptor = -1
+        for attribute in ("file_descriptor", "wake_read", "wake_write"):
+            descriptor = getattr(self, attribute)
+            if descriptor >= 0:
+                os.close(descriptor)
+                setattr(self, attribute, -1)
 

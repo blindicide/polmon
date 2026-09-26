@@ -2,6 +2,13 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The TAP responder is woken through a self-pipe on stop, so teardown no longer waits for its
+  poll interval, and the idle poll lengthens from 0.1 s to 1 s (fewer idle wake-ups).
+
 ## [0.1.3] - 2026-09-26
 
 Windows client fixes found by driving the real GUI on Windows and Linux.

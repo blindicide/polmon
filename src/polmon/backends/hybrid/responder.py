@@ -23,7 +23,8 @@ ETHERTYPE_IPV4 = 0x0800
 ETHERTYPE_ARP = 0x0806
 BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
 INBOX_LIMIT = 1_024
-POLL_SECONDS = 0.1
+# stop() interrupts a blocked read, so a long poll costs nothing at teardown and few idle wakeups.
+POLL_SECONDS = 1.0
 
 
 class ReadableTap(Protocol):
@@ -62,6 +63,9 @@ class TapResponder:
 
     def stop(self) -> None:
         self._stop.set()
+        interrupt = getattr(self.tap, "interrupt", None)
+        if interrupt is not None:
+            interrupt()
         if self._thread is not None:
             self._thread.join(timeout=2)
             self._thread = None

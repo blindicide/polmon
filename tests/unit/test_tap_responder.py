@@ -94,3 +94,29 @@ def test_reader_thread_answers_and_forwards_everything_else() -> None:
     finally:
         responder.stop()
     assert not responder.running
+
+
+def test_stop_interrupts_a_blocked_read_immediately() -> None:
+    import threading
+
+    class BlockingTap:
+        def __init__(self) -> None:
+            self.woken = threading.Event()
+
+        def read(self, timeout: float):
+            self.woken.wait(timeout)  # blocks for the whole poll unless interrupted
+            return None
+
+        def write(self, frame: bytes) -> None:
+            pass
+
+        def interrupt(self) -> None:
+            self.woken.set()
+
+    responder = TapResponder(BlockingTap(), dict)
+    responder.start()
+    time.sleep(0.05)
+    started = time.monotonic()
+    responder.stop()
+    assert time.monotonic() - started < 0.5  # the poll is 1 s; stop must not wait for it
+    assert not responder.running
