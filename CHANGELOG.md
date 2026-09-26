@@ -4,6 +4,10 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-26
+
+Robustness and usability waves after v0.2.1.
+
 ### Added
 
 - Accessible names for every input, editor, table and list of the client (explicit for the
