@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Windows one-file build of the Qt client: dist/polmon-<version>-windows-x64.exe
+# Linux one-folder build of the Qt client: dist/polmon-<version>-linux-x64/polmon-client
 import sys
 from pathlib import Path
 
@@ -9,36 +9,37 @@ project_root = Path(SPECPATH).parents[1]
 sys.path.insert(0, str(project_root / "packaging"))
 from qt_bundle import EXCLUDED_MODULES, prune  # noqa: E402
 
-name = f"polmon-{__version__}-windows-x64"
 analysis = Analysis(
     [str(project_root / "src/polmon/client/app.py")],
     pathex=[str(project_root / "src")],
     binaries=[],
     datas=[],
-    # The self-test and page modules are imported lazily; list them for static analysis.
     hiddenimports=["polmon.client.selftest", "polmon.client.mainwindow"],
     hookspath=[],
     runtime_hooks=[],
     excludes=EXCLUDED_MODULES,
     noarchive=False,
 )
-analysis.binaries = prune(analysis.binaries, "windows")
-analysis.datas = prune(analysis.datas, "windows")
+analysis.binaries = prune(analysis.binaries, "linux")
+analysis.datas = prune(analysis.datas, "linux")
 pyz = PYZ(analysis.pure)
 exe = EXE(
     pyz,
     analysis.scripts,
-    analysis.binaries,
-    analysis.datas,
     [],
-    name=name,
+    exclude_binaries=True,
+    name="polmon-client",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # Console subsystem so --version/--self-test report and return exit codes in any shell; a
-    # double-clicked EXE releases its console when the GUI starts (polmon.client.app).
     console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
+)
+COLLECT(
+    exe,
+    analysis.binaries,
+    analysis.datas,
+    strip=False,
+    upx=False,
+    name=f"polmon-{__version__}-linux-x64",
 )

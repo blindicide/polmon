@@ -80,3 +80,15 @@ def test_source_and_docs_have_no_trailing_whitespace_or_doubled_blank_lines() ->
         if text and not text.endswith("\n"):
             problems.append(f"{name}: missing final newline")
     assert not problems, problems
+
+
+def test_tkinter_is_gone_from_code_and_packaging() -> None:
+    """Phase II replaced the Tk client with Qt: no Tk imports, hidden imports or tooling remain."""
+    pattern = re.compile(r"^\s*(import tkinter|from tkinter\b)|['\"]tkinter['\"]|\btkinter\.", re.M)
+    offenders = [
+        path.relative_to(ROOT).as_posix()
+        for path in text_files()
+        if path.suffix in {".py", ".spec", ".toml", ".yml", ".yaml", ".sh"}
+        and pattern.search(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, offenders

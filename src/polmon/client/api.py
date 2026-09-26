@@ -1,4 +1,4 @@
-"""Timeout-bound standard-library HTTP client used by the Windows GUI."""
+"""Timeout-bound standard-library HTTP client used by the Qt desktop client and the demo."""
 
 from __future__ import annotations
 
@@ -6,9 +6,6 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TypeVar, cast
-
-T = TypeVar("T")
 
 
 class ApiClientError(RuntimeError):
@@ -28,16 +25,28 @@ class ApiClientError(RuntimeError):
         self.details = details
 
 
+DEFAULT_URL = "http://127.0.0.1:8080"
+DEFAULT_TIMEOUT = 5.0
+DEPLOY_TIMEOUT = 30.0
+EXPERIMENT_TIMEOUT = 120.0
+
+
 class ApiClient:
     def __init__(
-        self, base_url: str, *, timeout: float = 5.0, token: str | None = None
+        self, base_url: str, *, timeout: float = DEFAULT_TIMEOUT, token: str | None = None
     ) -> None:
         parsed = urllib.parse.urlparse(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("server URL must be absolute HTTP(S)")
+        if not 0 < timeout <= 600:
+            raise ValueError("timeout must be between 0 and 600 seconds")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._token = token or None
+
+    @property
+    def has_token(self) -> bool:
+        return self._token is not None
 
     def __repr__(self) -> str:  # never reveal the token in logs or tracebacks
         return f"ApiClient({self.base_url!r}, token={'set' if self._token else 'unset'})"
@@ -63,7 +72,7 @@ class ApiClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout or self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+                body = response.read()
         except urllib.error.HTTPError as error:
             try:
                 document = json.loads(error.read().decode("utf-8"))
@@ -89,78 +98,128 @@ class ApiClient:
             raise ApiClientError(f"unable to reach backend: {reason}") from error
         except OSError as error:  # e.g. connection reset/aborted mid-request (WinError 10053)
             raise ApiClientError(f"connection to backend failed: {error}") from error
+        try:
+            return json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiClientError(
+                "backend returned a malformed response (not JSON); is this a polmon backend?",
+                code="malformed_response",
+            ) from error
+
+    def _dict(self, method: str, path: str, payload=None, *, timeout=None) -> dict[str, object]:
+        document = self._request(method, path, payload, timeout=timeout)
+        if not isinstance(document, dict):
+            raise ApiClientError(
+                f"backend returned an unexpected response for {path} (expected an object)",
+                code="malformed_response",
+            )
+        return document
+
+    def _list(self, path: str) -> list[dict[str, object]]:
+        document = self._request("GET", path)
+        if not isinstance(document, list) or not all(isinstance(item, dict) for item in document):
+            raise ApiClientError(
+                f"backend returned an unexpected response for {path} (expected a list)",
+                code="malformed_response",
+            )
+        return document
 
     def health(self) -> dict[str, object]:
-        return cast(dict[str, object], self._request("GET", "/v1/health"))
+        return self._dict("GET", "/v1/health")
 
     def validate_topology(self, source: str) -> dict[str, object]:
-        return cast(
-            dict[str, object],
-            self._request("POST", "/v1/topologies/validate", {"yaml": source}),
-        )
+        return self._dict("POST", "/v1/topologies/validate", {"yaml": source})
 
     def load_topology(self, source: str) -> dict[str, object]:
-        return cast(
-            dict[str, object], self._request("POST", "/v1/topologies", {"yaml": source})
-        )
+        return self._dict("POST", "/v1/topologies", {"yaml": source})
+
+    def topologies(self) -> list[dict[str, object]]:
+        return self._list("/v1/topologies")
+
+    def topology(self, topology_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/topologies/{_segment(topology_id)}")
+
+    def validate_scenario(self, source: str) -> dict[str, object]:
+        return self._dict("POST", "/v1/scenarios/validate", {"yaml": source})
 
     def deploy(self, topology_id: str) -> dict[str, object]:
-        safe = urllib.parse.quote(topology_id, safe="")
-        return cast(
-            dict[str, object],
-            self._request("POST", f"/v1/deployments/{safe}", timeout=30),
-        )
+        path = f"/v1/deployments/{_segment(topology_id)}"
+        return self._dict("POST", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
+
+    def deployment(self, topology_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/deployments/{_segment(topology_id)}")
 
     def destroy(self, topology_id: str) -> dict[str, object]:
-        safe = urllib.parse.quote(topology_id, safe="")
-        return cast(
-            dict[str, object],
-            self._request("DELETE", f"/v1/deployments/{safe}", timeout=30),
-        )
+        path = f"/v1/deployments/{_segment(topology_id)}"
+        return self._dict("DELETE", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
 
     def reset_all(self) -> dict[str, object]:
-        return cast(
-            dict[str, object],
-            self._request("POST", "/v1/reset", timeout=30),
-        )
+        return self._dict("POST", "/v1/reset", timeout=max(DEPLOY_TIMEOUT, self.timeout))
 
     def resources(self) -> dict[str, object]:
-        return cast(dict[str, object], self._request("GET", "/v1/resources"))
+        return self._dict("GET", "/v1/resources")
 
     def run_experiment(
-        self, experiment_id: str, topology_id: str, scenario_source: str
+        self, experiment_id: str, topology_id: str, scenario_source: str, *, wait: bool = True
     ) -> dict[str, object]:
-        return cast(
-            dict[str, object],
-            self._request(
-                "POST",
-                "/v1/experiments",
-                {
-                    "experiment_id": experiment_id,
-                    "topology_id": topology_id,
-                    "scenario_yaml": scenario_source,
-                },
-                timeout=120,
-            ),
+        """Run an experiment; ``wait=False`` returns once admitted (poll ``experiment``)."""
+        return self._dict(
+            "POST",
+            "/v1/experiments",
+            {
+                "experiment_id": experiment_id,
+                "topology_id": topology_id,
+                "scenario_yaml": scenario_source,
+                "wait": wait,
+            },
+            timeout=max(EXPERIMENT_TIMEOUT, self.timeout) if wait else None,
         )
 
-    def telemetry(self, experiment_id: str) -> list[dict[str, object]]:
-        safe = urllib.parse.quote(experiment_id, safe="")
-        return cast(
-            list[dict[str, object]],
-            self._request("GET", f"/v1/experiments/{safe}/telemetry"),
-        )
+    def experiment(self, experiment_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/experiments/{_segment(experiment_id)}")
+
+    def experiments(self, limit: int = 200) -> list[dict[str, object]]:
+        return self._list(f"/v1/experiments?limit={int(limit)}")
+
+    def telemetry(
+        self, experiment_id: str, *, after: int = 0, limit: int | None = None
+    ) -> list[dict[str, object]]:
+        query = {"after": int(after), **({"limit": int(limit)} if limit else {})}
+        path = f"/v1/experiments/{_segment(experiment_id)}/telemetry"
+        return self._list(f"{path}?{urllib.parse.urlencode(query)}")
 
     def report(self, experiment_id: str) -> dict[str, object]:
-        safe = urllib.parse.quote(experiment_id, safe="")
-        return cast(
-            dict[str, object],
-            self._request("GET", f"/v1/experiments/{safe}/report"),
-        )
+        return self._dict("GET", f"/v1/experiments/{_segment(experiment_id)}/report")
+
+    def report_markdown(self, experiment_id: str) -> str:
+        path = f"/v1/experiments/{_segment(experiment_id)}/report/markdown"
+        markdown = self._dict("GET", path).get("markdown")
+        if not isinstance(markdown, str):
+            raise ApiClientError("backend report has no Markdown text", code="malformed_response")
+        return markdown
 
     def cancel_experiment(self, experiment_id: str) -> dict[str, object]:
-        safe = urllib.parse.quote(experiment_id, safe="")
-        return cast(
-            dict[str, object],
-            self._request("POST", f"/v1/experiments/{safe}/cancel"),
-        )
+        return self._dict("POST", f"/v1/experiments/{_segment(experiment_id)}/cancel")
+
+    def start_benchmark(self, request: dict[str, object]) -> dict[str, object]:
+        return self._dict("POST", "/v1/benchmarks", request)
+
+    def benchmark_job(self, job_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/benchmarks/jobs/{_segment(job_id)}")
+
+    def benchmark_jobs(self) -> list[dict[str, object]]:
+        return self._list("/v1/benchmarks/jobs")
+
+    def cancel_benchmark(self, job_id: str) -> dict[str, object]:
+        return self._dict("POST", f"/v1/benchmarks/jobs/{_segment(job_id)}/cancel")
+
+    def benchmark_results(self) -> list[dict[str, object]]:
+        return self._list("/v1/benchmarks/results")
+
+    def benchmark_result(self, name: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/benchmarks/results/{_segment(name)}")
+
+
+def _segment(value: str) -> str:
+    """Quote one path segment so identifiers can never change the request path."""
+    return urllib.parse.quote(value, safe="")

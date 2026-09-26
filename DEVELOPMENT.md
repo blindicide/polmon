@@ -4,9 +4,10 @@ Use only Python 3.12 through the project environment:
 
 ```bash
 uv venv --python /usr/bin/python3.12
-uv pip install -e '.[dev,build]'
+uv pip install -e '.[dev,gui,build]'
 .venv/bin/ruff check .
-.venv/bin/pytest -m 'not privileged and not performance'
+.venv/bin/pytest -m 'not privileged and not performance and not gui'
+xvfb-run -a .venv/bin/pytest -m gui
 ```
 
 Keep unit, integration, privileged, performance, and smoke tests explicitly marked. Default tests
@@ -26,6 +27,16 @@ interface remains; `scripts/lab-cleanup.sh` lists such leftovers and removes the
 Performance tests live in `tests/performance/` and run only with `pytest -m performance`; they use
 small sizes, and the 100/250-endpoint runs require `polmon-benchmark l0 --large`.
 
-GUI tests (`pytest -m gui`) drive the real Tk client and need a display; run them with
-`xvfb-run -a .venv/bin/python -m pytest -m gui` on a headless Linux host. Without a display they
-are reported as NOT RUN.
+The desktop client is Qt (PySide6, the `gui` extra; see [docs/UI-PLAN.md](docs/UI-PLAN.md)). Its
+tests live in `tests/gui/` and are marked `gui`: they build the real widgets with `pytest-qt` and
+drive them against real in-process backends (connect, validate, deploy, run, cancel, telemetry,
+reports, benchmarks, unreachable/slow/malformed/dying backends). CI runs them under `xvfb-run`
+(platform `xcb`) on Linux and with `QT_QPA_PLATFORM=offscreen` on Windows; on a headless host
+without Xvfb they select the offscreen platform automatically. Without PySide6 installed they are
+reported as NOT RUN. The Qt system libraries needed for `xcb` on Ubuntu are listed in
+[BUILD-LINUX.md](BUILD-LINUX.md).
+
+`polmon-client --self-test` checks Qt, its platform plugins, the main window and the API client
+off screen and never opens a window; `polmon-client --smoke-start 3` shows the real window on the
+native platform for three seconds and reports the platform, launch-to-window time and idle RSS.
+`scripts/measure-client.py --runs 5 -- .venv/bin/polmon-client` repeats that measurement.
