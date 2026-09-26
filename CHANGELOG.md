@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.6] - 2026-09-26
+
+### Added
+
+- Validated Ethernet II, ARP, minimal IPv4, and ICMP echo packet codecs.
+- Deterministic synthetic address resolution and ping exchange with bounded frame capture.
+- Known-byte fixtures for Internet, IPv4, and ICMP checksum validation.
+
 ## [0.0.5] - 2026-09-26
 
 ### Added
