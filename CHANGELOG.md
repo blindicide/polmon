@@ -4,8 +4,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-26
+
+Capture download, workflow shortcuts and the operator guide.
+
 ### Added
 
+- Operator guide for the desktop client (`docs/CLIENT.md`); its shortcut table is kept identical
+  to the in-app list by a test.
 - `GET /v1/experiments/{id}/capture` serves the finished experiment's bounded PCAP, and the
   Telemetry page gains *Save capture…* to open it in Wireshark or tcpdump on the workstation.
 - Scenarios page: *Deploy required topology* when the scenario's topology is loaded but not
