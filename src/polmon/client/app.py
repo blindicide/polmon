@@ -45,6 +45,7 @@ def create_application(argv: list[str], *, theme_preference: str | None = None):
     from PySide6.QtWidgets import QApplication
 
     from polmon.client import theme
+    from polmon.client.icon import app_icon
 
     existing = QApplication.instance()
     if existing is None:
@@ -58,6 +59,9 @@ def create_application(argv: list[str], *, theme_preference: str | None = None):
     app.setOrganizationName("polmon")
     app.setApplicationVersion(__version__)
     app.setApplicationDisplayName("polmon")
+    app.setWindowIcon(app_icon())
+    if hasattr(app, "setDesktopFileName"):
+        app.setDesktopFileName("polmon-client")  # Wayland/X11 task bars match the .desktop file
     preference = theme_preference or str(
         QSettings("polmon", "polmon-client").value("view/theme", "system")
     )

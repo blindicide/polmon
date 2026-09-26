@@ -148,3 +148,14 @@ def test_backend_loss_is_detected_and_recovered_from(window, qtbot, backend_fact
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.LOST, timeout=15_000)
     assert "unreachable" in window.status_text.text().lower()
     assert not window.run_action.isEnabled() and not window.deploy_action.isEnabled()
+
+
+def test_application_icon_is_drawn_and_exportable(window, tmp_path) -> None:
+    from polmon.client.icon import SIZES, main
+
+    icon = window.windowIcon()
+    assert not icon.isNull()
+    assert {size.width() for size in icon.availableSizes()} >= set(SIZES)
+    target = tmp_path / "polmon.ico"
+    assert main([str(target)]) == 0
+    assert target.read_bytes()[:4] == b"\x00\x00\x01\x00"  # ICO header

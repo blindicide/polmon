@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Windows one-file build of the Qt client: dist/polmon-<version>-windows-x64.exe
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +12,14 @@ sys.path.insert(0, str(project_root / "packaging"))
 from qt_bundle import EXCLUDED_MODULES, prune  # noqa: E402
 
 name = f"polmon-{__version__}-windows-x64"
+# The executable's icon is drawn by the client's own icon code (no binary asset in the repo).
+icon_path = Path(workpath) / "polmon.ico"
+icon_path.parent.mkdir(parents=True, exist_ok=True)
+subprocess.run(
+    [sys.executable, "-m", "polmon.client.icon", str(icon_path)],
+    check=True,
+    env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+)
 analysis = Analysis(
     [str(project_root / "src/polmon/client/app.py")],
     pathex=[str(project_root / "src")],
@@ -39,6 +49,7 @@ exe = EXE(
     # Console subsystem so --version/--self-test report and return exit codes in any shell; a
     # double-clicked EXE releases its console when the GUI starts (polmon.client.app).
     console=True,
+    icon=str(icon_path),
     disable_windowed_traceback=False,
     argv_emulation=False,
 )

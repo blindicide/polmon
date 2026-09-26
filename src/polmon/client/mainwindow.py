@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from polmon.client import theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
+from polmon.client.icon import app_icon
 from polmon.client.pages import Context, Page
 from polmon.client.pages.benchmarks import BenchmarksPage
 from polmon.client.pages.dashboard import DashboardPage
@@ -123,6 +124,7 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: QSettings | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("mainWindow")
+        self.setWindowIcon(app_icon())
         self.settings = settings or QSettings("polmon", "polmon-client")
         self.session = Session(self)
         self.runner = TaskRunner(self)

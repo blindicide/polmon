@@ -2,6 +2,8 @@
 # Windows one-folder ("portable") build of the Qt client:
 #   dist/polmon-<version>-windows-x64-portable/polmon-client.exe
 # Starts without unpacking anything (the one-file EXE extracts itself on every launch).
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +13,13 @@ project_root = Path(SPECPATH).parents[1]
 sys.path.insert(0, str(project_root / "packaging"))
 from qt_bundle import EXCLUDED_MODULES, prune  # noqa: E402
 
+icon_path = Path(workpath) / "polmon.ico"
+icon_path.parent.mkdir(parents=True, exist_ok=True)
+subprocess.run(
+    [sys.executable, "-m", "polmon.client.icon", str(icon_path)],
+    check=True,
+    env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+)
 analysis = Analysis(
     [str(project_root / "src/polmon/client/app.py")],
     pathex=[str(project_root / "src")],
@@ -36,6 +45,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=True,
+    icon=str(icon_path),
 )
 COLLECT(
     exe,
