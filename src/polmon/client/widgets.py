@@ -387,7 +387,7 @@ class YamlHighlighter(QSyntaxHighlighter):
     RULES = (
         (re.compile(r"^\s*-\s"), "muted"),
         (re.compile(r"^\s*(?:-\s+)?([A-Za-z_][\w-]*)(?=\s*:)"), "accent"),
-        (re.compile(r"(?<=:\s)(true|false|null|~)\b|(?<=:\s)-?\d+(?:\.\d+)?\b"), "warning"),
+        (re.compile(r"(?<=:\s)(?:true|false|null|~|-?\d+(?:\.\d+)?)(?=\s*(?:#|$))"), "warning"),
         (re.compile(r"\"[^\"]*\"|'[^']*'"), "success"),
         (re.compile(r"(?:^|\s)#.*$"), "muted"),
     )
