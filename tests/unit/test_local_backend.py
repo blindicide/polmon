@@ -115,3 +115,15 @@ def test_only_old_log_only_sessions_of_finished_clients_are_pruned(tmp_path) -> 
     assert legacy.is_dir() and (legacy / "var" / "telemetry.sqlite3").is_file()
     assert live.is_dir()
     assert all(path.is_dir() for path in recent)
+
+
+def test_packaged_self_test_is_repeatable_and_leaves_operator_state_alone(
+    tmp_path, monkeypatch
+) -> None:
+    from polmon.client import local_backend as module
+
+    monkeypatch.setattr(module, "default_state_directory", lambda: tmp_path / "operator")
+    for _ in range(2):  # a fixed experiment id must not collide with persisted history
+        record = module.packaged_workflow_self_test()
+        assert record["experiment_status"] == "succeeded"
+    assert not (tmp_path / "operator").exists()

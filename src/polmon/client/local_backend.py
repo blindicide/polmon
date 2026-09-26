@@ -15,6 +15,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -505,7 +506,16 @@ class LocalBackendManager:
 def packaged_workflow_self_test(
     executable: str | Path | None = None, *, state_directory: Path | None = None
 ) -> dict[str, object]:
-    """Run the acceptance workflow solely through an owned backend and its HTTP API."""
+    """Run the acceptance workflow solely through an owned backend and its HTTP API.
+
+    Without ``state_directory`` it runs in a temporary one: a self-test must neither read nor add
+    to the operator's persistent local experiment history.
+    """
+    if state_directory is None:
+        with tempfile.TemporaryDirectory(
+            prefix="polmon-local-self-test-", ignore_cleanup_errors=True
+        ) as scratch:
+            return packaged_workflow_self_test(executable, state_directory=Path(scratch))
     manager = LocalBackendManager(executable, state_directory=state_directory)
     connection = manager.start()
     process = manager.process
@@ -579,6 +589,8 @@ def crash_cleanup_probe(
     output: Path, executable: str | Path | None = None, *, state_directory: Path | None = None
 ) -> None:
     """Start an owned child, publish its PID, then emulate an uncatchable client crash."""
+    if state_directory is None:  # kept out of the operator's state; the crash leaves it behind
+        state_directory = Path(tempfile.mkdtemp(prefix="polmon-local-crash-test-"))
     manager = LocalBackendManager(executable, state_directory=state_directory)
     manager.start()
     output.write_text(json.dumps(manager.connection(), default=str), encoding="utf-8")
