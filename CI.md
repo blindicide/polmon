@@ -15,3 +15,7 @@ and requires it to print the package version, and runs the small rootless benchm
 (`pytest -m "performance and not privileged"`: 10 and 25 L0 endpoints) so benchmark code cannot
 silently break. Privileged tests and large benchmarks never run in hosted CI.
 
+A separate `dependency-audit` job installs the project and `pip-audit` (a CI-only tool, never a
+project dependency) and fails when any installed, pinned dependency has a known vulnerability, so
+new advisories surface on the next push rather than at release time.
+

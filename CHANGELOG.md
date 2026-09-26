@@ -2,6 +2,12 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- CI `dependency-audit` job: `pip-audit` over the installed, pinned dependency set on every push.
+
 ## [0.1.2] - 2026-09-26
 
 Hardening, security, and bidirectional hybrid networking after v0.1.1.
