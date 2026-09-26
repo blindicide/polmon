@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.5] - 2026-09-26
+
+### Added
+
+- Shared-process L0 endpoint registry with unique instance, MAC, and IPv4 identities.
+- Bounded virtual networks, packet queues, deterministic event scheduling, and resource accounting.
+- Synthetic orchestration backend and repeated 50-endpoint lifecycle coverage.
+
 ## [0.0.4] - 2026-09-26
 
 ### Added
