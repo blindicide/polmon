@@ -1,0 +1,29 @@
+id: hybrid-small
+networks:
+  - id: lab
+    ipv4_subnet: 10.77.0.0/24
+nodes:
+  - id: sensor-1
+    class: l0
+    interfaces:
+      - id: eth0
+        network: lab
+        mac: "02:00:00:00:00:01"
+        ipv4: 10.77.0.10
+  - id: service-1
+    class: l1
+    resources:
+      memory_mb: 48
+      cpu_millicores: 75
+      disk_mb: 8
+    interfaces:
+      - id: eth0
+        network: lab
+        mac: "02:00:00:00:01:01"
+        ipv4: 10.77.0.20
+    services:
+      - id: web
+        protocol: tcp
+        port: 8080
+        implementation: static_http
+

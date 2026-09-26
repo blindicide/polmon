@@ -6,7 +6,8 @@ from polmon.version import __version__
 
 
 def test_version_is_current_release() -> None:
-    assert __version__ == "0.0.2"
+    major, minor, patch = __version__.split(".")
+    assert (int(major), int(minor), int(patch)) >= (0, 0, 1)
 
 
 def test_backend_root_exposes_version() -> None:

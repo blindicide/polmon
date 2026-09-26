@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.3] - 2026-09-26
+
+### Added
+
+- Strict YAML topology model with nodes, networks, interfaces, resources, and safe service metadata.
+- Duplicate, overlap, address-conflict, and unsupported-configuration validation.
+- Stable serialization, privilege-free resource estimation, inspection CLI, and hybrid example.
+
 ## [0.0.2] - 2026-09-26
 
 ### Added

@@ -3,6 +3,7 @@ import logging
 
 from polmon.core.diagnostics import collect_diagnostics, main, resource_snapshot
 from polmon.core.logging import JsonFormatter
+from polmon.version import __version__
 
 
 def test_diagnostics_are_allow_listed_and_secret_free() -> None:
@@ -34,7 +35,7 @@ def test_resource_snapshot_has_nonzero_process_metrics() -> None:
 
 def test_diagnostics_json_cli(capsys) -> None:
     assert main(["--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["polmon_version"] == "0.0.2"
+    assert json.loads(capsys.readouterr().out)["polmon_version"] == __version__
 
 
 def test_json_log_formatter_is_structured() -> None:
@@ -45,4 +46,4 @@ def test_json_log_formatter_is_structured() -> None:
     payload = json.loads(JsonFormatter().format(record))
     assert payload["message"] == "hello world"
     assert payload["event"] == "test"
-    assert payload["version"] == "0.0.2"
+    assert payload["version"] == __version__
