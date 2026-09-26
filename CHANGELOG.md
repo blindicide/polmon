@@ -15,6 +15,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - The Windows client read Tk variables from its worker thread when validating, deploying, or
   running experiments ("main thread is not in main loop"); the API client is now built on the UI
   thread. The API token field moved next to the backend URL.
+- On Windows, a request with a wrong or missing token failed with `WinError 10053` instead of
+  HTTP 401, because the backend answered before reading the body; the backend now discards the
+  bounded body first, and the client wraps connection-level errors in `ApiClientError`.
 
 ## [0.1.2] - 2026-09-26
 

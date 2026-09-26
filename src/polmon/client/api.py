@@ -87,6 +87,8 @@ class ApiClient:
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if hasattr(error, "reason") else error
             raise ApiClientError(f"unable to reach backend: {reason}") from error
+        except OSError as error:  # e.g. connection reset/aborted mid-request (WinError 10053)
+            raise ApiClientError(f"connection to backend failed: {error}") from error
 
     def health(self) -> dict[str, object]:
         return cast(dict[str, object], self._request("GET", "/v1/health"))

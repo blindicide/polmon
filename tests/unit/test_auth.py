@@ -38,7 +38,7 @@ def test_token_is_required_on_every_non_public_path(tmp_path) -> None:
 def test_unauthenticated_oversized_bodies_are_refused_without_buffering(tmp_path) -> None:
     client = TestClient(create_app(ControlPlane(tmp_path), api_token=TOKEN))
     response = client.post("/v1/topologies", content=b" " * (6 * 1_048_576))
-    assert response.status_code == 401  # auth runs before the body is read
+    assert response.status_code == 401  # auth answers before any parsing; the body is discarded
 
 
 def test_token_resolution_and_file_permissions(tmp_path) -> None:

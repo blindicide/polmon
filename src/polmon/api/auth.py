@@ -9,7 +9,7 @@ import os
 import stat
 from pathlib import Path
 
-from polmon.api.limits import ASGIApp, Receive, Scope, Send
+from polmon.api.limits import MAX_REQUEST_BYTES, ASGIApp, Receive, Scope, Send
 from polmon.core.errors import ConfigurationError
 
 TOKEN_ENVIRONMENT_VARIABLE = "POLMON_API_TOKEN"
@@ -70,6 +70,17 @@ class BearerTokenAuth:
         if hmac.compare_digest(supplied, self._expected):
             await self.app(scope, receive, send)
             return
+        # Discard (never parse or keep) a bounded request body before answering: replying while
+        # the client is still sending makes some TCP stacks (Windows) abort the connection, and
+        # the client would report a connection error instead of 401.
+        drained = 0
+        while drained <= MAX_REQUEST_BYTES:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            drained += len(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
         body = json.dumps(
             {
                 "error": {

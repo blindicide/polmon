@@ -89,3 +89,37 @@ def test_client_rejects_non_http_urls_and_reports_unreachable_servers() -> None:
     with pytest.raises(ApiClientError, match="unable to reach backend") as caught:
         ApiClient(f"http://127.0.0.1:{port}", timeout=1).health()
     assert caught.value.status is None
+
+
+def test_connection_resets_become_client_errors() -> None:
+    import socket
+    import struct
+    import sys
+
+    import pytest
+
+    from polmon.client.api import ApiClientError
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+
+    def reset_once() -> None:
+        connection, _ = listener.accept()
+        connection.recv(1024)
+        # SO_LINGER with zero timeout makes close() send RST instead of FIN.
+        layout = "HH" if sys.platform == "win32" else "ii"  # struct linger differs on Windows
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack(layout, 1, 0))
+        connection.close()
+
+    thread = threading.Thread(target=reset_once, daemon=True)
+    thread.start()
+    try:
+        client = ApiClient(f"http://127.0.0.1:{listener.getsockname()[1]}", timeout=3)
+        with pytest.raises(ApiClientError) as caught:
+            client.health()
+        assert caught.value.status is None
+        assert "backend" in str(caught.value)
+    finally:
+        thread.join(timeout=3)
+        listener.close()
