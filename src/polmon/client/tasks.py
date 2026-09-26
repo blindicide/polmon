@@ -1,6 +1,6 @@
 """Off-GUI-thread work with cancellation; results always arrive on the GUI thread.
 
-A :class:`Task` runs a plain function on a bounded :class:`QThreadPool`. The function receives a
+Each task runs a plain function on a bounded :class:`QThreadPool`. The function receives a
 :class:`CancelToken` and a ``report`` callable for progress. Outcomes travel back through
 signals of a :class:`TaskHandle`, a ``QObject`` created on (and therefore living in) the GUI
 thread, so the callbacks connected to it always execute on the GUI thread.
@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QThreadPool, Signal, Slot
 
 
 class Cancelled(Exception):  # noqa: N818 - control-flow signal, not an error condition
@@ -120,26 +120,19 @@ class TaskHandle(QObject):
         self.released.emit()
 
 
-class Task(QRunnable):
-    def __init__(self, handle: TaskHandle, work: Work) -> None:
-        super().__init__()
-        self.setAutoDelete(True)
-        self._handle = handle
-        self._work = work
+def _execute(handle: TaskHandle, work: Work) -> None:
+    """Worker-thread body of one task; outcomes are emitted, never raised."""
 
-    def run(self) -> None:  # worker thread
-        handle = self._handle
+    def report(update: ProgressUpdate) -> None:
+        if not handle.token.cancelled:
+            handle._worker_progress.emit(update)
 
-        def report(update: ProgressUpdate) -> None:
-            if not handle.token.cancelled:
-                handle._worker_progress.emit(update)
-
-        try:
-            result = self._work(handle.token, report)
-        except BaseException as error:  # noqa: BLE001 - delivered to the GUI, never swallowed
-            handle._worker_done.emit(None, error)
-        else:
-            handle._worker_done.emit(result, None)
+    try:
+        result = work(handle.token, report)
+    except BaseException as error:  # noqa: BLE001 - delivered to the GUI, never swallowed
+        handle._worker_done.emit(None, error)
+    else:
+        handle._worker_done.emit(result, None)
 
 
 class TaskRunner(QObject):
@@ -152,7 +145,9 @@ class TaskRunner(QObject):
         super().__init__(parent)
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(max_threads)
-        self._active: set[TaskHandle] = set()
+        # Strong references to each handle and its worker callable until the worker has
+        # returned: nothing a running worker touches can be collected or deleted under it.
+        self._active: dict[TaskHandle, Callable[[], None]] = {}
 
     def submit(
         self,
@@ -172,13 +167,17 @@ class TaskRunner(QObject):
             handle.progress.connect(on_progress)
         handle.finished.connect(lambda: self.task_finished.emit(handle))
         handle.released.connect(lambda: self._released(handle))
-        self._active.add(handle)
+
+        def run() -> None:
+            _execute(handle, work)
+
+        self._active[handle] = run
         self.task_started.emit(handle)
-        self.pool.start(Task(handle, work))
+        self.pool.start(run)
         return handle
 
     def _released(self, handle: TaskHandle) -> None:
-        self._active.discard(handle)
+        self._active.pop(handle, None)
         handle.deleteLater()
 
     @property
