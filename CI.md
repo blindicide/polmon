@@ -14,6 +14,11 @@ no repository secrets.
 | `release.yml` | `v*` tag push, manual repair | Both builds, one release with the EXE, Linux tarball, wheel, unit and `SHA256SUMS.txt`, then the published assets are downloaded from the release and smoke-tested on Windows and Linux. See [RELEASE.md](RELEASE.md). |
 | `benchmark.yml` | manual | Bounded L0 benchmark (default 10 and 25 endpoints, 1 repeat; counts above 50 need the explicit `large` input), raw results as the `benchmark-results` artifact. Hosted-runner numbers characterise the runner, not the development host. |
 
+On Windows the GUI suite runs with `--no-qt-log`: with both pytest's output capture and pytest-qt's
+capture of Qt log messages active, the test interpreter aborts natively on the hosted Windows
+runner, while either capture alone passes all GUI tests (isolated in diagnostic run 36260679968; the
+client is unaffected). Qt messages are then printed instead of attached to test reports.
+
 Download artifacts from a run page (**Artifacts**) or with `gh run download <run-id> -n <name>`.
 Test XML is uploaded even when a test step fails, so failures stay inspectable. Privileged
 laboratory tests and large benchmarks never run on hosted runners: they need the authorised lab

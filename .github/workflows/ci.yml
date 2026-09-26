@@ -70,12 +70,14 @@ jobs:
         run: >
           xvfb-run -a pytest -m gui -p no:cacheprovider --cov=polmon --cov-append
           --cov-report=xml:coverage.xml --junitxml=results-gui.xml
+      # --no-qt-log: on Windows runners pytest's output capture combined with pytest-qt's Qt
+      # message capture aborts the interpreter (either one alone is fine; see CI.md).
       - name: GUI tests (pytest-qt, offscreen platform)
         if: runner.os == 'Windows'
         env:
           QT_QPA_PLATFORM: offscreen
         run: >
-          pytest -m gui -p no:cacheprovider --cov=polmon --cov-append
+          pytest -m gui -p no:cacheprovider --no-qt-log --cov=polmon --cov-append
           --cov-report=xml:coverage.xml --junitxml=results-gui.xml
       - name: Qt client on the native platform (smoke start)
         run: |

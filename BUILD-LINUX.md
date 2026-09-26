@@ -48,9 +48,19 @@ Bundle pruning is shared with Windows (`packaging/qt_bundle.py`): only the `qxcb
 host GTK stack into the bundle), image-format, GL-integration and input-method plugins other than
 compose, and Qt translations are removed.
 
-## AppImage
+## AppImage (measured, not shipped)
 
-Not built. An AppImage would wrap the same bundle and add the AppImage runtime plus a FUSE
-dependency on the host (or `--appimage-extract-and-run`), and the tooling (`appimagetool`) is an
-unpinned download outside PyPI, which makes the build less reproducible than the tarball. The
-tarball already runs without installation, so the AppImage adds no capability for its cost.
+An AppImage was built from the same bundle with the pinned appimagetool 1.9.1 (zstd squashfs) and
+measured on the development host (4 vCPU, Xvfb, warm page cache, five launches each;
+`scripts/measure-client.py`, raw files in `benchmarks/results/client-qt-linux-*-20260926.json`):
+
+| Form | Download | Launch to window (median) | Idle RSS after 10 s |
+|---|---:|---:|---:|
+| Extracted tarball bundle | 50.8 MB (`.tar.gz`) | 0.54 s | 93.0 MiB |
+| AppImage | 47.4 MB | 0.92 s | 91.5 MiB |
+
+The AppImage saves 3.4 MB of download but adds about 0.4 s to every start (the squashfs is mounted
+through FUSE on each launch), requires FUSE 2 (`libfuse2`) on the host or the slower
+`--appimage-extract-and-run`, and brings a second, non-PyPI tool plus its runtime into the release
+build. The tarball runs without installation just the same, so the AppImage is not built;
+revisit if desktop integration (menus, icons) becomes a requirement.

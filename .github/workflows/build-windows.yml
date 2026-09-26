@@ -65,7 +65,8 @@ jobs:
             args+=(--deselect "$node")
           done
           pytest -m "not privileged and not performance and not gui" -p no:cacheprovider "${args[@]}"
-          QT_QPA_PLATFORM=offscreen pytest -m gui -p no:cacheprovider "${args[@]}"
+          # --no-qt-log: see ci.yml (pytest capture + pytest-qt Qt-log capture abort on Windows).
+          QT_QPA_PLATFORM=offscreen pytest -m gui -p no:cacheprovider --no-qt-log "${args[@]}"
       - run: pyinstaller --clean --noconfirm packaging/windows/polmon.spec
       - name: Verify the executable starts Qt
         shell: pwsh

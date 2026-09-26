@@ -38,3 +38,29 @@ delay is outside polmon's control (contention for the kernel's RTNL lock
 after new links appear is the likely cause; the responsible host component was not identified).
 Consequently 4 and 8 namespaces take roughly 0.3–1.9 s to create while 2 take about 0.2 s; per-
 namespace batches inside the namespaces stay near 40 ms.
+
+## Desktop client (Qt / PySide6)
+
+The Qt client is a new major dependency (operator-ordered; see [ARCHITECTURE.md](ARCHITECTURE.md)).
+It runs on the operator's workstation, not on the 2 GB backend host: the backend install does not
+include it (`gui` extra). Purpose: the operator console (threaded, themed, model/view UI on
+Windows and Linux). Measured cost:
+
+| Item | Value | Source |
+|---|---:|---|
+| `PySide6-Essentials` 6.11.2 wheel | 80.1 MB (Linux x86_64), 76.9 MB (Windows x64) | PyPI file sizes |
+| `shiboken6` 6.11.2 wheel | 0.27 MB (Linux), 1.23 MB (Windows) | PyPI file sizes |
+| Not installed: `PySide6-Addons` | 175 MB (Linux), 168 MB (Windows) | PyPI file sizes |
+| Installed size, Linux venv | 225.6 MiB (`PySide6/` 236 MB incl. 129 MB Qt libraries, 9.7 MB plugins; `shiboken6/` 0.65 MB) | `du -sb` on the development host |
+| Linux bundle | 132.1 MB unpacked, 50.8 MB `.tar.gz` | PyInstaller one-folder build, pruned plugins |
+| Launch to window, Linux (source install) | 0.53 s median (0.49–0.56) | `scripts/measure-client.py`, 5 launches, Xvfb |
+| Launch to window, Linux bundle | 0.54 s median (0.53–0.56) | same |
+| Idle RSS after 10 s, Linux | 96.3 MiB (source), 93.0 MiB (bundle) | same |
+
+Launch times are with a warm page cache (dropping caches needs root, which the laboratory
+authorisation does not cover); the first launch after boot is slower. The development host is
+4 vCPU / 7.8 GiB and shared with other services. Raw files:
+`benchmarks/results/client-qt-linux-{source,bundle,appimage}-20260926.json`. The GUI itself is
+inexpensive for the backend: it polls `health`, `resources`, `topologies` and deployed topologies
+every 3 s (a few small JSON requests), telemetry once per second only while the Telemetry page
+follows a running experiment, and never overlaps polls.
