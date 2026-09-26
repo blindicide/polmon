@@ -609,7 +609,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("window/geometry", self.saveGeometry())
         self.settings.setValue("window/state", self.saveState())
         self.settings.sync()
-        self.runner.cancel_all()
+        self.runner.close()
         return self.runner.wait(wait_ms)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override

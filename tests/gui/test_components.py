@@ -144,3 +144,24 @@ def test_runner_can_be_dropped_before_its_handles_are_deleted(qapp) -> None:
         scenario()
         gc.collect()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+
+
+def test_closed_runner_accepts_no_work_and_drops_late_results(qtbot) -> None:
+    import threading as _threading
+
+    runner = TaskRunner()
+    release = _threading.Event()
+    outcome: list[object] = []
+    runner.submit(
+        "slow",
+        lambda token, report: release.wait(5),
+        on_success=outcome.append,
+        on_failure=outcome.append,
+    )
+    runner.close()
+    assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+    late = runner.submit("late", lambda token, report: 1, on_success=outcome.append)
+    assert late.done
+    release.set()
+    qtbot.waitUntil(lambda: runner.in_flight == 0, timeout=5000)
+    assert len(outcome) == 1

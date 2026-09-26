@@ -148,6 +148,7 @@ class TaskRunner(QObject):
         # Strong references to each handle and its worker callable until the worker has
         # returned: nothing a running worker touches can be collected or deleted under it.
         self._active: dict[TaskHandle, Callable[[], None]] = {}
+        self.closed = False
 
     def submit(
         self,
@@ -162,6 +163,9 @@ class TaskRunner(QObject):
         # returned, never as a side effect of the runner being destroyed (that ordering could
         # delete a handle while its own deferred deletion is running).
         handle = TaskHandle(name)
+        if self.closed:  # shutting down: accept nothing, report nothing
+            handle.done = True
+            return handle
         if on_success is not None:
             handle.succeeded.connect(on_success)
         if on_failure is not None:
@@ -204,6 +208,11 @@ class TaskRunner(QObject):
     def cancel_all(self) -> None:
         for handle in list(self._active):
             handle.cancel()
+
+    def close(self) -> None:
+        """Cancel everything and refuse new work; late worker results are dropped."""
+        self.cancel_all()
+        self.closed = True
 
     def wait(self, milliseconds: int) -> bool:
         """Block up to ``milliseconds`` for running work (shutdown only)."""
