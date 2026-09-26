@@ -4,6 +4,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Optional bearer-token API authentication (`POLMON_API_TOKEN` / `--api-token-file`, owner-only
+  file, ≥ 24 characters, constant-time comparison, checked before the body is read). The backend
+  refuses to listen on a non-loopback address without a token. The Windows client gains an API
+  token field (memory only), `ApiClient` a `token` argument, and `polmon-demo` authenticates every
+  local run with a fresh random token.
+
 ### Changed
 
 - L1 deployment runs one privileged `ip -batch` on the host plus one per namespace instead of about
@@ -31,6 +39,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   or crash a probe; timeouts now return exit code 124 (or raise a clear error when checked).
 - Oversized request bodies were read and parsed before model limits applied; bodies above 5 MiB,
   including chunked uploads, are now refused with HTTP 413 before parsing.
+- The privileged host-network guard compared nft set contents, so fail2ban adding a ban during a
+  run was reported as a host change; it now compares ruleset structure (`nft -s -t`).
 - Client errors embedded the server's error document as a Python dict repr; `ApiClientError` now
   states the HTTP status, error code, and message, and exposes `status`, `code`, and `details`.
 

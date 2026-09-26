@@ -6,11 +6,13 @@ import argparse
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from polmon.api.auth import BearerTokenAuth, require_safe_binding, resolve_token
 from polmon.api.control import ControlPlane
 from polmon.api.limits import RequestSizeLimit
 from polmon.api.routes import router
@@ -58,11 +60,14 @@ def root() -> dict[str, str]:
     return {"name": "polmon", "version": __version__, "status": "ok"}
 
 
-def create_app(control: ControlPlane | None = None) -> FastAPI:
+def create_app(control: ControlPlane | None = None, *, api_token: str | None = None) -> FastAPI:
     application = FastAPI(title="polmon", version=__version__, lifespan=lifespan)
     application.state.control = control or ControlPlane()
     application.add_exception_handler(PolmonError, handle_polmon_error)
     application.add_middleware(RequestSizeLimit)
+    if api_token is not None:
+        # Added last, so it runs first: unauthenticated bodies are never buffered or parsed.
+        application.add_middleware(BearerTokenAuth, token=api_token)
     application.add_api_route("/", root, methods=["GET"])
     application.include_router(router)
     return application
@@ -78,6 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", default=8080, type=int)
     parser.add_argument("--diagnostics", action="store_true", help="print diagnostics and exit")
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "--api-token-file",
+        type=Path,
+        help="file (mode 600) holding the bearer token; POLMON_API_TOKEN is used otherwise. "
+        "A token is required to listen on a non-loopback address.",
+    )
     defaults = ResourceLimits()
     parser.add_argument("--max-endpoints", type=int, default=defaults.max_endpoint_count)
     parser.add_argument("--max-namespaces", type=int, default=defaults.max_active_namespaces)
@@ -114,7 +125,19 @@ def main() -> None:
         max_experiment_duration_seconds=args.max_experiment_seconds,
         memory_safety_threshold_mb=args.memory_reserve_mb,
     )
-    uvicorn.run(create_app(ControlPlane(limits=limits)), host=args.host, port=args.port)
+    try:
+        token = resolve_token(args.api_token_file)
+        require_safe_binding(args.host, token)
+    except (PolmonError, OSError) as error:
+        raise SystemExit(f"polmon-backend: {getattr(error, 'message', error)}") from None
+    logger.info(
+        "API authentication %s",
+        "enabled" if token else "disabled (loopback only)",
+        extra={"event": "api_auth"},
+    )
+    uvicorn.run(
+        create_app(ControlPlane(limits=limits), api_token=token), host=args.host, port=args.port
+    )
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
+import secrets
 import shutil
 import signal
 import socket
@@ -21,7 +23,9 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from polmon.api.auth import TOKEN_ENVIRONMENT_VARIABLE, read_token_file
 from polmon.client.api import ApiClient, ApiClientError
+from polmon.core.errors import PolmonError
 from polmon.core.progress import Progress
 from polmon.topology import parse_topology
 from polmon.version import __version__
@@ -66,6 +70,8 @@ class LocalBackend:
         self.url = f"http://127.0.0.1:{self.port}"
         self.log_path = data_directory / "backend.log"
         self.process: subprocess.Popen[bytes] | None = None
+        # A fresh random token per run: the demonstration always exercises API authentication.
+        self.token = secrets.token_urlsafe(32)
 
     def start(self) -> None:
         self.data_directory.mkdir(parents=True, exist_ok=True)
@@ -75,8 +81,9 @@ class LocalBackend:
             cwd=self.data_directory,
             stdout=log,
             stderr=subprocess.STDOUT,
+            env={**os.environ, TOKEN_ENVIRONMENT_VARIABLE: self.token},
         )
-        client = ApiClient(self.url, timeout=1.0)
+        client = ApiClient(self.url, timeout=1.0, token=self.token)
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
@@ -246,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir", type=Path, default=None, help="write the demonstration record here"
     )
     parser.add_argument("--json", action="store_true", help="print the record as JSON on stdout")
+    parser.add_argument(
+        "--token-file",
+        type=Path,
+        help=f"API token for --url (mode 600); {TOKEN_ENVIRONMENT_VARIABLE} is used otherwise",
+    )
     return parser
 
 
@@ -268,10 +280,17 @@ def main(argv: list[str] | None = None) -> int:
         "backend_mode": "url" if args.url else "local-process",
     }
     status = 1
+    token: str | None = None
     try:
         if backend is not None:
             backend.start()
-        client = ApiClient(args.url or backend.url)  # type: ignore[union-attr]
+            token = backend.token
+        elif args.token_file is not None:
+            token = read_token_file(args.token_file)
+        else:
+            token = os.environ.get(TOKEN_ENVIRONMENT_VARIABLE)
+        client = ApiClient(args.url or backend.url, token=token)  # type: ignore[union-attr]
+        record["api_authentication"] = "bearer-token" if token else "none"
         record.update(
             run_demo(
                 client,
@@ -284,14 +303,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         record["status"] = "passed"
         status = 0
-    except (DemoFailure, ApiClientError, OSError) as error:
+    except (DemoFailure, ApiClientError, OSError, PolmonError) as error:
         record["status"] = "failed"
         record["error"] = f"{type(error).__name__}: {error}"
         if args.url is not None:
             # Remove only this demonstration's deployment from a shared backend. A local
             # backend is reset by its own SIGTERM shutdown below.
             with contextlib.suppress(ApiClientError):
-                ApiClient(args.url).destroy(parse_topology(topology_source).id)
+                ApiClient(args.url, token=token).destroy(parse_topology(topology_source).id)
     finally:
         if backend is not None:
             record["backend_shutdown"] = backend.stop()

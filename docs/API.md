@@ -37,3 +37,11 @@ observation with `detail: "unsupported"` rather than an emulated result; observa
 When the backend stops (SIGINT or SIGTERM through uvicorn's graceful shutdown) it tears down every
 owned deployment before exiting and logs `shutdown_cleanup` (or `shutdown_cleanup_failed` with the
 failures). A backend killed with SIGKILL cannot clean up; recover with `scripts/lab-cleanup.sh`.
+
+Authentication: when the backend has an API token (`POLMON_API_TOKEN`, or `--api-token-file` for
+a file readable only by its owner; at least 24 characters), every path except `GET /` and
+`GET /v1/health` requires `Authorization: Bearer <token>` and otherwise returns HTTP 401
+`unauthorized`. The check runs before the request body is read and compares in constant time. The
+backend refuses to listen on a non-loopback address without a token. Clients pass the token with
+`ApiClient(url, token=...)`; the Windows client has an *API token* field that is kept in memory
+only, and `polmon-demo --url` reads `POLMON_API_TOKEN` or `--token-file`.

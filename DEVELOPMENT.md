@@ -20,7 +20,8 @@ coverage XML artifacts, and writes a count summary to the workflow run.
 
 `scripts/check.sh` runs the same lint and rootless gate as CI. `scripts/privileged-tests.sh` runs
 the privileged selection and fails if the default route, the host's non-lab interfaces, iptables
-rules, or the nft ruleset (counters normalised) changed, or if any platform-named namespace or
+rules, or the nft ruleset structure (counters and dynamic set elements such as fail2ban bans
+omitted) changed, or if any platform-named namespace or
 interface remains; `scripts/lab-cleanup.sh` lists such leftovers and removes them with `--apply`.
 Performance tests live in `tests/performance/` and run only with `pytest -m performance`; they use
 small sizes, and the 100/250-endpoint runs require `polmon-benchmark l0 --large`.

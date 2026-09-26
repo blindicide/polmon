@@ -29,12 +29,18 @@ class ApiClientError(RuntimeError):
 
 
 class ApiClient:
-    def __init__(self, base_url: str, *, timeout: float = 5.0) -> None:
+    def __init__(
+        self, base_url: str, *, timeout: float = 5.0, token: str | None = None
+    ) -> None:
         parsed = urllib.parse.urlparse(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("server URL must be absolute HTTP(S)")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._token = token or None
+
+    def __repr__(self) -> str:  # never reveal the token in logs or tracebacks
+        return f"ApiClient({self.base_url!r}, token={'set' if self._token else 'unset'})"
 
     def _request(
         self,
@@ -49,7 +55,11 @@ class ApiClient:
             self.base_url + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                **({"Authorization": f"Bearer {self._token}"} if self._token else {}),
+            },
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout or self.timeout) as response:

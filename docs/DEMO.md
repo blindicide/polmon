@@ -34,3 +34,8 @@ Recorded runs are kept in `docs/demo/`: `<experiment-id>.json` (steps, deploymen
 RSS and host memory before/after deployment, observations with their network path, telemetry and
 capture counts, the full report document, reset and cleanup verification, shutdown result) and
 `<experiment-id>-report.md` (the backend's human-readable report).
+
+Authentication: in the default local mode the demo generates a random token, starts the backend
+with it, and drives every call authenticated, so each recorded run exercises the API token path
+(`api_authentication: "bearer-token"` in the record). Against `--url`, the token comes from
+`POLMON_API_TOKEN` or `--token-file`.

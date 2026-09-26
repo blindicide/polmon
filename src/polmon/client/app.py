@@ -53,6 +53,12 @@ class PolmonApp:
         self.server_url = tk.StringVar(value="http://127.0.0.1:8080")
         ttk.Entry(frame, textvariable=self.server_url).grid(row=1, column=1, sticky="ew")
         ttk.Button(frame, text="Connect", command=self.connect).grid(row=1, column=2, padx=4)
+        ttk.Label(frame, text="API token").grid(row=6, column=0, sticky="w", pady=(8, 0))
+        # Held in memory only; never written to disk, logs, or the output pane.
+        self.api_token = tk.StringVar(value="")
+        ttk.Entry(frame, textvariable=self.api_token, show="*").grid(
+            row=6, column=1, columnspan=3, sticky="ew", pady=(8, 0)
+        )
         self.status = tk.StringVar(value="Disconnected")
         ttk.Label(frame, textvariable=self.status).grid(row=1, column=3, sticky="w")
         ttk.Button(frame, text="Load topology", command=self.load_topology_file).grid(
@@ -78,7 +84,9 @@ class PolmonApp:
         root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _client(self) -> ApiClient:
-        return ApiClient(self.server_url.get(), timeout=5)
+        return ApiClient(
+            self.server_url.get(), timeout=5, token=self.api_token.get().strip() or None
+        )
 
     def _submit(self, label: str, function) -> None:
         if self.future is not None and not self.future.done():
