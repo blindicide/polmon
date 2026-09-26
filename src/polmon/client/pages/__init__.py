@@ -156,6 +156,17 @@ class Context(QObject):
         return path
 
 
+def write_document(page: Page, path: Path, text: str, kind: str) -> bool:
+    """Write ``text`` as UTF-8 with a final newline; failures go to the page banner."""
+    try:
+        path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    except OSError as error:
+        page.banner.show_problem(page.context.problem(error))
+        return False
+    page.session.log(f"Saved {kind} to {path}")
+    return True
+
+
 def default_folder(key: str) -> Path:
     """``examples/<key>`` next to the working directory when present (source checkouts)."""
     candidate = Path.cwd() / "examples" / key

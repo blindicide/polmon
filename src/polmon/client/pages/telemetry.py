@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import json
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -54,6 +58,10 @@ class TelemetryPage(Page):
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh_list)
         top.addWidget(self.refresh_button)
+        self.export_button = QPushButton("Export CSV…")
+        self.export_button.setToolTip("Save the events currently shown (filters applied) as CSV")
+        self.export_button.clicked.connect(self.export_csv)
+        top.addWidget(self.export_button)
         top.addStretch(1)
         self.root.addLayout(top)
 
@@ -275,9 +283,50 @@ class TelemetryPage(Page):
         self._update_count()
 
     def _update_count(self) -> None:
+        self.export_button.setEnabled(self.model.rowCount() > 0)
         shown, total = self.proxy.rowCount(), self.model.rowCount()
         dropped = f" ({self.model.dropped} oldest dropped)" if self.model.dropped else ""
         self.count.setText(f"{shown} of {total} events{dropped}")
+
+    def visible_events(self) -> list[dict[str, object]]:
+        return [
+            self.proxy.data(self.proxy.index(row, 0), Qt.ItemDataRole.UserRole)
+            for row in range(self.proxy.rowCount())
+        ]
+
+    def write_csv(self, path: Path) -> int:
+        """Write the filtered events to ``path``; returns the number of rows."""
+        events = self.visible_events()
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["sequence", "timestamp", "category", "event", "node_id", "payload"])
+            for event in events:
+                writer.writerow(
+                    [
+                        event.get("sequence"),
+                        event.get("timestamp"),
+                        event.get("category"),
+                        event.get("event"),
+                        event.get("node_id") or "",
+                        json.dumps(event.get("payload") or {}, ensure_ascii=False, sort_keys=True),
+                    ]
+                )
+        return len(events)
+
+    def export_csv(self) -> None:
+        if not self.experiment_id:
+            return
+        path = self.context.ask_save(
+            self, "Export telemetry", f"{self.experiment_id}-telemetry.csv", "CSV (*.csv)"
+        )
+        if path is None:
+            return
+        try:
+            count = self.write_csv(path)
+        except OSError as error:
+            self.banner.show_problem(self.context.problem(error))
+            return
+        self.session.log(f"Exported {count} telemetry events to {path}")
 
     def _event_selected(self, current, previous) -> None:  # noqa: ANN001
         event = self.proxy.data(current, Qt.ItemDataRole.UserRole) if current.isValid() else None
@@ -285,6 +334,7 @@ class TelemetryPage(Page):
 
     def refresh_actions(self) -> None:
         self.refresh_button.setEnabled(self.session.connected)
+        self.export_button.setEnabled(bool(self.experiment_id))
 
     def activated(self, argument: object = None) -> None:
         if self.session.connected and not self.session.experiments:

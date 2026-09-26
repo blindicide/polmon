@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from polmon.client import theme
 from polmon.client.api import ApiClientError
 from polmon.client.formatting import estimate_eta, format_seconds
-from polmon.client.pages import Context, Page
+from polmon.client.pages import Context, Page, write_document
 from polmon.client.pages.topologies import MAX_DOCUMENT_BYTES, DocumentLibrary
 from polmon.client.tasks import CancelToken, ProgressUpdate
 from polmon.client.widgets import StatusBadge, YamlEditor, fill_table, make_table, primary_button
@@ -49,6 +49,7 @@ class ScenariosPage(Page):
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self.path: Path | None = None
+        self.saved_source = ""
         self.result: dict[str, object] | None = None
         self.validated_source: str | None = None
         self.running_id: str | None = None
@@ -84,6 +85,9 @@ class ScenariosPage(Page):
         self.validate_button.clicked.connect(lambda: self.validate(quiet=False))
         validate_row.addWidget(self.validate_button)
         validate_row.addStretch(1)
+        self.save_button = QPushButton("Save as…")
+        self.save_button.clicked.connect(self.save_as)
+        validate_row.addWidget(self.save_button)
         centre_layout.addLayout(validate_row)
         splitter.addWidget(centre)
 
@@ -175,6 +179,7 @@ class ScenariosPage(Page):
             self.banner.show_problem(self.context.problem(error))
             return
         self.path = path
+        self.saved_source = text
         self.editor.setPlainText(text)
         self.document_label.setText(path.name)
         self.document_label.setToolTip(str(path))
@@ -184,8 +189,34 @@ class ScenariosPage(Page):
     def source(self) -> str:
         return self.editor.toPlainText()
 
+    def save(self) -> None:
+        """Save to the opened file (Ctrl+S); ask for a path when there is none."""
+        if self.path is None:
+            self.save_as()
+        elif write_document(self, self.path, self.source(), "scenario"):
+            self.saved_source = self.source()
+            self._update_label()
+
+    def save_as(self) -> None:
+        suggested = (
+            self.path.name if self.path else f"{document_id(self.source()) or 'scenario'}.yml"
+        )
+        path = self.context.ask_save(self, "Save scenario", suggested, "YAML (*.yml *.yaml)")
+        if path is not None and write_document(self, path, self.source(), "scenario"):
+            self.path = path
+            self.saved_source = self.source()
+            self._update_label()
+
+    def _update_label(self) -> None:
+        name = self.path.name if self.path else self.document_label.text().rstrip(" •")
+        dirty = self.path is not None and self.source() != self.saved_source
+        self.document_label.setText(f"{name} •" if dirty else name)
+        self.document_label.setToolTip("Unsaved changes" if dirty else str(self.path or name))
+
     def _edited(self) -> None:
         self.editor.set_error_line(None)
+        if self.path is not None:
+            self._update_label()
         if self.validated_source is not None and self.source() != self.validated_source:
             self.badge.set_status("modified")
         if self.session.connected and self.source().strip():
@@ -526,6 +557,7 @@ class ScenariosPage(Page):
     def refresh_actions(self) -> None:
         running = self.running_id is not None
         self.validate_button.setEnabled(self.session.connected and bool(self.source().strip()))
+        self.save_button.setEnabled(bool(self.source().strip()))
         self.run_button.setEnabled(self.ready() and not self.context.busy)
         self.cancel_button.setEnabled(running)
         has_last = self._last_id() is not None

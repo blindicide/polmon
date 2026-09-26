@@ -245,3 +245,58 @@ def test_real_benchmark_result_is_listed_and_inspectable(window, qtbot, live_bac
     page.results.selectRow(0)
     qtbot.waitUntil(lambda: page.measurements.rowCount() == 1, timeout=10_000)
     assert "l0" in page.summary.toPlainText().lower()
+
+
+def test_documents_save_with_ctrl_s_and_telemetry_exports_csv(
+    window, qtbot, live_backend, tmp_path
+) -> None:
+    import csv
+
+    topology = write(tmp_path, "office.yml", l0_topology())
+    scenario = write(tmp_path, "ping.yml", ping_scenario(actions=2))
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    open_and_validate_topology(qtbot, window, topology)
+    page = window.pages["topologies"]
+    page.editor.appendPlainText("# edited in the client")
+    assert page.document_label.text().endswith("•")  # unsaved marker
+    window.save_document()  # Ctrl+S
+    assert topology.read_text(encoding="utf-8").rstrip().endswith("# edited in the client")
+    assert not page.document_label.text().endswith("•")
+
+    deploy_from_editor(qtbot, window)
+    open_scenario(qtbot, window, scenario)
+    scenarios = window.pages["scenarios"]
+    scenarios.editor.appendPlainText("# note")
+    window.save_document()
+    assert scenario.read_text(encoding="utf-8").rstrip().endswith("# note")
+    open_scenario(qtbot, window, scenario)
+    scenarios.run()
+    qtbot.waitUntil(lambda: scenarios.outcome.status == "succeeded", timeout=30_000)
+
+    scenarios.telemetry_button.click()
+    telemetry = window.pages["telemetry"]
+    qtbot.waitUntil(lambda: telemetry.model.rowCount() >= 4, timeout=10_000)
+    for name, box in telemetry.category_boxes.items():
+        box.setChecked(name == "network_observation")
+    exported = tmp_path / "events.csv"
+    assert telemetry.write_csv(exported) == 2
+    rows = list(csv.DictReader(exported.open(encoding="utf-8")))
+    assert [row["event"] for row in rows] == ["ping-0", "ping-1"]
+    assert '"success": true' in rows[0]["payload"]
+
+
+def test_last_page_is_restored(window, qtbot, tmp_path) -> None:
+    from PySide6.QtCore import QSettings
+
+    from polmon.client.mainwindow import MainWindow
+
+    window.navigate("reports")
+    window.settings.sync()
+    settings = QSettings(window.settings.fileName(), QSettings.Format.IniFormat)
+    second = MainWindow(settings)
+    qtbot.addWidget(second)
+    try:
+        assert second.current_page.key == "reports"
+    finally:
+        second.shutdown(wait_ms=2000)

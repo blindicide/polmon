@@ -67,6 +67,7 @@ SHORTCUTS = (
     ("Ctrl+L", "Focus the backend URL"),
     ("F5", "Refresh backend state now"),
     ("Ctrl+O / Ctrl+Shift+O", "Open topology / scenario"),
+    ("Ctrl+S", "Save the topology or scenario being edited"),
     ("Ctrl+Shift+V", "Validate the topology in the editor"),
     ("Ctrl+D / Ctrl+Shift+D", "Deploy / destroy the selected topology"),
     ("Ctrl+Shift+R", "Reset the environment"),
@@ -193,7 +194,9 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._restore()
         self._connection_changed()
-        self.navigation.setCurrentRow(0)
+        last_page = str(self.settings.value("window/page", "dashboard"))
+        keys = list(self.pages)
+        self.navigation.setCurrentRow(keys.index(last_page) if last_page in keys else 0)
         self.session.log(f"polmon client {__version__} (Qt {qVersion()}, PySide6 {pyside_version})")
 
     # -- menus and shortcuts ------------------------------------------------------------------
@@ -226,6 +229,7 @@ class MainWindow(QMainWindow):
             "Ctrl+Shift+O",
             lambda: (self.navigate("scenarios"), scenarios.open_dialog()),
         )  # type: ignore[attr-defined]
+        self._action(file_menu, "&Save document", "Ctrl+S", self.save_document)
         file_menu.addSeparator()
         self._action(file_menu, "&Quit", "Ctrl+Q", self.close)
 
@@ -309,9 +313,16 @@ class MainWindow(QMainWindow):
             self.navigation.setCurrentRow(index)
         self.pages[key].activated(argument)
 
+    def save_document(self) -> None:
+        """Ctrl+S: save the YAML document of the current page (topologies or scenarios)."""
+        save = getattr(self.current_page, "save", None)
+        if callable(save):
+            save()
+
     def _page_changed(self, index: int) -> None:
         if index < 0:
             return
+        self.settings.setValue("window/page", self.stack.widget(index).key)
         self.stack.setCurrentIndex(index)
         page = self.stack.currentWidget()
         if isinstance(page, Page):

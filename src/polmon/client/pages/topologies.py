@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from polmon.client import theme
 from polmon.client.api import ApiClientError
-from polmon.client.pages import Context, Page, default_folder
+from polmon.client.pages import Context, Page, default_folder, write_document
 from polmon.client.widgets import (
     StatusBadge,
     YamlEditor,
@@ -89,6 +89,7 @@ class TopologiesPage(Page):
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self.path: Path | None = None
+        self.saved_source = ""
         self.result: dict[str, object] | None = None
         self.validated_source: str | None = None
         self._auto = QTimer(self)
@@ -187,6 +188,7 @@ class TopologiesPage(Page):
             self.banner.show_problem(self.context.problem(error))
             return
         self.path = path
+        self.saved_source = text
         self.set_source(text, path.name)
         self.session.log(f"Opened topology {path}")
 
@@ -215,24 +217,34 @@ class TopologiesPage(Page):
             str(result.get("normalized_yaml") or ""), f"{result['topology_id']} " "(backend copy)"
         )
 
+    def save(self) -> None:
+        """Save to the opened file (Ctrl+S); ask for a path when there is none."""
+        if self.path is None:
+            self.save_as()
+        elif write_document(self, self.path, self.source(), "topology"):
+            self.saved_source = self.source()
+            self._update_label()
+
     def save_as(self) -> None:
         suggested = (
             self.path.name if self.path else f"{document_id(self.source()) or 'topology'}.yml"
         )
         path = self.context.ask_save(self, "Save topology", suggested, "YAML (*.yml *.yaml)")
-        if path is None:
-            return
-        try:
-            path.write_text(self.source(), encoding="utf-8")
-        except OSError as error:
-            self.banner.show_problem(self.context.problem(error))
-            return
-        self.path = path
-        self.document_label.setText(path.name)
-        self.session.log(f"Saved topology to {path}")
+        if path is not None and write_document(self, path, self.source(), "topology"):
+            self.path = path
+            self.saved_source = self.source()
+            self._update_label()
+
+    def _update_label(self) -> None:
+        name = self.path.name if self.path else self.document_label.text().rstrip(" •")
+        dirty = self.path is not None and self.source() != self.saved_source
+        self.document_label.setText(f"{name} •" if dirty else name)
+        self.document_label.setToolTip("Unsaved changes" if dirty else str(self.path or name))
 
     def _edited(self) -> None:
         self.editor.set_error_line(None)
+        if self.path is not None:
+            self._update_label()
         if self.validated_source is not None and self.source() != self.validated_source:
             self.badge.set_status("modified")
         if self.session.connected and self.source().strip():
