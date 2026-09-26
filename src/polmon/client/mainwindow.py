@@ -211,6 +211,7 @@ class MainWindow(QMainWindow):
         self.session.logged.connect(self._append_log)
         self.session.connection_changed.connect(self._connection_changed)
         self.context.navigate_requested.connect(self.navigate)
+        self.context.notified.connect(self._notified)
         self.context.operation_changed.connect(self._update_actions)
         self._build_menus()
         self._name_for_assistive_technology()
@@ -647,6 +648,11 @@ class MainWindow(QMainWindow):
         for action in (self.deploy_action, self.destroy_action, self.reset_action, self.run_action):
             action.setEnabled(connected and not busy)
         self.cancel_action.setEnabled(busy)
+
+    def _notified(self, tone: str, message: str) -> None:
+        self.statusBar().showMessage(message, 15_000)
+        if not self.isActiveWindow():
+            QApplication.alert(self)  # task-bar flash / attention hint until focused
 
     # -- log ----------------------------------------------------------------------------------
 

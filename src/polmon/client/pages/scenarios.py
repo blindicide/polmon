@@ -536,6 +536,10 @@ class ScenariosPage(Page):
             f"Experiment {record.get('experiment_id')} finished: {status}",
             "info" if status == "succeeded" else "warning",
         )
+        self.context.notify(
+            f"Experiment {record.get('experiment_id')} {status}",
+            "success" if status == "succeeded" else "warning",
+        )
         self.experiment_id.setText(new_experiment_id())
         self.session.experiments_changed.emit()
         self.context.navigate("refresh")

@@ -99,7 +99,16 @@ class TelemetryPage(Page):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
         self.table.selectionModel().currentRowChanged.connect(self._event_selected)
-        splitter.addWidget(self.table)
+        table_box = QWidget()
+        table_layout = QVBoxLayout(table_box)
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        self.empty = muted(
+            "No experiment selected. Run one on the Scenarios page, or pick an experiment above "
+            "(Refresh loads the list from the backend)."
+        )
+        table_layout.addWidget(self.empty)
+        table_layout.addWidget(self.table, 1)
+        splitter.addWidget(table_box)
 
         lower = QSplitter()
         payload_box = QGroupBox("Selected event")
@@ -286,6 +295,7 @@ class TelemetryPage(Page):
 
     def _update_count(self) -> None:
         self.export_button.setEnabled(self.model.rowCount() > 0)
+        self.empty.setVisible(self.experiment_id is None)
         shown, total = self.proxy.rowCount(), self.model.rowCount()
         dropped = f" ({self.model.dropped} oldest dropped)" if self.model.dropped else ""
         self.count.setText(f"{shown} of {total} events{dropped}")

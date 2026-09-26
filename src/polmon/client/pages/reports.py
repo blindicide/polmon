@@ -62,6 +62,12 @@ class ReportsPage(Page):
         )
         self.list.itemSelectionChanged.connect(self._chosen)
         left_layout.addWidget(self.list, 1)
+        self.empty = muted(
+            "No experiments on this backend yet. Deploy a topology and run a scenario; its report "
+            "appears here."
+        )
+        self.empty.hide()
+        left_layout.addWidget(self.empty)
         splitter.addWidget(left)
 
         right = QWidget()
@@ -137,6 +143,7 @@ class ReportsPage(Page):
             )
             for item in experiments
         ]
+        self.empty.setVisible(not rows and self.session.connected)
         self.list.blockSignals(True)
         fill_table(self.list, rows, colors={3: "status"})
         for index, row in enumerate(rows):

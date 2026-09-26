@@ -9,6 +9,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Accessible names for every input, editor, table and list of the client (explicit for the
   connection bar and editors, derived from tooltips, placeholders, form labels and table headers
   elsewhere), enforced by a GUI test across all pages.
+- Finished experiments and benchmark jobs are announced in the status bar and, when the window is
+  not focused, with a task-bar alert; Telemetry and Reports explain what to do when empty.
 - YAML syntax highlighting in the topology and scenario editors (keys, comments, strings,
   scalars, list markers), following the light/dark theme.
 

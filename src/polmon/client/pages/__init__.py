@@ -19,6 +19,7 @@ class Context(QObject):
 
     operation_changed = Signal()
     navigate_requested = Signal(str, object)
+    notified = Signal(str, str)  # tone, message: a finished long operation worth attention
 
     def __init__(
         self,
@@ -118,6 +119,10 @@ class Context(QObject):
         else:
             self.operation.cancel()
         return True
+
+    def notify(self, message: str, tone: str = "info") -> None:
+        """Announce the end of a long operation (status bar; task-bar alert if unfocused)."""
+        self.notified.emit(tone, message)
 
     def navigate(self, page: str, argument: object = None) -> None:
         self.navigate_requested.emit(page, argument)

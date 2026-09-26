@@ -299,6 +299,10 @@ class BenchmarksPage(Page):
             + (f" · result {job.get('result_name')}" if job.get("result_name") else "")
         )
         self.session.log(f"Benchmark job {job.get('job_id')} finished: {state} {message}".strip())
+        self.context.notify(
+            f"Benchmark job {job.get('job_id')} {state}",
+            "success" if state == "succeeded" else "warning",
+        )
         self.refresh_results(select=str(job.get("result_name") or ""))
 
     # -- results ------------------------------------------------------------------------------
