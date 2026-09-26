@@ -32,7 +32,13 @@ Choose a connection type and press **Connect** (Ctrl+Return):
   `127.0.0.1` port with an ephemeral token, waits for health without blocking the window, and
   stops/reaps it on disconnect or exit. The status bar keeps the fidelity label visible. *Backend
   log* opens the captured stdout/stderr. On Windows a kill-on-close Job Object also reaps the
-  child if the client crashes.
+  child if the client crashes. The local backend keeps its data — experiment history, reports and
+  captures — in one persistent directory, so the Reports page still lists earlier local runs after
+  a reconnect or restart: `%LOCALAPPDATA%\polmon\data` on Windows,
+  `$XDG_STATE_HOME/polmon/data` (default `~/.local/state/polmon/data`) on Linux. It is bounded by
+  the backend's data-directory limit (1024 MiB by default; new experiments are refused beyond
+  it). Each start writes its log to a new `sessions/<time>-<pid>-<id>/` directory beside it;
+  the newest 20 are kept.
 - **Remote Linux backend** enables the URL/token fields. The URL drop-down remembers eight
   backends. This is required for L1 namespace and hybrid TAP topologies. Remote backends are best
   reached through an SSH tunnel (`ssh -N -L 8080:127.0.0.1:8080 operator@lab-host`, then

@@ -56,3 +56,62 @@ def test_start_retries_when_selected_port_is_taken(tmp_path, monkeypatch) -> Non
     finally:
         manager.stop()
         occupied.close()
+
+
+def test_local_experiment_history_survives_a_restart(tmp_path) -> None:
+    from polmon.client.local_backend import _L0_SCENARIO, _L0_TOPOLOGY
+
+    manager = LocalBackendManager(state_directory=tmp_path)
+    connection = manager.start(timeout=15)
+    client = ApiClient(str(connection["url"]), token=str(connection["token"]))
+    try:
+        client.load_topology(_L0_TOPOLOGY)
+        client.deploy("local-smoke")
+        assert client.run_experiment("kept-1", "local-smoke", _L0_SCENARIO)["status"] == "succeeded"
+    finally:
+        manager.stop()
+
+    connection = manager.start(timeout=15)
+    client = ApiClient(str(connection["url"]), token=str(connection["token"]))
+    try:
+        listed = {item["experiment_id"]: item for item in client.experiments()}
+        assert listed["kept-1"]["status"] == "succeeded"
+        assert client.report("kept-1")["status"] == "succeeded"
+    finally:
+        manager.stop()
+    assert connection["data_directory"] == tmp_path / "data"
+    sessions = list((tmp_path / "sessions").iterdir())
+    assert len(sessions) == 2
+    assert all([entry.name for entry in session.iterdir()] == ["polmon-backend.log"]
+               for session in sessions)
+
+
+def test_only_old_log_only_sessions_of_finished_clients_are_pruned(tmp_path) -> None:
+    import subprocess
+    import sys
+
+    from polmon.client.local_backend import prune_session_logs
+
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait()
+    sessions = tmp_path / "sessions"
+
+    def session(index: int, pid: int, *, data: bool = False):
+        path = sessions / f"20260101T0000{index:02d}Z-{pid}-abc123"
+        path.mkdir(parents=True)
+        (path / "polmon-backend.log").write_text("log", encoding="utf-8")
+        if data:  # a v0.3.0 session that also held that backend's data
+            (path / "var").mkdir()
+            (path / "var" / "telemetry.sqlite3").write_bytes(b"results")
+        return path
+
+    old = [session(index, finished.pid) for index in range(5)]
+    legacy = session(5, finished.pid, data=True)
+    live = session(6, os.getppid())  # the pytest runner's parent is alive
+    recent = [session(index, finished.pid) for index in range(10, 13)]
+
+    removed = prune_session_logs(sessions, keep=3, current=recent[-1])
+    assert sorted(removed) == sorted(old)
+    assert legacy.is_dir() and (legacy / "var" / "telemetry.sqlite3").is_file()
+    assert live.is_dir()
+    assert all(path.is_dir() for path in recent)

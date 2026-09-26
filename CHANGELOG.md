@@ -4,6 +4,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- The Local backend keeps one persistent data directory (`<state>/polmon/data`), so local
+  experiment history, reports and captures survive reconnects and restarts; per-start session
+  directories now hold only the backend log, and the newest 20 are kept. Previously every
+  connect started with an empty history and left a directory (up to the 1 GiB data limit each)
+  that was never removed. Sessions from v0.3.0 that contain data are left untouched.
+
 ### Fixed
 
 - Windows backends reported no host memory, which silently disabled the admission memory

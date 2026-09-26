@@ -29,6 +29,8 @@ LOCAL_FIDELITY_MESSAGE = (
     "Linux host with network namespace privileges."
 )
 BACKEND_OVERRIDE_ENV = "POLMON_BACKEND_EXECUTABLE"
+# Session directories hold one backend log each; older ones are pruned when a backend starts.
+SESSION_LOGS_KEPT = 20
 
 _L0_TOPOLOGY = """id: local-smoke
 networks:
@@ -117,6 +119,74 @@ def default_state_directory() -> Path:
         base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
         return base / "polmon"
     return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "polmon"
+
+
+def _pid_alive(pid: int) -> bool:
+    """Whether a process with this PID exists (a reused PID only delays a prune)."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(ok) and code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def prune_session_logs(
+    sessions: Path, *, keep: int = SESSION_LOGS_KEPT, current: Path | None = None
+) -> list[Path]:
+    """Remove the oldest log-only session directories beyond ``keep``; return what was removed.
+
+    A directory is removed only if it holds nothing but ``polmon-backend.log`` (v0.3.0 sessions
+    also held that backend's data; those are left alone) and the client that created it (the
+    PID in its name) is no longer running.
+    """
+    if not sessions.is_dir():
+        return []
+    candidates = sorted(
+        (path for path in sessions.iterdir() if path.is_dir() and path != current),
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    removed: list[Path] = []
+    for path in candidates[keep:]:
+        try:
+            owner = int(path.name.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+        if owner != os.getpid() and _pid_alive(owner):
+            continue
+        try:
+            entries = list(path.iterdir())
+            if any(entry.name != "polmon-backend.log" or not entry.is_file() for entry in entries):
+                continue
+            for entry in entries:
+                entry.unlink()
+            path.rmdir()
+        except OSError:
+            continue  # e.g. a log still open elsewhere on Windows: retry at the next start
+        removed.append(path)
+    return removed
 
 
 def _process_rss_bytes(process: subprocess.Popen[bytes]) -> int | None:
@@ -252,6 +322,9 @@ class LocalBackendManager:
         self.port: int | None = None
         self.url = ""
         self.log_path: Path | None = None
+        # Persistent across sessions: experiment history, reports and captures survive a
+        # reconnect or restart and stay bounded by the backend's own --max-data-mb admission.
+        self.data_directory = self.state_directory / "data"
         self._log = None
         self._job: _WindowsKillJob | None = None
         self._lock = threading.RLock()
@@ -281,6 +354,8 @@ class LocalBackendManager:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             session = sessions / f"{stamp}-{os.getpid()}-{secrets.token_hex(3)}"
             session.mkdir()
+            prune_session_logs(sessions, current=session)
+            self.data_directory.mkdir(exist_ok=True)
             self.log_path = session / "polmon-backend.log"
             self._log = self.log_path.open("ab", buffering=0)
             self.token = secrets.token_urlsafe(32)
@@ -310,7 +385,7 @@ class LocalBackendManager:
                         str(self.port),
                         "--local-l0-only",
                     ],
-                    cwd=session,
+                    cwd=self.data_directory,
                     stdin=subprocess.DEVNULL,
                     stdout=self._log,
                     stderr=subprocess.STDOUT,
@@ -364,6 +439,7 @@ class LocalBackendManager:
             "port": self.port,
             "pid": None if self.process is None else self.process.pid,
             "log_path": self.log_path,
+            "data_directory": self.data_directory,
             "label": LOCAL_LABEL,
         }
 
