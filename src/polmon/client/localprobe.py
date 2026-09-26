@@ -44,6 +44,9 @@ def gui_lifecycle_probe(
 ) -> int:
     out = stream or sys.stdout
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    if sys.platform == "win32":  # offscreen Qt looks for fonts only in its own directory
+        windows = os.environ.get("WINDIR", r"C:\Windows")
+        os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(windows, "Fonts"))
     from PySide6.QtCore import QSettings
 
     from polmon.client.app import create_application
@@ -76,8 +79,9 @@ def gui_lifecycle_probe(
     return 0
 
 
-def _connect_local(app, window, states) -> object:  # noqa: ANN001
+def _connect_local(app, window, states, record: dict[str, object]) -> object:  # noqa: ANN001
     window.bar.mode.setCurrentIndex(window.bar.mode.findData("local"))
+    started = time.perf_counter()
     window.connect_backend()
     _wait(
         app,
@@ -85,6 +89,9 @@ def _connect_local(app, window, states) -> object:  # noqa: ANN001
         40.0,
         "the Local backend preset to connect",
     )
+    # Click-to-connected: backend start, health wait and the first full poll (the flow's cost).
+    timings = record.setdefault("seconds_to_connected", [])
+    timings.append(round(time.perf_counter() - started, 3))  # type: ignore[union-attr]
     process = window.local_backend.process
     if process is None or process.poll() is not None:
         raise ProbeFailure("connected without a running owned backend")
@@ -95,12 +102,13 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     session = window.session
 
     # 1. Connect and show the persistent fidelity indicator.
-    process = _connect_local(app, window, states)
+    process = _connect_local(app, window, states, record)
     record["connected"] = {
         "backend_pid": process.pid,
         "state_label": window.bar.state_label.text(),
         "status_bar": window.status_text.text(),
         "l0_only": session.l0_only,
+        "backend_rss_bytes": (session.resources or {}).get("snapshot", {}).get("process_rss_bytes"),
     }
     if window.bar.state_label.text() != LOCAL_LABEL or not session.l0_only:
         raise ProbeFailure("the Local backend fidelity indicator is missing")
@@ -147,7 +155,7 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     record["disconnect"] = {"backend_pid": process.pid, "exit_code": process.returncode}
 
     # 4. Backend killed mid-session: reported with its exit code and log, nothing left behind.
-    process = _connect_local(app, window, states)
+    process = _connect_local(app, window, states, record)
     process.kill()
     process.wait(timeout=10)
     window.poll()
@@ -165,7 +173,7 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
         raise ProbeFailure("the dead backend was not reaped (job/log still open)")
 
     # 5. Closing the client window stops the owned backend (closeEvent -> shutdown).
-    process = _connect_local(app, window, states)
+    process = _connect_local(app, window, states, record)
     window.close()
     _wait(app, lambda: process.poll() is not None, 20.0, "the backend to stop on window close")
     record["window_closed"] = {"backend_pid": process.pid, "exit_code": process.returncode}

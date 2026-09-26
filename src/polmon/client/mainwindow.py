@@ -186,6 +186,9 @@ class MainWindow(QMainWindow):
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
         self.navigation.setFixedWidth(170)
+        # Polish before adding rows: the item size then includes the theme's padding. Rows added
+        # to an unpolished list were laid out 14 px apart but drawn 30 px tall (overlapping).
+        self.navigation.ensurePolished()
         self.stack = QStackedWidget()
         self.pages: dict[str, Page] = {}
         for index, page_class in enumerate(PAGES):

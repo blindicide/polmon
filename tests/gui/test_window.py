@@ -309,3 +309,16 @@ def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_
     assert shown[0].isVisible()
     shown[0].shutdown(wait_ms=1000)
     shown[0].close()
+
+
+def test_navigation_rows_are_laid_out_with_the_themed_item_size(window, qtbot) -> None:
+    # The theme is applied before the window exists (as in the real app): rows added before the
+    # list was polished used to be laid out 14 px apart while being drawn 30 px tall.
+    qtbot.waitExposed(window)
+    navigation = window.navigation
+    step = navigation.sizeHintForRow(0)
+    rows = range(navigation.count())
+    tops = [navigation.visualItemRect(navigation.item(row)).top() for row in rows]
+    assert step >= 24
+    gaps = [later - earlier for earlier, later in zip(tops, tops[1:], strict=False)]
+    assert gaps == [step] * (len(tops) - 1)

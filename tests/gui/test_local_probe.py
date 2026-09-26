@@ -30,6 +30,8 @@ def test_gui_probe_proves_refusal_and_reaps_the_backend_on_every_exit_path(
     assert record["backend_refusal"]["http_status"] == 422
     assert record["backend_refusal"]["message"] == LOCAL_FIDELITY_MESSAGE
     assert record["backend_killed"]["ui_title"] == "Local backend stopped"
+    assert record["connected"]["backend_rss_bytes"] > 10_000_000
+    assert len(record["seconds_to_connected"]) == 3
     assert screenshot.stat().st_size > 10_000
 
     paths = ("disconnect", "backend_killed", "window_closed")
