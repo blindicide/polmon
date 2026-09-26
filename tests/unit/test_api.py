@@ -231,3 +231,25 @@ def test_backend_shutdown_tears_down_every_deployment(tmp_path) -> None:
         assert control.deployments
     assert not control.deployments  # lifespan shutdown ran reset_all()
     assert topology_id in control.topologies  # definitions survive for a restart
+
+
+def test_oversized_bodies_are_rejected_before_parsing(tmp_path) -> None:
+    from polmon.api.limits import MAX_REQUEST_BYTES
+
+    client = TestClient(create_app(ControlPlane(tmp_path)))
+    oversized = b"{" + b" " * MAX_REQUEST_BYTES + b"}"
+    declared = client.post(
+        "/v1/topologies/validate", content=oversized, headers={"content-type": "application/json"}
+    )
+    assert declared.status_code == 413
+    assert declared.json()["error"]["code"] == "request_too_large"
+
+    def chunks():
+        for _ in range(6):
+            yield b" " * 1_048_576
+
+    chunked = client.post(
+        "/v1/topologies/validate", content=chunks(), headers={"content-type": "application/json"}
+    )
+    assert chunked.status_code == 413
+    assert client.get("/v1/health").status_code == 200  # the server keeps serving

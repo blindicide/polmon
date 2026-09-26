@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from polmon.api.control import ControlPlane
+from polmon.api.limits import RequestSizeLimit
 from polmon.api.routes import router
 from polmon.core.diagnostics import collect_diagnostics
 from polmon.core.errors import PolmonError
@@ -61,6 +62,7 @@ def create_app(control: ControlPlane | None = None) -> FastAPI:
     application = FastAPI(title="polmon", version=__version__, lifespan=lifespan)
     application.state.control = control or ControlPlane()
     application.add_exception_handler(PolmonError, handle_polmon_error)
+    application.add_middleware(RequestSizeLimit)
     application.add_api_route("/", root, methods=["GET"])
     application.include_router(router)
     return application

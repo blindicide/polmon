@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- A hung privileged command raised `TimeoutExpired`, which could abort best-effort teardown midway
+  or crash a probe; timeouts now return exit code 124 (or raise a clear error when checked).
+- Oversized request bodies were read and parsed before model limits applied; bodies above 5 MiB,
+  including chunked uploads, are now refused with HTTP 413 before parsing.
+
 ## [0.1.0] - 2026-09-26
 
 Phase I MVP.

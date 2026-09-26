@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 
+TIMEOUT_RETURNCODE = 124  # the convention of coreutils timeout(1)
+
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
@@ -25,13 +27,21 @@ class CommandRunner:
         timeout: float = 10,
     ) -> CommandResult:
         argv = ["sudo", "-n", *command] if privileged else command
-        completed = subprocess.run(
-            argv,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        try:
+            completed = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            # A hung command must not abort best-effort teardown or turn a probe into a crash.
+            if check:
+                raise RuntimeError(
+                    f"command timed out after {timeout:g}s: {command[0]}"
+                ) from None
+            return CommandResult("", f"timed out after {timeout:g}s", TIMEOUT_RETURNCODE)
         if check and completed.returncode != 0:
             raise RuntimeError(
                 f"command failed ({completed.returncode}): {command[0]}: "

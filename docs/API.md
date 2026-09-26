@@ -12,7 +12,8 @@ Run an experiment with `POST /v1/experiments` and fields `experiment_id`, `topol
 artifacts beneath its data directory. `POST /v1/reset` tears down every owned deployment while
 preserving loaded topology definitions so they can be redeployed. Application errors use
 `{"error":{"code":"...","message":"...","details":{...}}}` and an appropriate HTTP status.
-Request documents are capped at 2 MB; client connection/ordinary calls default to 5 seconds,
+Request documents are capped at 2 MB, and any request body above 5 MiB (declared or chunked)
+is refused with HTTP 413 `request_too_large` before it is parsed; client connection/ordinary calls default to 5 seconds,
 deployment/reset to 30 seconds, and experiment execution to 120 seconds.
 
 `GET /v1/resources` returns effective admission limits, active counts, and a resource sample.
