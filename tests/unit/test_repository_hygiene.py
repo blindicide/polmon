@@ -23,6 +23,10 @@ OPERATOR_FILES = {
     "RUN-ACCOUNTING.md",
     "SUPERVISOR-BRIEF-polmon.md",
 }
+# Operator/supervisor file families (MANDATE-QT-UI.md, SUPERVISOR-BRIEF-QT-UI.md, ...).
+OPERATOR_PATTERNS = tuple(
+    re.compile(pattern) for pattern in (r"MANDATE-.*\.md", r"SUPERVISOR-.*\.md", r"RESUME-.*\.md")
+)
 
 
 def tracked_files() -> list[Path]:
@@ -41,6 +45,7 @@ def text_files() -> list[Path]:
 def test_operator_instruction_files_are_never_tracked() -> None:
     tracked = {path.relative_to(ROOT).as_posix() for path in tracked_files()}
     assert not tracked & OPERATOR_FILES
+    assert not [name for name in tracked if any(p.fullmatch(name) for p in OPERATOR_PATTERNS)]
 
 
 def test_text_files_are_utf8_without_bom_or_mojibake() -> None:

@@ -18,8 +18,9 @@ dist/
 benchmark-results/
 reports/
 var/
-SUPERVISOR-BRIEF-polmon.md
 # Operator instructions and supervisor state: never repository content.
 INSTRUCTION.md
 RESUME-*.md
 RUN-ACCOUNTING.md
+MANDATE-*.md
+SUPERVISOR-*.md
