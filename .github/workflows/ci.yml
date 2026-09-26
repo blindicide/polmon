@@ -69,7 +69,7 @@ jobs:
         if: runner.os == 'Linux'
         run: >
           xvfb-run -a pytest -m gui -p no:cacheprovider --cov=polmon --cov-append
-          --cov-report=xml:coverage.xml --junitxml=results-gui.xml
+          --cov-report=xml:coverage.xml --cov-fail-under=80 --junitxml=results-gui.xml
       # --no-qt-log: on Windows runners pytest's output capture combined with pytest-qt's Qt
       # message capture aborts the interpreter (either one alone is fine; see CI.md).
       - name: GUI tests (pytest-qt, offscreen platform)
