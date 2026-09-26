@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from collections import deque
 from dataclasses import asdict
@@ -50,9 +49,16 @@ class HybridBackend:
         tap_factory: TapFactory = TapPort.attach,
         capture_limit: int = 1_024,
         require_linux: bool = True,
+        owner_uid: int | None = None,
+        owner_gid: int | None = None,
     ) -> None:
         self.runner = runner or CommandRunner()
-        self.namespace = NamespaceBackend(runner=self.runner, require_linux=require_linux)
+        self.namespace = NamespaceBackend(
+            runner=self.runner,
+            require_linux=require_linux,
+            owner_uid=owner_uid,
+            owner_gid=owner_gid,
+        )
         self.synthetic = SyntheticBackend()
         self.tap_factory = tap_factory
         self.taps: dict[str, TapLike] = {}
@@ -99,7 +105,17 @@ class HybridBackend:
             for network_id in sorted(l0_networks):
                 name = NamespaceBackend._name("polmon", f"{topology.id}:{network_id}:tap", "t")
                 self.runner.run(
-                    ["ip", "tuntap", "add", "dev", name, "mode", "tap", "user", str(os.getuid())],
+                    [
+                        "ip",
+                        "tuntap",
+                        "add",
+                        "dev",
+                        name,
+                        "mode",
+                        "tap",
+                        "user",
+                        str(self.namespace.owner_uid),
+                    ],
                     privileged=True,
                 )
                 self.tap_names[network_id] = name

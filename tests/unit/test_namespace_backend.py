@@ -31,7 +31,11 @@ class FakeRunner:
 def test_namespace_command_plan_is_isolated_and_cleanup_is_idempotent() -> None:
     runner = FakeRunner()
     backend = NamespaceBackend(
-        runner=runner, python_executable=sys.executable, require_linux=False
+        runner=runner,
+        python_executable=sys.executable,
+        require_linux=False,
+        owner_uid=1000,
+        owner_gid=1001,
     )
     topology = load_topology(EXAMPLE)
     backend.validate(topology)
@@ -44,6 +48,7 @@ def test_namespace_command_plan_is_isolated_and_cleanup_is_idempotent() -> None:
     assert all(privileged for _, privileged, _ in runner.commands)
     assert all(command[0] == "ip" for command, _, _ in runner.commands)
     joined = " ".join(part for command, _, _ in runner.commands for part in command)
+    assert "--reuid 1000 --regid 1001" in joined
     assert "iptables" not in joined and "nft" not in joined and "default" not in joined
     assert all(
         len(part) <= 15

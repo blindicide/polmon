@@ -32,10 +32,14 @@ class NamespaceBackend:
         runner: CommandRunner | None = None,
         python_executable: str | None = None,
         require_linux: bool = True,
+        owner_uid: int | None = None,
+        owner_gid: int | None = None,
     ) -> None:
         self.runner = runner or CommandRunner()
         self.python_executable = str(Path(python_executable or sys.executable).resolve())
         self.require_linux = require_linux
+        self.owner_uid = owner_uid if owner_uid is not None else self._process_id("getuid")
+        self.owner_gid = owner_gid if owner_gid is not None else self._process_id("getgid")
         self.topology: Topology | None = None
         self.names: NamespaceNames | None = None
         self.created_namespaces: set[str] = set()
@@ -43,6 +47,11 @@ class NamespaceBackend:
         self.created_veths: set[str] = set()
         self.services: dict[tuple[str, str], subprocess.Popen[bytes]] = {}
         self.running = False
+
+    @staticmethod
+    def _process_id(attribute: str) -> int:
+        getter = getattr(os, attribute, None)
+        return int(getter()) if getter is not None else 0
 
     @staticmethod
     def _name(prefix: str, value: str, suffix: str = "") -> str:
@@ -229,9 +238,9 @@ class NamespaceBackend:
             namespace,
             "setpriv",
             "--reuid",
-            str(os.getuid()),
+            str(self.owner_uid),
             "--regid",
-            str(os.getgid()),
+            str(self.owner_gid),
             "--clear-groups",
             self.python_executable,
             "-m",

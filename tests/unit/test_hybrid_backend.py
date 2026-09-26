@@ -51,10 +51,17 @@ def test_hybrid_uses_one_shared_tap_and_tears_it_down_first() -> None:
         taps.append(tap)
         return tap
 
-    backend = HybridBackend(runner=runner, tap_factory=factory, require_linux=False)
+    backend = HybridBackend(
+        runner=runner,
+        tap_factory=factory,
+        require_linux=False,
+        owner_uid=1000,
+        owner_gid=1001,
+    )
     topology = load_topology(EXAMPLE)
     backend.validate(topology)
     resources = backend.create(topology)
+    assert any(command[-2:] == ["user", "1000"] for command in runner.commands)
     assert len([resource for resource in resources if resource.startswith("tap:")]) == 1
     assert len(backend.synthetic.engine.endpoints) == 1
     backend.destroy()
