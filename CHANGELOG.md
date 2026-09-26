@@ -25,6 +25,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Added
 
+- `polmon-benchmark --settle-seconds` pauses between runs; recorded in the workload.
+- Admission-estimate calibration against measurements and an L1 scaling study (2/4/8 namespaces)
+  in RESOURCE-BUDGET.md.
 - Storage admission: experiments are refused (HTTP 429) when the data directory would exceed
   `--max-data-mb` or free disk would fall below `--disk-reserve-mb`; artefacts are never deleted
   automatically. `GET /v1/resources` reports `data_directory_bytes`.
