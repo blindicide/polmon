@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.4] - 2026-09-26
+
+### Added
+
+- Backend-neutral execution interface and explicit topology lifecycle state machine.
+- Process-wide resource ownership tracking, atomic create rollback, and idempotent cleanup.
+- Failure-injectable mock backend and comprehensive transition/failure tests.
+
 ## [0.0.3] - 2026-09-26
 
 ### Added

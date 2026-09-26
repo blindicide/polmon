@@ -10,3 +10,6 @@ Dependencies point inward: GUI and API depend on control-plane models, while syn
 networking implementations never depend on the GUI. This keeps Windows packaging independent of
 Linux facilities and permits unit testing without privileges.
 
+The orchestration layer owns lifecycle state and resource claims; backends own implementation
+details. This separation lets the mock backend test rollback and legal transitions while later L0,
+L1, and L2 implementations share the same control-plane contract.
