@@ -14,9 +14,18 @@ reproducible benchmarks with retained raw results. Run the target demonstration 
 controlled experiment, telemetry, report, reset) with `.venv/bin/polmon-demo`; see
 [docs/DEMO.md](docs/DEMO.md).
 
+Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
+namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is
+mandatory off loopback, in-namespace workloads that never run as root, verified scenario
+preconditions, storage admission, `polmon-diagnostics --lab`, GUI tests on Windows and under Xvfb,
+and a CI dependency audit. Releases carry `SHA256SUMS.txt`; check a download with
+`scripts/verify-release.sh vX.Y.Z`. Documentation index: [docs/README.md](docs/README.md).
+
 ## Quick start
 
-Requirements: Linux, `/usr/bin/python3.12`, `uv`, and `iproute2` for later privileged tests.
+Requirements: Linux, `/usr/bin/python3.12`, and `uv`. The privileged laboratory (L1/hybrid)
+additionally needs `iproute2`, `setpriv`, `/dev/net/tun`, and passwordless `sudo` for `ip`; check
+with `.venv/bin/polmon-diagnostics --lab`.
 
 ```bash
 uv venv --python /usr/bin/python3.12
