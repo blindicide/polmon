@@ -13,7 +13,14 @@ Controls in the implementation:
   only target nodes declared in the bound topology, never raw addresses or discovered hosts.
 - Privileged operations go through one argv-only command runner (`sudo -n`, no shell) limited to
   `ip` namespace, bridge, veth, TAP, address, and in-namespace route operations on generated
-  `polmon*`/`veth*` names; lab services drop to the invoking user with `setpriv`.
+  `polmon*`/`veth*` names. Every workload inside a lab namespace (built-in services, ICMP and TCP
+  probes) is started through `setpriv` as the invoking user; only `ip` itself and `setpriv` run as
+  root.
+- Known limit of the Phase I privilege model: `sudo ip` is root-equivalent, because
+  `ip netns exec` can run any program. A sudoers rule restricted to `ip` therefore does not confine
+  a compromised backend. Run the backend only on a dedicated laboratory host under an account
+  whose sudo rights are acceptable to lose; a narrowly scoped privileged helper with a fixed set of
+  verbs is the planned replacement.
 - The backend binds to `127.0.0.1` by default and refuses any non-loopback address unless an API
   token is configured; with a token, every non-health endpoint requires `Authorization: Bearer`.
   Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`, keep it in a

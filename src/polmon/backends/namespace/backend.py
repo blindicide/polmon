@@ -255,10 +255,31 @@ class NamespaceBackend:
             },
         )
 
+    def _as_owner(self, namespace: str, *argv: str) -> list[str]:
+        """Command running ``argv`` inside ``namespace`` as the invoking user, never as root.
+
+        Only ``ip`` (namespace entry) and ``setpriv`` (privilege drop) execute with privileges;
+        probes and services run unprivileged (``ping`` relies on its ``cap_net_raw`` file
+        capability).
+        """
+        return [
+            "ip",
+            "netns",
+            "exec",
+            namespace,
+            "setpriv",
+            "--reuid",
+            str(self.owner_uid),
+            "--regid",
+            str(self.owner_gid),
+            "--clear-groups",
+            *argv,
+        ]
+
     def ping(self, source_node: str, destination: str) -> bool:
         namespace = self._namespace(source_node)
         result = self.runner.run(
-            ["ip", "netns", "exec", namespace, "ping", "-c", "1", "-W", "2", destination],
+            self._as_owner(namespace, "ping", "-c", "1", "-W", "2", destination),
             privileged=True,
             check=False,
             timeout=5,
@@ -271,14 +292,11 @@ class NamespaceBackend:
         """Send ``count`` kernel ICMP echoes inside the lab and return loss and RTT figures."""
         if not 1 <= count <= 100:
             raise ValueError("ping count must be between 1 and 100")
-        if not 0.2 <= interval <= 5:
+        if not 0.2 <= interval <= 5:  # 0.2 s is also the iputils minimum for unprivileged users
             raise ValueError("ping interval must be between 0.2 and 5 seconds")
         namespace = self._namespace(source_node)
         result = self.runner.run(
-            [
-                "ip",
-                "netns",
-                "exec",
+            self._as_owner(
                 namespace,
                 "ping",
                 "-n",
@@ -290,7 +308,7 @@ class NamespaceBackend:
                 "-W",
                 "2",
                 destination,
-            ],
+            ),
             privileged=True,
             check=False,
             timeout=count * interval + 10,
@@ -307,17 +325,9 @@ class NamespaceBackend:
             "raise SystemExit(0 if data.startswith(b'HTTP/') else 1)"
         )
         result = self.runner.run(
-            [
-                "ip",
-                "netns",
-                "exec",
-                namespace,
-                self.python_executable,
-                "-c",
-                code,
-                destination,
-                str(port),
-            ],
+            self._as_owner(
+                namespace, self.python_executable, "-I", "-S", "-c", code, destination, str(port)
+            ),
             privileged=True,
             check=False,
             timeout=5,
@@ -326,17 +336,8 @@ class NamespaceBackend:
 
     def _start_service(self, node_id: str, service_id: str, port: int, address: str) -> None:
         namespace = self._namespace(node_id)
-        command = [
-            "ip",
-            "netns",
-            "exec",
+        command = self._as_owner(
             namespace,
-            "setpriv",
-            "--reuid",
-            str(self.owner_uid),
-            "--regid",
-            str(self.owner_gid),
-            "--clear-groups",
             self.python_executable,
             "-I",
             "-S",
@@ -345,7 +346,7 @@ class NamespaceBackend:
             address,
             "--port",
             str(port),
-        ]
+        )
         self.services[(node_id, service_id)] = self.runner.start(command, privileged=True)
 
     def _namespace(self, node_id: str) -> str:

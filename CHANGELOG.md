@@ -4,6 +4,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Security
+
+- ICMP probes, ping statistics, and TCP probes inside lab namespaces ran as root; they now run as
+  the invoking user through `setpriv` like the built-in services (`ping` keeps working through its
+  `cap_net_raw` file capability), and the probe interpreter runs isolated (`-I -S`).
+- SECURITY.md now states plainly that `sudo ip` is root-equivalent in the Phase I privilege model.
+
 ### Changed
 
 - Hybrid TAP setup and teardown run as one privileged `ip` batch each; TAP names are owned before

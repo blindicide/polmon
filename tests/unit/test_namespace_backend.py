@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.namespace.runner import CommandResult
 from polmon.topology import load_topology
@@ -143,3 +145,21 @@ def test_create_refuses_to_adopt_objects_it_did_not_create() -> None:
         raise AssertionError("create must refuse a pre-existing generated name")
     assert runner.calls == []  # nothing created, nothing deleted
     assert not backend.inspect().resources
+
+
+def test_every_in_namespace_workload_runs_as_the_owner_not_root() -> None:
+    runner = FakeRunner()
+    backend = NamespaceBackend(runner=runner, require_linux=False, owner_uid=1000, owner_gid=1001)
+    topology = load_topology(EXAMPLE)
+    backend.validate(topology)
+    backend.create(topology)
+    backend.start()
+    backend.ping("client", "10.88.0.20")
+    backend.probe_tcp("client", "10.88.0.20", 8080)
+    with pytest.raises(ValueError):  # the fake runner prints no ping summary
+        backend.ping_statistics("client", "10.88.0.20", count=1)
+    executions = [command for command, _, _ in runner.commands if command[1:3] == ["netns", "exec"]]
+    assert len(executions) == 4  # service, ping, probe, ping statistics
+    for command in executions:
+        assert command[4:10] == ["setpriv", "--reuid", "1000", "--regid", "1001", "--clear-groups"]
+    backend.destroy()
