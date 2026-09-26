@@ -1,0 +1,32 @@
+id: controlled-recon
+required_topology: l1-two-node
+initial_conditions:
+  - topology_deployed
+  - services_started
+permitted_actions:
+  - icmp_probe
+  - tcp_probe
+sequence:
+  - id: reach-server
+    kind: icmp_probe
+    source: client
+    target: server
+  - id: inspect-web
+    kind: tcp_probe
+    source: client
+    target: server
+    service: web
+timeout_seconds: 10
+success_conditions:
+  - action: reach-server
+    field: success
+    equals: true
+  - action: inspect-web
+    field: success
+    equals: true
+failure_conditions:
+  - action: reach-server
+    field: success
+    equals: false
+cleanup_policy: always
+

@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.9] - 2026-09-26
+
+### Added
+
+- Strict topology-bound scenario YAML with closed ICMP/TCP probe actions and declared targets.
+- Deterministic sequence execution, deadlines, cancellation, conditions, observations, and cleanup.
+- Controlled reconnaissance example and invalid/preflight/failure-path tests.
+
 ## [0.0.8] - 2026-09-26
 
 ### Added
