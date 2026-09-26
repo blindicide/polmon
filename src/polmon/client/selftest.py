@@ -149,7 +149,7 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
     cold start from process launch to that line) and, at the end, the idle resident set size.
     """
     out = stream or sys.stdout
-    from PySide6.QtCore import QSettings, QTimer
+    from PySide6.QtCore import QEventLoop, QSettings, QTimer
     from PySide6.QtWidgets import QApplication
 
     from polmon.client.app import create_application
@@ -157,7 +157,7 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
     from polmon.core.diagnostics import resource_snapshot
 
     began = time.perf_counter()
-    app = create_application(argv, theme_preference="system")
+    create_application(argv, theme_preference="system")  # reused when one already exists
     observed: dict[str, object] = {}
     with tempfile.TemporaryDirectory() as directory:
         settings = QSettings(str(Path(directory) / "smoke.ini"), QSettings.Format.IniFormat)
@@ -181,11 +181,15 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
             observed["exposed"] = bool(handle and handle.isExposed())
             observed["visible"] = window.isVisible()
             observed["rss"] = resource_snapshot().process_rss_bytes
-            window.close()
-            app.quit()
+            window.shutdown(wait_ms=1000)
+            window.hide()
+            loop.quit()
 
+        # A local loop, not app.exec()/quit(): also correct when embedded in a running app.
+        loop = QEventLoop()
         QTimer.singleShot(int(seconds * 1000), finish)
-        app.exec()
+        loop.exec()
+        window.deleteLater()
         del settings
     platform = QApplication.platformName()
     ok = bool(observed.get("visible")) and bool(observed.get("exposed"))

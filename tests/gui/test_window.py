@@ -240,3 +240,37 @@ def test_client_guide_lists_exactly_the_bound_shortcuts() -> None:
     rows = re.findall(r"^\| ([^|]+?) \| ([^|]+?) \|$", section, re.M)
     documented = [(keys, action) for keys, action in rows if keys not in {"Keys", "---"}]
     assert documented == list(SHORTCUTS)
+
+
+def test_smoke_start_shows_the_window_and_reports(qapp) -> None:
+    from polmon.client.selftest import smoke_start
+
+    stream = io.StringIO()
+    assert smoke_start(0.5, ["polmon-client"], stream) == 0
+    output = stream.getvalue()
+    assert "exposed after" in output
+    platform = QApplication.platformName()
+    assert f"polmon {__version__} smoke-start: PASS platform={platform}" in output
+
+
+def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_path) -> None:
+    from PySide6.QtCore import QSettings
+
+    from polmon.client import app as client_app
+    from polmon.client import mainwindow
+
+    shown = []
+    real_window = mainwindow.MainWindow
+
+    def isolated_window(settings=None, parent=None):
+        window = real_window(QSettings(str(tmp_path / "gui.ini"), QSettings.Format.IniFormat))
+        shown.append(window)
+        return window
+
+    monkeypatch.setattr(mainwindow, "MainWindow", isolated_window)
+    monkeypatch.setattr(type(qapp), "exec", lambda self: 0)
+    assert client_app.main(["--url", "http://10.1.2.3:8080", "--theme", "dark"]) == 0
+    assert shown and shown[0].bar.url.text() == "http://10.1.2.3:8080"
+    assert shown[0].isVisible()
+    shown[0].shutdown(wait_ms=1000)
+    shown[0].close()
