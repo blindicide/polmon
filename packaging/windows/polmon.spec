@@ -10,7 +10,8 @@ analysis = Analysis(
     pathex=[str(project_root / "src")],
     binaries=[],
     datas=[],
-    hiddenimports=["polmon.version"],
+    # The self-test deliberately imports these by name, so static analysis cannot see them.
+    hiddenimports=["json", "polmon.version", "tkinter", "urllib.request"],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
