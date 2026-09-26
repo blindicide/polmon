@@ -6,6 +6,7 @@ import argparse
 import json
 import statistics
 import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +47,15 @@ def _add_limits(parser: argparse.ArgumentParser, *, endpoints: int, namespaces: 
     group.add_argument("--memory-reserve-mb", type=int, default=256)
 
 
+def _add_settle(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--settle-seconds",
+        type=float,
+        default=0.0,
+        help="pause between runs so asynchronous kernel teardown of the previous run finishes",
+    )
+
+
 def _add_output(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
@@ -67,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     l0.add_argument("--repeats", type=int, default=3)
     l0.add_argument("--idle-seconds", type=float, default=0.5)
     _add_limits(l0, endpoints=0, namespaces=0)
+    _add_settle(l0)
     _add_output(l0)
 
     ns = commands.add_parser("l1", help="Linux namespace L1 endpoints (privileged lab)")
@@ -75,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     ns.add_argument("--idle-seconds", type=float, default=1.0)
     ns.add_argument("--ping-count", type=int, default=10)
     _add_limits(ns, endpoints=l1.MAX_NAMESPACES, namespaces=4)
+    _add_settle(ns)
     _add_output(ns)
 
     tg = commands.add_parser("target", help="Phase I target: 50 L0 + 2 L1 (privileged lab)")
@@ -83,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     tg.add_argument("--repeats", type=int, default=3)
     tg.add_argument("--idle-seconds", type=float, default=1.0)
     _add_limits(tg, endpoints=64, namespaces=4)
+    _add_settle(tg)
     _add_output(tg)
 
     summary = commands.add_parser("summarize", help="render raw result JSON files as Markdown")
@@ -108,6 +121,8 @@ def _validate_common(args: argparse.Namespace) -> None:
         raise SystemExit("--idle-seconds must be between 0 and 60")
     if args.max_run_seconds <= 0:
         raise SystemExit("--max-run-seconds must be positive")
+    if not 0 <= args.settle_seconds <= 60:
+        raise SystemExit("--settle-seconds must be between 0 and 60")
 
 
 def _emit(args: argparse.Namespace, payload: dict[str, object], started: datetime) -> None:
@@ -157,6 +172,8 @@ def _run_plan(
             limits.admit(topology)
         progress.update(0, "starting")
         for index, (_, params, detail) in enumerate(plan, start=1):
+            if index > 1 and args.settle_seconds > 0:
+                time.sleep(args.settle_seconds)
             row = run_worker(kind, params, timeout=limits.max_run_seconds)
             rows.append(row)
             limits.check_memory(row)
@@ -216,6 +233,7 @@ def command_l0(args: argparse.Namespace) -> int:
         "traffic": "two rounds of one ICMP echo from the first endpoint to every other "
         "endpoint (round 1 resolves ARP, round 2 uses the ARP cache)",
         "isolation": "one fresh Python process per run",
+        "settle_seconds_between_runs": args.settle_seconds,
     }
     return _run_plan(
         args,
@@ -254,6 +272,7 @@ def command_l1(args: argparse.Namespace) -> int:
         "idle_seconds_per_run": args.idle_seconds,
         "traffic": f"{args.ping_count} kernel ICMP echoes at 0.2 s intervals, client to peer",
         "isolation": "one fresh Python process per run",
+        "settle_seconds_between_runs": args.settle_seconds,
     }
     return _run_plan(
         args,
@@ -294,6 +313,7 @@ def command_target(args: argparse.Namespace) -> int:
         "L0 endpoint, five kernel L1-to-L1 echoes",
         "target": "approximately 1 GB incremental memory for 50 L0 + 2 L1 (specification §2)",
         "isolation": "one fresh Python process per run",
+        "settle_seconds_between_runs": args.settle_seconds,
     }
     return _run_plan(
         args,

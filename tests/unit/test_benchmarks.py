@@ -206,3 +206,27 @@ def test_timed_out_worker_is_terminated_gracefully() -> None:
         run_worker("l0", {"endpoint_count": 3, "repeat": 1, "idle_seconds": 30}, timeout=1.5)
     assert raised.value.details["terminated_gracefully"] is True
     assert time.monotonic() - started < 15
+
+
+def test_settle_seconds_is_bounded_and_recorded(tmp_path) -> None:
+    with pytest.raises(SystemExit, match="settle"):
+        cli.main(["l0", "--settle-seconds", "61", "--output-dir", str(tmp_path)])
+    code = cli.main(
+        [
+            "l0",
+            "--counts",
+            "3",
+            "--repeats",
+            "2",
+            "--idle-seconds",
+            "0",
+            "--settle-seconds",
+            "0.1",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+    assert code == cli.EXIT_OK
+    [written] = tmp_path.glob("l0-*.json")
+    workload = json.loads(written.read_text(encoding="utf-8"))["workload"]
+    assert workload["settle_seconds_between_runs"] == 0.1
