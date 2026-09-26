@@ -32,6 +32,9 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      # UTF-8 console I/O: keeps non-ASCII test output (e.g. "NOT RUN — ...") free of mojibake.
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
