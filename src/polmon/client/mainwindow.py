@@ -748,6 +748,9 @@ class MainWindow(QMainWindow):
         self._poll_handle = None
         self.poll_timer.stop()
         code = self.local_backend.exit_code
+        # Reap now: closes the kill-on-close job, so no helper process of the dead backend (e.g.
+        # the Python child of a one-file launcher) outlives it, and releases the log file.
+        self.local_backend.stop(timeout=1.0)
         problem = Problem(
             "Local backend stopped",
             f"The owned backend exited unexpectedly with code {code}.",

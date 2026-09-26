@@ -161,7 +161,8 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     }
     if banner is None or banner.title != "Local backend stopped":
         raise ProbeFailure("the killed backend was not reported in the UI")
-    window.local_backend.stop()
+    if window.local_backend._job is not None or window.local_backend._log is not None:
+        raise ProbeFailure("the dead backend was not reaped (job/log still open)")
 
     # 5. Closing the client window stops the owned backend (closeEvent -> shutdown).
     process = _connect_local(app, window, states)

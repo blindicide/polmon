@@ -21,6 +21,7 @@ from polmon.api.limits import RequestSizeLimit
 from polmon.api.routes import router
 from polmon.core.diagnostics import collect_diagnostics, fidelity_readiness
 from polmon.core.errors import PolmonError
+from polmon.core.lifeline import onefile_launcher_pid, watch_process
 from polmon.core.logging import configure_logging
 from polmon.resources import ResourceLimits
 from polmon.version import __version__
@@ -256,8 +257,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     l0_only = args.local_l0_only or sys.platform == "win32"
     control = ControlPlane(limits=limits, l0_only=l0_only)
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(control, api_token=token), host=args.host, port=args.port)
+    )
+    launcher = onefile_launcher_pid()
+    if launcher is not None:
+        watch_process(launcher, lambda: setattr(server, "should_exit", True))
     try:
-        uvicorn.run(create_app(control, api_token=token), host=args.host, port=args.port)
+        server.run()
     finally:
         control.close()
     return 0

@@ -109,10 +109,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Get-Content windows-backend.log; throw "standalone backend L0 workflow failed" }
           $proc.Refresh()
           $launcherRss = $proc.WorkingSet64
+          # Kill only the one-file launcher PID: its Python child must notice and leave by itself.
           Stop-Process -Id $proc.Id -Force
           $proc.WaitForExit(10000) | Out-Null
           Remove-Item Env:POLMON_API_TOKEN
-          Assert-NoBackend "standalone backend stopped (pid $($proc.Id))"
+          Assert-NoBackend "standalone backend launcher killed (pid $($proc.Id))" 20
+          if (-not (Select-String -Quiet -Path windows-backend.log -Pattern '"event":"launcher_exit"')) { throw "backend did not log its launcher exit" }
+          if (-not (Select-String -Quiet -Path windows-backend.log -Pattern '"event":"shutdown_cleanup"')) { throw "backend did not shut down gracefully" }
           $e2e = Get-Content windows-backend-e2e.json | ConvertFrom-Json
           if ($e2e.experiment_status -ne "succeeded" -or $e2e.l1_result.error.message -notmatch "L0 synthetic nodes only") { throw "unexpected standalone E2E result" }
           @{ backend_rss_bytes_after_workflow = $e2e.backend_rss_bytes; launcher_rss_bytes = $launcherRss;
