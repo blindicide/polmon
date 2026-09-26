@@ -139,3 +139,121 @@ def test_hybrid_create_fails_closed_and_cleans_up_when_port_never_forwards() -> 
         command[:4] == ["ip", "link", "del", "dev"] and command[-1] == taps[0].name
         for command in runner.commands
     )
+
+
+class PeerTap(FakeTap):
+    """A TAP whose far side behaves like one L1 host: answers ARP and ICMP echo requests."""
+
+    def __init__(
+        self, name: str, *, peer_ip: str = "10.89.0.20", peer_mac: str = "02:00:00:89:00:02"
+    ):
+        super().__init__(name)
+        from collections import deque
+        from ipaddress import IPv4Address
+
+        self.peer_ip = IPv4Address(peer_ip)
+        self.peer_mac = peer_mac
+        self.pending = deque()
+        self.written = []
+
+    def write(self, frame: bytes) -> None:
+        from polmon.networking.arp import ArpPacket
+        from polmon.networking.ethernet import EthernetFrame
+        from polmon.networking.icmp import ECHO_REPLY, ECHO_REQUEST, IcmpEcho
+        from polmon.networking.ipv4 import IPv4Packet
+
+        self.written.append(frame)
+        ethernet = EthernetFrame.from_bytes(frame)
+        # Unrelated traffic first, as a real bridge would deliver it.
+        noise = EthernetFrame("ff:ff:ff:ff:ff:ff", "02:aa:00:00:00:01", 0x86DD, b"\x00" * 46)
+        self.pending.append(noise.to_bytes())
+        if ethernet.ethertype == 0x0806:
+            request = ArpPacket.from_bytes(ethernet.payload)
+            if request.target_ip == self.peer_ip:
+                reply = ArpPacket.reply(
+                    self.peer_mac, self.peer_ip, request.sender_mac, request.sender_ip
+                )
+                frame = EthernetFrame(request.sender_mac, self.peer_mac, 0x0806, reply.to_bytes())
+                self.pending.append(frame.to_bytes())
+        elif ethernet.ethertype == 0x0800:
+            packet = IPv4Packet.from_bytes(ethernet.payload)
+            echo = IcmpEcho.from_bytes(packet.payload)
+            if packet.destination == self.peer_ip and echo.echo_type == ECHO_REQUEST:
+                answer = IcmpEcho(ECHO_REPLY, echo.identifier, echo.sequence, echo.payload)
+                reply = IPv4Packet(self.peer_ip, packet.source, 1, answer.to_bytes())
+                frame = EthernetFrame(ethernet.source, self.peer_mac, 0x0800, reply.to_bytes())
+                self.pending.append(frame.to_bytes())
+
+    def read(self, timeout: float):
+        return self.pending.popleft() if self.pending else None
+
+
+def hybrid_with(tap_factory) -> HybridBackend:
+    backend = HybridBackend(
+        runner=FakeRunner(),
+        tap_factory=tap_factory,
+        require_linux=False,
+        owner_uid=1000,
+        owner_gid=1000,
+        bridge_port_states=lambda bridge: {name: "3" for name in backend.tap_names.values()},
+    )
+    topology = load_topology(EXAMPLE)
+    backend.validate(topology)
+    backend.create(topology)
+    return backend
+
+
+def test_ping_l1_completes_arp_and_icmp_across_the_tap_and_captures_frames() -> None:
+    taps = []
+
+    def factory(name):
+        taps.append(PeerTap(name))
+        return taps[-1]
+
+    backend = hybrid_with(factory)
+    assert backend.ping_l1("synthetic", "10.89.0.20") is True
+    # ARP request, ICMP request written; unrelated frames were skipped while matching replies.
+    assert len(taps[0].written) == 2
+    assert len(backend.capture) >= 4
+    assert backend.ping_l1("synthetic", "10.89.0.20") is True  # repeatable
+    backend.destroy()
+
+
+def test_ping_l1_times_out_without_an_answer_and_rejects_unknown_sources() -> None:
+    import pytest
+
+    from polmon.backends.synthetic.engine import SyntheticEngineError
+
+    backend = hybrid_with(lambda name: PeerTap(name, peer_ip="10.89.0.99"))
+    with pytest.raises(SyntheticEngineError, match="timed out"):
+        backend.ping_l1("synthetic", "10.89.0.20", timeout=0.05)
+    with pytest.raises(SyntheticEngineError):
+        backend.ping_l1("no-such-endpoint", "10.89.0.20")
+    backend.destroy()
+
+
+def test_create_refuses_an_existing_tap_name() -> None:
+    import pytest
+
+    class Occupied(FakeRunner):
+        def run(self, command, *, privileged=False, check=True, timeout=10, input=None):
+            if command == ["ip", "-o", "link", "show"]:
+                return CommandResult(self.listing, "", 0)
+            return super().run(
+                command, privileged=privileged, check=check, timeout=timeout, input=input
+            )
+
+    from polmon.backends.namespace.backend import NamespaceBackend
+
+    topology = load_topology(EXAMPLE)
+    tap = NamespaceBackend._name("polmon", f"{topology.id}:lab:tap", "t")
+    runner = Occupied()
+    runner.listing = f"42: {tap}: <BROADCAST> mtu 1500\n"
+    backend = HybridBackend(
+        runner=runner, tap_factory=FakeTap, require_linux=False, owner_uid=1, owner_gid=1
+    )
+    backend.validate(topology)
+    with pytest.raises(RuntimeError, match="already exist"):
+        backend.create(topology)
+    assert not backend.tap_names and not backend.taps
+    assert not any("tuntap" in command for command in runner.commands)

@@ -2,6 +2,18 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Hybrid TAP setup and teardown run as one privileged `ip` batch each; TAP names are owned before
+  creation, and a pre-existing interface with a generated TAP name is refused instead of adopted.
+
+### Added
+
+- Rootless tests of the complete L0→L1 ARP/ICMP exchange across the TAP against a simulated L1
+  peer (including unrelated frames on the bridge, timeouts, and unknown sources).
+
 ## [0.1.1] - 2026-09-26
 
 Security and hardening release after the Phase I MVP.

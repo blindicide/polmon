@@ -122,29 +122,30 @@ class HybridBackend:
                 for node in self._l0_topology.nodes  # type: ignore[union-attr]
                 for interface in node.interfaces
             }
-            for network_id in sorted(l0_networks):
-                name = NamespaceBackend._name("polmon", f"{topology.id}:{network_id}:tap", "t")
-                self.runner.run(
-                    [
-                        "ip",
-                        "tuntap",
-                        "add",
-                        "dev",
-                        name,
-                        "mode",
-                        "tap",
-                        "user",
-                        str(self.namespace.owner_uid),
-                    ],
-                    privileged=True,
+            planned = {
+                network_id: NamespaceBackend._name("polmon", f"{topology.id}:{network_id}:tap", "t")
+                for network_id in sorted(l0_networks)
+            }
+            links = self.runner.run(["ip", "-o", "link", "show"], check=False).stdout
+            existing = sorted(name for name in planned.values() if f" {name}:" in links)
+            if existing:
+                raise RuntimeError(
+                    f"TAP interfaces with this topology's generated names already exist "
+                    f"({', '.join(existing)}); inspect with scripts/lab-cleanup.sh"
                 )
-                self.tap_names[network_id] = name
-                resources.add(f"tap:{name}")
+            lines: list[str] = []
+            for network_id, name in planned.items():
                 bridge = self.namespace.names.bridges[network_id]  # type: ignore[union-attr]
-                self.runner.run(
-                    ["ip", "link", "set", name, "master", bridge], privileged=True
-                )
-                self.runner.run(["ip", "link", "set", "dev", name, "up"], privileged=True)
+                lines += [
+                    f"tuntap add dev {name} mode tap user {self.namespace.owner_uid}",
+                    f"link set {name} master {bridge}",
+                    f"link set dev {name} up",
+                ]
+                self.tap_names[network_id] = name  # owned before creation: rollback is complete
+                resources.add(f"tap:{name}")
+            if lines:
+                self.namespace._ip_batch(lines)
+            for network_id, name in self.tap_names.items():
                 self.taps[network_id] = self.tap_factory(name)
             for network_id in sorted(self.tap_names):
                 self._wait_for_forwarding(
@@ -192,9 +193,11 @@ class HybridBackend:
         for tap in list(self.taps.values()):
             tap.close()
         self.taps.clear()
-        for name in list(self.tap_names.values()):
-            self.runner.run(
-                ["ip", "link", "del", "dev", name], privileged=True, check=False
+        if self.tap_names:
+            self.namespace._ip_batch(
+                [f"link del dev {name}" for name in sorted(self.tap_names.values())],
+                check=False,
+                force=True,
             )
         self.tap_names.clear()
         self.synthetic.destroy()
