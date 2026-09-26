@@ -147,10 +147,17 @@ class TelemetryStore:
                 ),
             )
 
-    def events(self, experiment_id: str) -> list[TelemetryEvent]:
-        rows = self._connection.execute(
-            "SELECT * FROM events WHERE experiment_id = ? ORDER BY sequence", (experiment_id,)
-        ).fetchall()
+    def events(
+        self, experiment_id: str, *, after: int = 0, limit: int | None = None
+    ) -> list[TelemetryEvent]:
+        """Ordered events with ``sequence > after``; ``limit`` bounds one incremental page."""
+        query = "SELECT * FROM events WHERE experiment_id = ? AND sequence > ? ORDER BY sequence"
+        parameters: tuple[object, ...] = (experiment_id, after)
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters = (*parameters, limit)
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
         return [
             TelemetryEvent(
                 row["sequence"],
@@ -163,6 +170,25 @@ class TelemetryStore:
             )
             for row in rows
         ]
+
+    def experiments(self, limit: int = 200) -> list[dict[str, object]]:
+        """Persisted experiments, newest first, each with its capture summary when closed."""
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT e.*, c.frame_count, c.captured_bytes, c.dropped_frames,
+                          c.truncated_frames
+                   FROM experiments e LEFT JOIN captures c ON c.experiment_id = e.id
+                   ORDER BY e.started_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def exists(self, experiment_id: str) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT 1 FROM experiments WHERE id = ?", (experiment_id,)
+            ).fetchone()
+        return row is not None
 
     def experiment(self, experiment_id: str) -> dict[str, object]:
         row = self._connection.execute(

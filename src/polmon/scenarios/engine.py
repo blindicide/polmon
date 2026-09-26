@@ -104,11 +104,15 @@ class ScenarioEngine:
         *,
         reset_cancellation: bool = True,
         precondition: Callable[[InitialCondition], bool] | None = None,
+        on_action: Callable[[int, ScenarioAction], None] | None = None,
+        on_observation: Callable[[int, ScenarioAction, Observation], None] | None = None,
     ) -> ScenarioResult:
         """Execute the sequence; ``precondition`` verifies each declared initial condition.
 
         Without a checker every declared initial condition is treated as unverifiable and the run
         fails before any action: a declared precondition is never assumed to hold.
+        ``on_action`` is called before and ``on_observation`` after each action (zero-based
+        index), so callers can publish live progress and record observations as they happen.
         """
         self.validate_against(scenario, topology)
         if reset_cancellation:
@@ -128,7 +132,7 @@ class ScenarioEngine:
             if unmet:
                 errors.append(f"initial conditions not satisfied: {', '.join(unmet)}")
             else:
-                for action in scenario.sequence:
+                for index, action in enumerate(scenario.sequence):
                     if self._cancelled.is_set():
                         status = ExecutionStatus.CANCELLED
                         break
@@ -136,8 +140,10 @@ class ScenarioEngine:
                     if remaining <= 0:
                         status = ExecutionStatus.TIMED_OUT
                         break
+                    if on_action is not None:
+                        on_action(index, action)
                     try:
-                        observations.append(executor.execute(action, topology, remaining))
+                        observation = executor.execute(action, topology, remaining)
                     except TimeoutError:
                         status = ExecutionStatus.TIMED_OUT
                         errors.append(f"action '{action.id}' timed out")
@@ -146,6 +152,9 @@ class ScenarioEngine:
                         errors.append(f"action '{action.id}' failed: {type(error).__name__}")
                         status = ExecutionStatus.FAILED
                         break
+                    observations.append(observation)
+                    if on_observation is not None:
+                        on_observation(index, action, observation)
                 else:
                     by_action = {item.action_id: item for item in observations}
                     success = all(

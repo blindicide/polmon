@@ -34,7 +34,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     finally:
         # SIGINT/SIGTERM end here through uvicorn's graceful shutdown: never leave lab resources.
         try:
-            result = application.state.control.reset_all()
+            result = application.state.control.shutdown()
             logger.info("shutdown cleanup: %s", result, extra={"event": "shutdown_cleanup"})
         except Exception as error:  # shutdown must finish and report what it could not clean
             details = getattr(error, "details", {})

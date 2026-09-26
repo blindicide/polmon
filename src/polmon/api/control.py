@@ -6,21 +6,23 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
+from datetime import UTC, datetime
 from pathlib import Path
-from threading import RLock
+from threading import RLock, Thread
 
+from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.core.diagnostics import ResourceSnapshot, resource_snapshot
-from polmon.core.errors import ConfigurationError
+from polmon.core.errors import ConfigurationError, PolmonError
 from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
-from polmon.resources.policy import directory_size_bytes
+from polmon.resources.policy import ResourceLimitError, directory_size_bytes
 from polmon.scenarios import ScenarioEngine, parse_scenario
-from polmon.scenarios.engine import ActionExecutor, Observation
+from polmon.scenarios.engine import ActionExecutor, Observation, ScenarioError
 from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
 from polmon.scenarios.models import ActionKind, InitialCondition, Scenario, ScenarioAction
 from polmon.telemetry.models import EventCategory
@@ -70,7 +72,17 @@ class ControlPlane:
         self._snapshot = snapshot
         self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
         self.deployment_seconds: dict[str, float] = {}
+        self.progress: dict[str, dict[str, object]] = {}
+        self.experiment_threads: dict[str, Thread] = {}
         self._lock = RLock()
+        self.benchmarks = BenchmarkJobs(
+            self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
+        )
+
+    def _benchmark_conflicts(self) -> dict[str, object]:
+        with self._lock:
+            active = len(self.active_experiments)
+        return {"active_experiments": {"active": active, "limit": 0}} if active else {}
 
     def _sample(self, topology_id: str | None = None) -> ResourceSnapshot:
         """Resource sample annotated with live endpoint/namespace counts and deployment time."""
@@ -88,20 +100,72 @@ class ControlPlane:
             topology_deployment_seconds=seconds,
         )
 
-    def validate_topology(self, source: str) -> dict[str, object]:
-        topology = parse_topology(source)
+    @staticmethod
+    def _describe(topology: Topology) -> dict[str, object]:
         return {
             "valid": True,
             "topology_id": topology.id,
             "normalized_yaml": dump_topology(topology),
             "resources": topology.estimate_resources().model_dump(mode="json"),
+            "topology": topology.model_dump(mode="json", by_alias=True, exclude_none=True),
         }
+
+    def validate_topology(self, source: str) -> dict[str, object]:
+        return self._describe(parse_topology(source))
 
     def load_topology(self, source: str) -> dict[str, object]:
         topology = parse_topology(source)
         with self._lock:
             self.topologies[topology.id] = topology
-        return self.validate_topology(source)
+        return self._describe(topology)
+
+    def list_topologies(self) -> list[dict[str, object]]:
+        with self._lock:
+            loaded = list(self.topologies.values())
+            deployed = set(self.deployments)
+        return [
+            {
+                "topology_id": topology.id,
+                "deployed": topology.id in deployed,
+                "node_count": len(topology.nodes),
+                "network_count": len(topology.networks),
+                "resources": topology.estimate_resources().model_dump(mode="json"),
+            }
+            for topology in sorted(loaded, key=lambda item: item.id)
+        ]
+
+    def topology_detail(self, topology_id: str) -> dict[str, object]:
+        with self._lock:
+            topology = self._topology(topology_id)
+            deployed = topology_id in self.deployments
+        return {**self._describe(topology), "deployed": deployed}
+
+    def validate_scenario(self, source: str) -> dict[str, object]:
+        """Parse a scenario and, when its topology is loaded, check it against that topology."""
+        scenario = parse_scenario(source)
+        with self._lock:
+            topology = self.topologies.get(scenario.required_topology)
+            deployed = scenario.required_topology in self.deployments
+        problems: list[str] = []
+        if topology is not None:
+            try:
+                ScenarioEngine().validate_against(scenario, topology)
+            except ScenarioError as error:
+                problems.append(error.message)
+        document = scenario.model_dump(mode="json")
+        document["permitted_actions"] = sorted(document["permitted_actions"])
+        return {
+            "valid": True,
+            "scenario_id": scenario.id,
+            "scenario": document,
+            "topology_check": {
+                "topology_id": scenario.required_topology,
+                "loaded": topology is not None,
+                "deployed": deployed,
+                "compatible": topology is not None and not problems,
+                "problems": problems,
+            },
+        }
 
     def _backend(self, topology: Topology):
         classes = {node.node_class for node in topology.nodes}
@@ -174,8 +238,18 @@ class ControlPlane:
         return {"state": "reset", "deployments_destroyed": len(topology_ids)}
 
     def run_experiment(
-        self, experiment_id: str, topology_id: str, scenario_source: str
+        self,
+        experiment_id: str,
+        topology_id: str,
+        scenario_source: str,
+        *,
+        wait: bool = True,
     ) -> dict[str, object]:
+        """Run an experiment; with ``wait=False`` return once admitted and run in background.
+
+        Validation, deployment checks and admission always happen before this returns, so
+        rejections reach the caller directly in both modes.
+        """
         if not EXPERIMENT_ID.fullmatch(experiment_id):
             raise ConfigurationError("invalid experiment identifier")
         scenario = parse_scenario(scenario_source)
@@ -194,23 +268,114 @@ class ControlPlane:
         else:
             self.destroy(topology_id)
             raise ConfigurationError("scenario execution is unsupported for this backend")
+        try:
+            ScenarioEngine().validate_against(scenario, topology)
+        except ScenarioError:
+            self.destroy(topology_id)  # documented contract: preflight failures clean up
+            raise
 
         engine = ScenarioEngine()
         with self._lock:
-            if experiment_id in self.active_experiments or experiment_id in self.experiments:
+            if (
+                experiment_id in self.active_experiments
+                or experiment_id in self.experiments
+                or self.telemetry.exists(experiment_id)
+            ):
                 raise ConfigurationError(f"experiment '{experiment_id}' already exists")
+            if self.benchmarks.running() is not None:
+                raise ResourceLimitError(
+                    "experiment refused while a benchmark job is running",
+                    details={"benchmark_jobs": {"active": 1, "limit": 0}},
+                )
             self.admission.admit_experiment(
                 scenario, len(self.active_experiments), data_directory=self.data_directory
             )
             self.active_experiments[experiment_id] = engine
+            self.progress[experiment_id] = {
+                "experiment_id": experiment_id,
+                "topology_id": topology_id,
+                "scenario_id": scenario.id,
+                "state": "running",
+                "started_at": datetime.now(UTC).isoformat(),
+                "started": time.monotonic(),
+                "timeout_seconds": scenario.timeout_seconds,
+                "total_actions": len(scenario.sequence),
+                "completed_actions": 0,
+                "current_action": None,
+            }
 
+        if wait:
+            try:
+                return self._execute_experiment(experiment_id, topology, scenario, executor, engine)
+            finally:
+                self._finish_progress(experiment_id)
+
+        thread = Thread(
+            target=self._background_experiment,
+            args=(experiment_id, topology, scenario, executor, engine),
+            name=f"polmon-experiment-{experiment_id}",
+            daemon=True,
+        )
+        with self._lock:
+            self.experiment_threads[experiment_id] = thread
+        thread.start()
+        return self.experiment(experiment_id)
+
+    def _finish_progress(self, experiment_id: str) -> None:
+        with self._lock:
+            self.active_experiments.pop(experiment_id, None)
+            progress = self.progress.get(experiment_id)
+            if progress is not None:
+                progress["finished"] = time.monotonic()
+                progress["current_action"] = None
+
+    def _background_experiment(
+        self,
+        experiment_id: str,
+        topology: Topology,
+        scenario: Scenario,
+        executor: ActionExecutor,
+        engine: ScenarioEngine,
+    ) -> None:
         try:
-            return self._execute_experiment(
-                experiment_id, topology, scenario, executor, engine
-            )
-        finally:
+            self._execute_experiment(experiment_id, topology, scenario, executor, engine)
+        except Exception as error:  # recorded for GET /experiments/{id}; never lost silently
+            if isinstance(error, PolmonError):
+                failure = {"code": error.code, "message": error.message, "details": error.details}
+            else:
+                failure = {
+                    "code": "internal_error",
+                    "message": f"{type(error).__name__}: experiment aborted",
+                    "details": {},
+                }
             with self._lock:
-                self.active_experiments.pop(experiment_id, None)
+                self.experiments[experiment_id] = {
+                    "experiment_id": experiment_id,
+                    "topology_id": topology.id,
+                    "scenario_id": scenario.id,
+                    "status": "error",
+                    "error": failure,
+                }
+        finally:
+            self._finish_progress(experiment_id)
+            with self._lock:
+                self.experiment_threads.pop(experiment_id, None)
+
+    def _progress_view(self, experiment_id: str) -> dict[str, object] | None:
+        with self._lock:
+            progress = self.progress.get(experiment_id)
+            if progress is None:
+                return None
+            end = progress.get("finished") or time.monotonic()
+            elapsed = float(end) - float(progress["started"])  # type: ignore[arg-type]
+            return {
+                "total_actions": progress["total_actions"],
+                "completed_actions": progress["completed_actions"],
+                "current_action": progress["current_action"],
+                "started_at": progress["started_at"],
+                "elapsed_seconds": round(elapsed, 3),
+                "timeout_seconds": progress["timeout_seconds"],
+            }
 
     def _execute_experiment(
         self,
@@ -250,7 +415,30 @@ class ControlPlane:
             snapshot=lambda: self._sample(topology_id),
         )
 
-        engine.reset_cancellation()
+        def action_started(index: int, action: ScenarioAction) -> None:
+            with self._lock:
+                progress = self.progress.get(experiment_id)
+                if progress is not None:
+                    progress["current_action"] = action.id
+
+        def action_observed(index: int, action: ScenarioAction, observation: Observation) -> None:
+            # Recorded as it happens, so telemetry pollers see a live stream.
+            session.event(
+                EventCategory.NETWORK_OBSERVATION,
+                observation.action_id,
+                payload={
+                    "success": observation.success,
+                    "detail": observation.detail,
+                    **observation.data,
+                },
+            )
+            with self._lock:
+                progress = self.progress.get(experiment_id)
+                if progress is not None:
+                    progress["completed_actions"] = index + 1
+
+        # The engine is created per experiment; never clear a cancel that arrived before the run
+        # thread started.
         monitor.start()
         try:
             result = engine.run(
@@ -260,6 +448,8 @@ class ControlPlane:
                 cleanup,
                 reset_cancellation=False,
                 precondition=lambda condition: self._precondition(topology, condition),
+                on_action=action_started,
+                on_observation=action_observed,
             )
         except Exception as error:
             try:
@@ -275,16 +465,6 @@ class ControlPlane:
             raise
         finally:
             monitor.stop()
-        for observation in result.observations:
-            session.event(
-                EventCategory.NETWORK_OBSERVATION,
-                observation.action_id,
-                payload={
-                    "success": observation.success,
-                    "detail": observation.detail,
-                    **observation.data,
-                },
-            )
         if isinstance(executor, SyntheticScenarioExecutor):
             for frame in executor.network.capture:
                 session.packet(frame)
@@ -306,6 +486,7 @@ class ControlPlane:
             summary,
         )
         record = {
+            "experiment_id": experiment_id,
             **asdict(result),
             "status": result.status,
             "capture": asdict(summary),
@@ -314,7 +495,8 @@ class ControlPlane:
                 "markdown": str(artifacts.markdown_path),
             },
         }
-        self.experiments[experiment_id] = record
+        with self._lock:
+            self.experiments[experiment_id] = record
         return record
 
     def _precondition(self, topology: Topology, condition: InitialCondition) -> bool:
@@ -350,7 +532,21 @@ class ControlPlane:
             if engine is None:
                 raise ConfigurationError(f"experiment '{experiment_id}' is not active")
             engine.cancel()
+            if experiment_id in self.progress:
+                self.progress[experiment_id]["state"] = "cancelling"
         return {"experiment_id": experiment_id, "state": "cancelling"}
+
+    def shutdown(self, timeout: float = 15.0) -> dict[str, object]:
+        """Cancel and join active experiments and benchmark jobs, then reset everything."""
+        with self._lock:
+            engines = list(self.active_experiments.values())
+            threads = list(self.experiment_threads.values())
+        for engine in engines:
+            engine.cancel()
+        for thread in threads:
+            thread.join(timeout=timeout)
+        self.benchmarks.shutdown()
+        return self.reset_all()
 
     def resource_status(self) -> dict[str, object]:
         snapshot = self._sample()
@@ -359,16 +555,91 @@ class ControlPlane:
             "data_directory_bytes": directory_size_bytes(self.data_directory),
             "active_deployments": len(self.deployments),
             "active_experiments": len(self.active_experiments),
+            "benchmark_running": self.benchmarks.running() is not None,
             "snapshot": asdict(snapshot),
         }
 
     def experiment(self, experiment_id: str) -> dict[str, object]:
-        if experiment_id not in self.experiments:
-            raise ConfigurationError(f"unknown experiment '{experiment_id}'")
-        return self.experiments[experiment_id]
+        """Live progress while running, the full record once finished (this process), or the
+        persisted summary of an experiment run by an earlier backend process."""
+        with self._lock:
+            progress = self._progress_view(experiment_id)
+            if experiment_id in self.active_experiments:
+                state = self.progress[experiment_id]
+                return {
+                    "experiment_id": experiment_id,
+                    "topology_id": state["topology_id"],
+                    "scenario_id": state["scenario_id"],
+                    "status": "cancelling" if state["state"] == "cancelling" else "running",
+                    "progress": progress,
+                }
+            if experiment_id in self.experiments:
+                return {**self.experiments[experiment_id], "progress": progress}
+        if self.telemetry.exists(experiment_id):
+            stored = self.telemetry.experiment(experiment_id)
+            status = stored["status"]
+            if status == "running":  # never finished: the process that ran it stopped
+                status = "interrupted"
+            return {
+                "experiment_id": experiment_id,
+                "topology_id": stored["topology_id"],
+                "scenario_id": stored["scenario_id"],
+                "status": status,
+                "started_at": stored["started_at"],
+                "finished_at": stored["finished_at"],
+                "capture": stored["capture"],
+                "persisted": True,
+                "progress": None,
+            }
+        raise ConfigurationError(f"unknown experiment '{experiment_id}'")
 
-    def experiment_telemetry(self, experiment_id: str) -> list[dict[str, object]]:
-        return [asdict(event) for event in self.telemetry.events(experiment_id)]
+    def list_experiments(self, limit: int = 200) -> list[dict[str, object]]:
+        with self._lock:
+            active = set(self.active_experiments)
+        listed = []
+        for row in self.telemetry.experiments(limit):
+            status = row["status"]
+            if status == "running" and row["id"] not in active:
+                status = "interrupted"
+            listed.append(
+                {
+                    "experiment_id": row["id"],
+                    "topology_id": row["topology_id"],
+                    "scenario_id": row["scenario_id"],
+                    "status": status,
+                    "started_at": row["started_at"],
+                    "finished_at": row["finished_at"],
+                    "polmon_version": row["version"],
+                    "capture": None
+                    if row["frame_count"] is None
+                    else {
+                        "frame_count": row["frame_count"],
+                        "captured_bytes": row["captured_bytes"],
+                        "dropped_frames": row["dropped_frames"],
+                        "truncated_frames": row["truncated_frames"],
+                    },
+                    "report_available": (
+                        self.data_directory / "reports" / f"{row['id']}.json"
+                    ).is_file(),
+                }
+            )
+        return listed
+
+    def experiment_telemetry(
+        self, experiment_id: str, *, after: int = 0, limit: int | None = None
+    ) -> list[dict[str, object]]:
+        return [
+            asdict(event)
+            for event in self.telemetry.events(experiment_id, after=after, limit=limit)
+        ]
+
+    def experiment_report_markdown(self, experiment_id: str) -> dict[str, object]:
+        if not EXPERIMENT_ID.fullmatch(experiment_id):
+            raise ConfigurationError("invalid experiment identifier")
+        path = self.data_directory / "reports" / f"{experiment_id}.md"
+        if not path.is_file():
+            raise ConfigurationError(f"report for experiment '{experiment_id}' does not exist")
+        return {"experiment_id": experiment_id, "markdown": path.read_text(encoding="utf-8")}
 
     def experiment_report(self, experiment_id: str) -> dict[str, object]:
         if not EXPERIMENT_ID.fullmatch(experiment_id):
