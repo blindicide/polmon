@@ -20,6 +20,7 @@ Start with the repository [README](../README.md). Root documents cover the proje
 | HTTP API v1 | [API.md](API.md) |
 | Benchmarks: method, limits, fidelity classes | [BENCHMARKS.md](BENCHMARKS.md) |
 | Phase I MVP demonstration | [DEMO.md](DEMO.md) |
+| Operating a laboratory host, client connection, recovery | [OPERATIONS.md](OPERATIONS.md) |
 | Milestone reports v0.0.1 – v0.1.0 | [milestones/](milestones/) |
 
 Evidence retained in the repository: raw benchmark results and generated summaries in

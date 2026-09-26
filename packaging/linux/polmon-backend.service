@@ -1,0 +1,23 @@
+# Example systemd *user* unit for the polmon backend (install as
+# ~/.config/systemd/user/polmon-backend.service; see docs/OPERATIONS.md).
+# It binds to loopback; remote clients reach it through an SSH tunnel.
+[Unit]
+Description=polmon laboratory backend
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=%h/polmon-data
+ExecStart=%h/polmon/.venv/bin/polmon-backend --host 127.0.0.1 --port 8080 --api-token-file %h/.config/polmon/api-token
+# SIGTERM triggers graceful shutdown, which tears down every deployment before exit.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=5
+# The backend calls `sudo -n ip ...` for laboratory networking, which needs new privileges.
+NoNewPrivileges=false
+# Hard ceiling below the 2 GB engineering budget (requires a delegated memory controller).
+MemoryMax=1536M
+
+[Install]
+WantedBy=default.target

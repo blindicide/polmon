@@ -35,7 +35,8 @@ Benchmarks run only on explicit request: `.venv/bin/polmon-benchmark l0|l1|targe
 
 To control a backend from another machine (for example the Windows client), start it with a token:
 `POLMON_API_TOKEN=... .venv/bin/polmon-backend --host <lab-host-address>` (or `--api-token-file`),
-and enter the same token in the client; see [SECURITY.md](SECURITY.md) for transport advice.
+and enter the same token in the client; see [SECURITY.md](SECURITY.md) and the operator runbook
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 Run `.venv/bin/polmon-client --version` or `--self-test` without a display. The GUI can be
 opened with `.venv/bin/polmon-client`; it starts independently of the backend.

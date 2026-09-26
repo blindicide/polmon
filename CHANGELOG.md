@@ -18,6 +18,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Added
 
+- Operator runbook (`docs/OPERATIONS.md`) and an example systemd user unit
+  (`packaging/linux/polmon-backend.service`).
 - Rootless tests of the complete L0→L1 ARP/ICMP exchange across the TAP against a simulated L1
   peer (including unrelated frames on the bridge, timeouts, and unknown sources).
 
