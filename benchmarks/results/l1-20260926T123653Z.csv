@@ -1,0 +1,4 @@
+cleanup_complete,controller_incremental_rss_bytes,creation_seconds,fidelity,host_available_memory_delta_bytes,idle_seconds,namespace_count,ping_loss_percent,ping_received,ping_rtt_avg_ms,ping_rtt_max_ms,ping_rtt_mdev_ms,ping_rtt_min_ms,ping_transmitted,remaining_lab_resources,repeat,service_idle_cpu_seconds,service_process_count,service_ready_seconds,service_start_seconds,service_tree_rss_bytes,services_declared,services_reachable,teardown_seconds
+True,274432,1.3311071880161762,L1,15667200,1.0,2,0.0,10,0.073,0.145,0.025,0.047,10,[],1,0.0,2,0.3244650447741151,0.002011797856539488,27815936,1,1,0.11641473602503538
+True,270336,1.3644048608839512,L1,-3866624,1.0,2,0.0,10,0.072,0.099,0.011,0.048,10,[],2,0.0,2,0.3449722300283611,0.0018795756623148918,27885568,1,1,0.09932197676971555
+True,270336,1.3090249211527407,L1,18468864,1.0,2,0.0,10,0.074,0.098,0.015,0.045,10,[],3,0.0,2,0.3854298638179898,0.0014654048718512058,27709440,1,1,0.15349189192056656
