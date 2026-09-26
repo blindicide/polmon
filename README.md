@@ -18,8 +18,8 @@ Phase II (v0.2.0) replaces the Tkinter client with a Qt (PySide6) desktop client
 Windows and Linux from one code base — dashboard, topology editor and inspector, deployment with
 live resource counters, scenarios and experiments with live progress and cancellation, a filterable
 telemetry stream, reports and benchmark jobs — and a CI/CD pipeline that tests, packages, verifies
-and releases both platforms. Real screenshots: [docs/ui/SCREENSHOTS.md](docs/ui/SCREENSHOTS.md);
-design: [docs/UI-PLAN.md](docs/UI-PLAN.md).
+and releases both platforms. Operator guide: [docs/CLIENT.md](docs/CLIENT.md); real screenshots:
+[docs/ui/SCREENSHOTS.md](docs/ui/SCREENSHOTS.md); design: [docs/UI-PLAN.md](docs/UI-PLAN.md).
 
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
 namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is

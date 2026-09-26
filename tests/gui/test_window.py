@@ -227,3 +227,16 @@ def test_inputs_editors_and_views_have_accessible_names(window) -> None:
                 unnamed.append(f"{key}: {type(widget).__name__} ({widget.toolTip()!r})")
     assert not unnamed, sorted(set(unnamed))
     assert window.bar.token.accessibleName() == "API token"
+
+
+def test_client_guide_lists_exactly_the_bound_shortcuts() -> None:
+    import re
+    from pathlib import Path
+
+    from polmon.client.mainwindow import SHORTCUTS
+
+    guide = (Path(__file__).parents[2] / "docs/CLIENT.md").read_text(encoding="utf-8")
+    section = guide.split("## Keyboard shortcuts", 1)[1].split("##", 1)[0]
+    rows = re.findall(r"^\| ([^|]+?) \| ([^|]+?) \|$", section, re.M)
+    documented = [(keys, action) for keys, action in rows if keys not in {"Keys", "---"}]
+    assert documented == list(SHORTCUTS)

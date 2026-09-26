@@ -21,6 +21,7 @@ Start with the repository [README](../README.md). Root documents cover the proje
 | Benchmarks: method, limits, fidelity classes | [BENCHMARKS.md](BENCHMARKS.md) |
 | Phase I MVP demonstration | [DEMO.md](DEMO.md) |
 | Operating a laboratory host, client connection, recovery | [OPERATIONS.md](OPERATIONS.md) |
+| Desktop client: install, pages, shortcuts, troubleshooting | [CLIENT.md](CLIENT.md) |
 | Qt desktop client: design, threading, packaging and CI plan | [UI-PLAN.md](UI-PLAN.md) |
 | Desktop client screenshots and live end-to-end runs | [ui/SCREENSHOTS.md](ui/SCREENSHOTS.md), [ui/e2e/](ui/e2e/) |
 | Milestone reports | [milestones/](milestones/) |
