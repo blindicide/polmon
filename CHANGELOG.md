@@ -2,7 +2,9 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
-## [Unreleased]
+## [0.1.3] - 2026-09-26
+
+Windows client fixes found by driving the real GUI on Windows and Linux.
 
 ### Added
 
