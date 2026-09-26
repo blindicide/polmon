@@ -79,6 +79,12 @@ class ApiClient:
             self._request("DELETE", f"/v1/deployments/{safe}", timeout=30),
         )
 
+    def reset_all(self) -> dict[str, object]:
+        return cast(
+            dict[str, object],
+            self._request("POST", "/v1/reset", timeout=30),
+        )
+
     def run_experiment(
         self, experiment_id: str, topology_id: str, scenario_source: str
     ) -> dict[str, object]:
@@ -103,3 +109,9 @@ class ApiClient:
             self._request("GET", f"/v1/experiments/{safe}/telemetry"),
         )
 
+    def report(self, experiment_id: str) -> dict[str, object]:
+        safe = urllib.parse.quote(experiment_id, safe="")
+        return cast(
+            dict[str, object],
+            self._request("GET", f"/v1/experiments/{safe}/report"),
+        )

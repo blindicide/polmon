@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.12] - 2026-09-26
+
+### Added
+
+- Atomic JSON and Markdown reports with normalized inputs, observations, condition comparisons,
+  errors, resource samples, capture statistics, status, timestamps, and version.
+- Process-wide reset API that preserves topology definitions for repeatable deployment.
+- Exception-path telemetry closure and best-effort recovery that retains failed teardown state.
+
 ## [0.0.11] - 2026-09-26
 
 ### Added

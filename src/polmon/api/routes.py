@@ -55,6 +55,11 @@ def destroy(topology_id: str, request: Request) -> dict[str, object]:
     return control(request).destroy(topology_id)
 
 
+@router.post("/reset")
+def reset(request: Request) -> dict[str, object]:
+    return control(request).reset_all()
+
+
 @router.post("/experiments")
 def experiment(payload: ExperimentRequest, request: Request) -> dict[str, object]:
     return control(request).run_experiment(
@@ -71,3 +76,7 @@ def experiment_status(experiment_id: str, request: Request) -> dict[str, object]
 def experiment_telemetry(experiment_id: str, request: Request) -> list[dict[str, object]]:
     return control(request).experiment_telemetry(experiment_id)
 
+
+@router.get("/experiments/{experiment_id}/report")
+def experiment_report(experiment_id: str, request: Request) -> dict[str, object]:
+    return control(request).experiment_report(experiment_id)

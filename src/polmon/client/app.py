@@ -146,13 +146,13 @@ class PolmonApp:
         def work() -> dict[str, object]:
             result = self._client().run_experiment(experiment_id, topology_id, scenario)
             result["telemetry"] = self._client().telemetry(experiment_id)
+            result["report"] = self._client().report(experiment_id)
             return result
 
         self._submit("Running experiment…", work)
 
     def reset(self) -> None:
-        topology_id = self.topology_id
-        self._submit("Resetting…", lambda: self._client().destroy(topology_id))
+        self._submit("Resetting…", self._client().reset_all)
 
     def close(self) -> None:
         self.executor.shutdown(wait=False, cancel_futures=True)
@@ -183,4 +183,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

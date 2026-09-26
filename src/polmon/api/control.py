@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from pathlib import Path
 from threading import RLock
@@ -12,6 +13,7 @@ from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.core.diagnostics import resource_snapshot
 from polmon.core.errors import ConfigurationError
 from polmon.orchestration import Orchestrator
+from polmon.reporting import write_experiment_report
 from polmon.scenarios import ScenarioEngine, parse_scenario
 from polmon.scenarios.engine import Observation
 from polmon.scenarios.executors import NamespaceScenarioExecutor
@@ -110,10 +112,28 @@ class ControlPlane:
 
     def destroy(self, topology_id: str) -> dict[str, object]:
         with self._lock:
-            control = self.deployments.pop(topology_id, None)
+            control = self.deployments.get(topology_id)
             if control is not None:
                 control.destroy()
+                self.deployments.pop(topology_id, None)
         return {"topology_id": topology_id, "state": "destroyed"}
+
+    def reset_all(self) -> dict[str, object]:
+        """Best-effort teardown of every owned deployment while preserving definitions."""
+        failures: list[str] = []
+        with self._lock:
+            topology_ids = list(self.deployments)
+        for topology_id in topology_ids:
+            try:
+                self.destroy(topology_id)
+            except Exception as error:
+                failures.append(f"{topology_id}: {type(error).__name__}")
+        if failures:
+            raise ConfigurationError(
+                "environment reset did not clean every deployment",
+                details={"failures": failures},
+            )
+        return {"state": "reset", "deployments_destroyed": len(topology_ids)}
 
     def run_experiment(
         self, experiment_id: str, topology_id: str, scenario_source: str
@@ -138,13 +158,27 @@ class ControlPlane:
         elif isinstance(backend, SyntheticBackend):
             executor = SyntheticScenarioExecutor(backend)
         else:
-            session.close("failed")
+            try:
+                session.close("failed")
+            finally:
+                self.destroy(topology_id)
             raise ConfigurationError("scenario execution is not yet supported for hybrid topology")
 
         def cleanup() -> None:
             self.destroy(topology_id)
 
-        result = ScenarioEngine().run(scenario, topology, executor, cleanup)
+        try:
+            result = ScenarioEngine().run(scenario, topology, executor, cleanup)
+        except Exception as error:
+            session.event(
+                EventCategory.EXECUTION_ERROR,
+                "error",
+                payload={"message": f"{type(error).__name__}: experiment aborted"},
+            )
+            session.resources(resource_snapshot())
+            session.close("failed")
+            self.destroy(topology_id)
+            raise
         for observation in result.observations:
             session.event(
                 EventCategory.NETWORK_OBSERVATION,
@@ -162,10 +196,24 @@ class ControlPlane:
             session.event(EventCategory.EXECUTION_ERROR, "error", payload={"message": error})
         session.resources(resource_snapshot())
         summary = session.close(result.status)
+        events = self.telemetry.events(experiment_id)
+        artifacts = write_experiment_report(
+            self.data_directory / "reports",
+            experiment_id,
+            topology,
+            scenario,
+            result,
+            events,
+            summary,
+        )
         record = {
             **asdict(result),
             "status": result.status,
             "capture": asdict(summary),
+            "reports": {
+                "json": str(artifacts.json_path),
+                "markdown": str(artifacts.markdown_path),
+            },
         }
         self.experiments[experiment_id] = record
         return record
@@ -178,9 +226,17 @@ class ControlPlane:
     def experiment_telemetry(self, experiment_id: str) -> list[dict[str, object]]:
         return [asdict(event) for event in self.telemetry.events(experiment_id)]
 
+    def experiment_report(self, experiment_id: str) -> dict[str, object]:
+        path = self.data_directory / "reports" / f"{experiment_id}.json"
+        if not path.is_file():
+            raise ConfigurationError(f"report for experiment '{experiment_id}' does not exist")
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ConfigurationError(f"report for experiment '{experiment_id}' is invalid")
+        return document
+
     def _topology(self, topology_id: str) -> Topology:
         try:
             return self.topologies[topology_id]
         except KeyError as error:
             raise ConfigurationError(f"unknown topology '{topology_id}'") from error
-

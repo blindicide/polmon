@@ -71,3 +71,114 @@ cleanup_policy: always
     telemetry = client.get("/v1/experiments/api-test/telemetry").json()
     categories = {item["category"] for item in telemetry}
     assert categories >= {"scenario", "network_observation", "resource"}
+
+
+def test_experiment_can_be_reported_reset_and_repeated(tmp_path) -> None:
+    client = TestClient(create_app(ControlPlane(tmp_path)))
+    topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()["topology_id"]
+
+    def run(experiment_id: str) -> dict[str, object]:
+        deployed = client.post(f"/v1/deployments/{topology_id}")
+        assert deployed.status_code == 200
+        scenario = f"""id: report-ping
+required_topology: {topology_id}
+initial_conditions: [topology_deployed]
+permitted_actions: [icmp_probe]
+sequence:
+  - id: ping
+    kind: icmp_probe
+    source: sensor-1
+    target: service-1
+timeout_seconds: 5
+success_conditions:
+  - action: ping
+    field: success
+    equals: true
+cleanup_policy: never
+"""
+        response = client.post(
+            "/v1/experiments",
+            json={
+                "experiment_id": experiment_id,
+                "topology_id": topology_id,
+                "scenario_yaml": scenario,
+            },
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    first = run("repeat-one")
+    report = client.get("/v1/experiments/repeat-one/report")
+    assert report.status_code == 200
+    document = report.json()
+    assert document["polmon_version"] == __version__
+    assert document["status"] == "succeeded"
+    assert document["topology"]["id"] == topology_id
+    assert document["scenario"]["id"] == "report-ping"
+    assert document["expected_vs_actual"][0]["matched"] is True
+    assert len(document["resource_statistics"]) == 2
+    assert Path(first["reports"]["json"]).is_file()
+    assert Path(first["reports"]["markdown"]).is_file()
+
+    reset = client.post("/v1/reset")
+    assert reset.json() == {"state": "reset", "deployments_destroyed": 1}
+    second = run("repeat-two")
+    assert second["status"] == "succeeded"
+    assert client.post("/v1/reset").json()["deployments_destroyed"] == 1
+
+
+def test_scenario_validation_failure_cleans_deployment(tmp_path) -> None:
+    client = TestClient(create_app(ControlPlane(tmp_path)))
+    topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()["topology_id"]
+    client.post(f"/v1/deployments/{topology_id}")
+    scenario = f"""id: invalid-source
+required_topology: {topology_id}
+initial_conditions: [topology_deployed]
+permitted_actions: [icmp_probe]
+sequence:
+  - id: ping
+    kind: icmp_probe
+    source: outside-lab
+    target: service-1
+timeout_seconds: 5
+success_conditions:
+  - action: ping
+    field: success
+    equals: true
+cleanup_policy: always
+"""
+    response = client.post(
+        "/v1/experiments",
+        json={
+            "experiment_id": "failed-validation",
+            "topology_id": topology_id,
+            "scenario_yaml": scenario,
+        },
+    )
+    assert response.status_code == 422
+    assert client.get(f"/v1/deployments/{topology_id}").status_code == 422
+
+
+def test_reset_continues_after_failure_and_retains_failed_deployment(tmp_path) -> None:
+    class Control:
+        def __init__(self, fail: bool) -> None:
+            self.fail = fail
+            self.destroyed = False
+
+        def destroy(self) -> None:
+            self.destroyed = True
+            if self.fail:
+                raise RuntimeError("injected teardown failure")
+
+    plane = ControlPlane(tmp_path)
+    failed = Control(True)
+    cleaned = Control(False)
+    plane.deployments = {"failed": failed, "cleaned": cleaned}  # type: ignore[dict-item]
+    try:
+        plane.reset_all()
+    except Exception as error:
+        assert "did not clean every deployment" in str(error)
+    else:
+        raise AssertionError("reset should report incomplete cleanup")
+    assert failed.destroyed is True and cleaned.destroyed is True
+    assert set(plane.deployments) == {"failed"}
