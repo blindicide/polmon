@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from threading import RLock
 
@@ -66,7 +67,24 @@ class ControlPlane:
         self.limits = limits or ResourceLimits()
         self._snapshot = snapshot
         self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
+        self.deployment_seconds: dict[str, float] = {}
         self._lock = RLock()
+
+    def _sample(self, topology_id: str | None = None) -> ResourceSnapshot:
+        """Resource sample annotated with live endpoint/namespace counts and deployment time."""
+        with self._lock:
+            estimates = [
+                self.topologies[item].estimate_resources()
+                for item in self.deployments
+                if item in self.topologies
+            ]
+            seconds = self.deployment_seconds.get(topology_id) if topology_id else None
+        return replace(
+            self._snapshot(),
+            active_endpoints=sum(item.endpoint_count for item in estimates),
+            active_namespaces=sum(item.l1_namespaces for item in estimates),
+            topology_deployment_seconds=seconds,
+        )
 
     def validate_topology(self, source: str) -> dict[str, object]:
         topology = parse_topology(source)
@@ -101,6 +119,7 @@ class ControlPlane:
             deployed = [self._topology(item) for item in self.deployments]
             self.admission.admit_topology(topology, deployed)
             control = Orchestrator(topology, self._backend(topology))
+            started = time.perf_counter()
             try:
                 control.validate()
                 control.create()
@@ -108,6 +127,7 @@ class ControlPlane:
             except Exception:
                 control.destroy()
                 raise
+            self.deployment_seconds[topology_id] = time.perf_counter() - started
             self.deployments[topology_id] = control
             return self.deployment(topology_id)
 
@@ -121,6 +141,7 @@ class ControlPlane:
             "state": inspection.state,
             "backend": inspection.backend.backend,
             "resources": sorted(inspection.owned_resources),
+            "deployment_seconds": self.deployment_seconds.get(topology_id),
             "details": inspection.backend.details,
         }
 
@@ -130,6 +151,7 @@ class ControlPlane:
             if control is not None:
                 control.destroy()
                 self.deployments.pop(topology_id, None)
+                self.deployment_seconds.pop(topology_id, None)
         return {"topology_id": topology_id, "state": "destroyed"}
 
     def reset_all(self) -> dict[str, object]:
@@ -204,7 +226,7 @@ class ControlPlane:
             max_capture_bytes=self.limits.max_capture_bytes,
         )
         session.event(EventCategory.SCENARIO, "started")
-        session.resources(self._snapshot())
+        session.resources(self._sample(topology_id))
 
         def cleanup() -> None:
             self.destroy(topology_id)
@@ -221,7 +243,7 @@ class ControlPlane:
             self.limits,
             resource_limit,
             on_sample=session.resources,
-            snapshot=self._snapshot,
+            snapshot=lambda: self._sample(topology_id),
         )
 
         engine.reset_cancellation()
@@ -241,7 +263,7 @@ class ControlPlane:
                     "error",
                     payload={"message": f"{type(error).__name__}: experiment aborted"},
                 )
-                session.resources(self._snapshot())
+                session.resources(self._sample(topology_id))
                 session.close("failed")
             finally:
                 self.destroy(topology_id)
@@ -266,7 +288,7 @@ class ControlPlane:
                 session.packet(frame)
         for error in result.errors:
             session.event(EventCategory.EXECUTION_ERROR, "error", payload={"message": error})
-        session.resources(self._snapshot())
+        session.resources(self._sample(topology_id))
         summary = session.close(result.status)
         events = self.telemetry.events(experiment_id)
         artifacts = write_experiment_report(
@@ -299,7 +321,7 @@ class ControlPlane:
         return {"experiment_id": experiment_id, "state": "cancelling"}
 
     def resource_status(self) -> dict[str, object]:
-        snapshot = self._snapshot()
+        snapshot = self._sample()
         return {
             "limits": self.limits.model_dump(mode="json"),
             "active_deployments": len(self.deployments),

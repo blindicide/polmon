@@ -15,13 +15,13 @@ from polmon.benchmarks.common import (
     DEFAULT_OUTPUT_DIR,
     BenchmarkLimitError,
     BenchmarkLimits,
-    Progress,
     document,
     result_prefix,
     run_worker,
     write_results,
 )
 from polmon.core.errors import PolmonError
+from polmon.core.progress import Progress
 from polmon.topology.models import Topology
 from polmon.version import __version__
 

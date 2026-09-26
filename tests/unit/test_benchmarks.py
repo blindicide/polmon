@@ -8,11 +8,11 @@ from polmon.benchmarks import cli, l1, synthetic, target
 from polmon.benchmarks.common import (
     BenchmarkLimitError,
     BenchmarkLimits,
-    Progress,
     document,
     percentile,
     write_results,
 )
+from polmon.core.progress import Progress
 from polmon.resources import ResourceLimitError
 
 

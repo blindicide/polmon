@@ -23,3 +23,7 @@ process exits. A benchmark run that exceeds its time limit receives SIGTERM so i
 executes, and is killed only after a 20-second grace period. After an uncatchable SIGKILL or power
 loss, `scripts/lab-cleanup.sh` lists leftover platform-named namespaces, bridges, TAPs, veths, and
 processes still running inside those namespaces, and removes them with `--apply`.
+
+Condition comparisons carry a `role` and an `outcome`: success requirements are `met` or `not_met`;
+failure triggers are `triggered` or `not_triggered`. The Markdown report prints these labels, so a
+failure condition that did not fire reads "not triggered" rather than as a mismatch.

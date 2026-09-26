@@ -94,6 +94,10 @@ success_conditions:
   - action: ping
     field: success
     equals: true
+failure_conditions:
+  - action: ping
+    field: success
+    equals: false
 cleanup_policy: never
 """
         response = client.post(
@@ -116,7 +120,16 @@ cleanup_policy: never
     assert document["topology"]["id"] == topology_id
     assert document["scenario"]["id"] == "report-ping"
     assert document["expected_vs_actual"][0]["matched"] is True
+    outcomes = [(item["role"], item["outcome"]) for item in document["expected_vs_actual"]]
+    assert outcomes == [("success_requirement", "met"), ("failure_trigger", "not_triggered")]
+    markdown = Path(first["reports"]["markdown"]).read_text(encoding="utf-8")
+    assert "failure trigger `ping.success == False`: observed `True` — not triggered" in markdown
+    assert "MISMATCH" not in markdown
     assert len(document["resource_statistics"]) >= 2
+    samples = document["resource_statistics"]
+    expected = client.get("/v1/resources").json()["snapshot"]["active_endpoints"]
+    assert expected > 0 and all(item["active_endpoints"] == expected for item in samples)
+    assert all(item["topology_deployment_seconds"] > 0 for item in samples)
     assert Path(first["reports"]["json"]).is_file()
     assert Path(first["reports"]["markdown"]).is_file()
 

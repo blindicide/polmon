@@ -5,6 +5,15 @@ explicitly isolated laboratories. Phase I combines shared-process synthetic endp
 Linux network namespaces (L1), and a standalone Windows client. L2 virtual machines are an
 architectural extension, not part of the initial implementation.
 
+Phase I (v0.1.0) provides: a Linux FastAPI backend; a standalone Windows client executable built on
+GitHub-hosted runners; declarative YAML topologies; L0 synthetic endpoints with Ethernet, ARP, IPv4,
+and ICMP echo; L1 namespace endpoints with built-in services; hybrid L0/L1 communication through
+one shared TAP; a closed-action scenario engine; SQLite telemetry with bounded PCAP capture; JSON
+and Markdown reports; resource admission control and cancellation; automated cleanup and reset;
+reproducible benchmarks with retained raw results. Run the target demonstration (50 L0 + 2 L1, one
+controlled experiment, telemetry, report, reset) with `.venv/bin/polmon-demo`; see
+[docs/DEMO.md](docs/DEMO.md).
+
 ## Quick start
 
 Requirements: Linux, `/usr/bin/python3.12`, `uv`, and `iproute2` for later privileged tests.

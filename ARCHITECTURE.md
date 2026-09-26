@@ -17,3 +17,6 @@ L1, and L2 implementations share the same control-plane contract.
 `polmon.benchmarks` sits outside the control plane: it drives the same orchestrator and backends
 through admission-checked, time- and memory-bounded runs, each in a fresh worker process, and
 writes raw JSON/CSV results. Nothing in the control plane, API, or client imports it.
+
+`polmon.demo` is a client of the HTTP API only: it drives the documented contract with the same
+`ApiClient` as the Windows GUI and verifies cleanup independently through the kernel's view.

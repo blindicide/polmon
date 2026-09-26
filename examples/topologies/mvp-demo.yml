@@ -1,0 +1,219 @@
+# Phase I MVP demonstration: 50 synthetic L0 sensors and two L1 service endpoints on one
+# isolated laboratory network (no external routing). Used by polmon-demo.
+id: mvp-demo
+networks:
+  - id: lab
+    ipv4_subnet: 10.70.0.0/24
+nodes:
+  - id: sensor-01
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:01", ipv4: 10.70.0.11}
+  - id: sensor-02
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:02", ipv4: 10.70.0.12}
+  - id: sensor-03
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:03", ipv4: 10.70.0.13}
+  - id: sensor-04
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:04", ipv4: 10.70.0.14}
+  - id: sensor-05
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:05", ipv4: 10.70.0.15}
+  - id: sensor-06
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:06", ipv4: 10.70.0.16}
+  - id: sensor-07
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:07", ipv4: 10.70.0.17}
+  - id: sensor-08
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:08", ipv4: 10.70.0.18}
+  - id: sensor-09
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:09", ipv4: 10.70.0.19}
+  - id: sensor-10
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0a", ipv4: 10.70.0.20}
+  - id: sensor-11
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0b", ipv4: 10.70.0.21}
+  - id: sensor-12
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0c", ipv4: 10.70.0.22}
+  - id: sensor-13
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0d", ipv4: 10.70.0.23}
+  - id: sensor-14
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0e", ipv4: 10.70.0.24}
+  - id: sensor-15
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:0f", ipv4: 10.70.0.25}
+  - id: sensor-16
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:10", ipv4: 10.70.0.26}
+  - id: sensor-17
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:11", ipv4: 10.70.0.27}
+  - id: sensor-18
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:12", ipv4: 10.70.0.28}
+  - id: sensor-19
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:13", ipv4: 10.70.0.29}
+  - id: sensor-20
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:14", ipv4: 10.70.0.30}
+  - id: sensor-21
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:15", ipv4: 10.70.0.31}
+  - id: sensor-22
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:16", ipv4: 10.70.0.32}
+  - id: sensor-23
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:17", ipv4: 10.70.0.33}
+  - id: sensor-24
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:18", ipv4: 10.70.0.34}
+  - id: sensor-25
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:19", ipv4: 10.70.0.35}
+  - id: sensor-26
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1a", ipv4: 10.70.0.36}
+  - id: sensor-27
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1b", ipv4: 10.70.0.37}
+  - id: sensor-28
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1c", ipv4: 10.70.0.38}
+  - id: sensor-29
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1d", ipv4: 10.70.0.39}
+  - id: sensor-30
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1e", ipv4: 10.70.0.40}
+  - id: sensor-31
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:1f", ipv4: 10.70.0.41}
+  - id: sensor-32
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:20", ipv4: 10.70.0.42}
+  - id: sensor-33
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:21", ipv4: 10.70.0.43}
+  - id: sensor-34
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:22", ipv4: 10.70.0.44}
+  - id: sensor-35
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:23", ipv4: 10.70.0.45}
+  - id: sensor-36
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:24", ipv4: 10.70.0.46}
+  - id: sensor-37
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:25", ipv4: 10.70.0.47}
+  - id: sensor-38
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:26", ipv4: 10.70.0.48}
+  - id: sensor-39
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:27", ipv4: 10.70.0.49}
+  - id: sensor-40
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:28", ipv4: 10.70.0.50}
+  - id: sensor-41
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:29", ipv4: 10.70.0.51}
+  - id: sensor-42
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2a", ipv4: 10.70.0.52}
+  - id: sensor-43
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2b", ipv4: 10.70.0.53}
+  - id: sensor-44
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2c", ipv4: 10.70.0.54}
+  - id: sensor-45
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2d", ipv4: 10.70.0.55}
+  - id: sensor-46
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2e", ipv4: 10.70.0.56}
+  - id: sensor-47
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:2f", ipv4: 10.70.0.57}
+  - id: sensor-48
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:30", ipv4: 10.70.0.58}
+  - id: sensor-49
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:31", ipv4: 10.70.0.59}
+  - id: sensor-50
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:00:32", ipv4: 10.70.0.60}
+  - id: server-1
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:01:01", ipv4: 10.70.0.201}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}
+  - id: server-2
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:00:00:70:01:02", ipv4: 10.70.0.202}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}

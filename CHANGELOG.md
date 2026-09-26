@@ -2,6 +2,26 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.1.0] - 2026-09-26
+
+Phase I MVP.
+
+### Added
+
+- `polmon-demo`: the Phase I target demonstration over the HTTP API — 50 L0 sensors and two L1
+  service endpoints on one isolated network, a controlled reconnaissance experiment, telemetry and
+  PCAP capture, JSON/Markdown report, reset, and independent kernel-level cleanup verification.
+- `examples/topologies/mvp-demo.yml` and `examples/scenarios/mvp-recon.yml`.
+- `docs/DEMO.md` and recorded demonstration evidence in `docs/demo/`.
+
+### Fixed
+
+- Telemetry resource samples reported zero active endpoints and namespaces during experiments; they
+  now carry live counts and the topology deployment time (also in `GET /v1/resources` and
+  deployment status).
+- Reports rendered a failure condition that correctly did not fire as `MISMATCH`; comparisons now
+  carry a role and outcome (`met`/`not_met`, `triggered`/`not_triggered`).
+
 ## [0.0.15] - 2026-09-26
 
 Release candidate: feature freeze, audits, and corrections found by release testing.

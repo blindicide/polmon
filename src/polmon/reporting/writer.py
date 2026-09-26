@@ -23,6 +23,20 @@ class ReportArtifacts:
     document: dict[str, object]
 
 
+_OUTCOMES = {
+    ("success_requirement", True): "met",
+    ("success_requirement", False): "not_met",
+    ("failure_trigger", True): "triggered",
+    ("failure_trigger", False): "not_triggered",
+}
+_OUTCOME_LABELS = {
+    "met": "MET",
+    "not_met": "NOT MET",
+    "triggered": "TRIGGERED",
+    "not_triggered": "not triggered",
+}
+
+
 def _condition(
     condition: Condition, role: str, observations: dict[str, dict[str, object]]
 ) -> dict[str, object]:
@@ -35,6 +49,7 @@ def _condition(
         "expected": condition.equals,
         "actual": actual,
         "matched": actual == condition.equals,
+        "outcome": _OUTCOMES[(role, actual == condition.equals)],
     }
 
 
@@ -115,8 +130,9 @@ def _markdown(document: dict[str, object]) -> str:
     comparisons = document["expected_vs_actual"]
     assert isinstance(comparisons, list)
     comparison_lines = [
-        f"- `{item['action']}.{item['field']}` expected `{item['expected']}`, "
-        f"observed `{item['actual']}` — {'MATCH' if item['matched'] else 'MISMATCH'}"
+        f"- {'success requirement' if item['role'] == 'success_requirement' else 'failure trigger'}"
+        f" `{item['action']}.{item['field']} == {item['expected']}`: observed `{item['actual']}`"
+        f" — {_OUTCOME_LABELS[str(item['outcome'])]}"
         for item in comparisons
         if isinstance(item, dict)
     ]

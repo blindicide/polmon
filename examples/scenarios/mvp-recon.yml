@@ -1,0 +1,49 @@
+# Controlled reconnaissance against the designated laboratory endpoints of mvp-demo only.
+# Every action names declared nodes; there are no addresses, commands, or discovered targets.
+id: mvp-recon
+required_topology: mvp-demo
+initial_conditions:
+  - topology_deployed
+  - services_started
+permitted_actions:
+  - icmp_probe
+  - tcp_probe
+sequence:
+  - id: sensor-sweep-server-1
+    kind: icmp_probe
+    source: sensor-01
+    target: server-1
+  - id: sensor-sweep-server-2
+    kind: icmp_probe
+    source: sensor-50
+    target: server-2
+  - id: sensor-to-sensor
+    kind: icmp_probe
+    source: sensor-01
+    target: sensor-50
+  - id: server-to-server
+    kind: icmp_probe
+    source: server-1
+    target: server-2
+  - id: inspect-web-2
+    kind: tcp_probe
+    source: server-1
+    target: server-2
+    service: web
+  - id: inspect-web-1
+    kind: tcp_probe
+    source: server-2
+    target: server-1
+    service: web
+timeout_seconds: 60
+success_conditions:
+  - {action: sensor-sweep-server-1, field: success, equals: true}
+  - {action: sensor-sweep-server-2, field: success, equals: true}
+  - {action: sensor-to-sensor, field: success, equals: true}
+  - {action: server-to-server, field: success, equals: true}
+  - {action: inspect-web-2, field: success, equals: true}
+  - {action: inspect-web-1, field: success, equals: true}
+failure_conditions:
+  - {action: sensor-sweep-server-1, field: success, equals: false}
+# The demonstration keeps the deployment after the experiment and proves the explicit reset.
+cleanup_policy: never

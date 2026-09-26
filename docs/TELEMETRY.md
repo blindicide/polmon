@@ -11,3 +11,6 @@ dropped and counted rather than allowing unbounded storage. Capture metadata rec
 byte counts, drops, and truncations under the same experiment foreign key. Experiment identifiers are
 path-safe and captures use exclusive creation to prevent accidental overwrite.
 
+Resource samples record process RSS and CPU, available memory, swap use, the number of active
+endpoints and L1 namespaces across the backend's deployments, and the deployment time of the
+experiment's topology. The same annotated sample is returned by `GET /v1/resources`.
