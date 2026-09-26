@@ -2,6 +2,14 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## [0.0.8] - 2026-09-26
+
+### Added
+
+- One shared TAP per hybrid network connecting the synthetic engine to isolated Linux bridges.
+- Cross-boundary ARP and ICMP echo with bounded raw-frame capture and deterministic teardown.
+- Unit command-plan and real privileged L0-to-L1 integration coverage.
+
 ## [0.0.7] - 2026-09-26
 
 ### Added
