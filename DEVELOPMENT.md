@@ -25,3 +25,7 @@ omitted) changed, or if any platform-named namespace or
 interface remains; `scripts/lab-cleanup.sh` lists such leftovers and removes them with `--apply`.
 Performance tests live in `tests/performance/` and run only with `pytest -m performance`; they use
 small sizes, and the 100/250-endpoint runs require `polmon-benchmark l0 --large`.
+
+GUI tests (`pytest -m gui`) drive the real Tk client and need a display; run them with
+`xvfb-run -a .venv/bin/python -m pytest -m gui` on a headless Linux host. Without a display they
+are reported as NOT RUN.

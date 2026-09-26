@@ -6,7 +6,15 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Added
 
+- GUI tests drive the real Tk client against a live, token-protected backend (connect, validate,
+  deploy, run experiment, reset; offline error handling). CI runs them under Xvfb.
 - CI `dependency-audit` job: `pip-audit` over the installed, pinned dependency set on every push.
+
+### Fixed
+
+- The Windows client read Tk variables from its worker thread when validating, deploying, or
+  running experiments ("main thread is not in main loop"); the API client is now built on the UI
+  thread. The API token field moved next to the backend URL.
 
 ## [0.1.2] - 2026-09-26
 

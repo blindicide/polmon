@@ -46,6 +46,7 @@ markers = [
   "privileged: requires authorized laboratory networking privileges",
   "performance: explicit performance tests",
   "smoke: smoke tests",
+  "gui: drives the Tk client; needs a display (xvfb-run in CI)",
 ]
 
 [tool.ruff]

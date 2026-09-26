@@ -30,6 +30,8 @@ jobs:
             test "$output" = "polmon $(python -c 'from polmon.version import __version__; print(__version__)')"
           done
       - run: pytest -m "not privileged and not performance" --cov=polmon --cov-report=term-missing --cov-report=xml --junitxml=test-results.xml
+      - name: Windows client GUI against a live backend (virtual display)
+        run: xvfb-run -a pytest -m gui -p no:cacheprovider
       - name: Small rootless benchmark (10/25 L0 endpoints)
         run: pytest -m "performance and not privileged" -p no:cacheprovider
       - name: Publish test summary

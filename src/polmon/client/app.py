@@ -45,7 +45,7 @@ class PolmonApp:
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(5, weight=1)
+        frame.rowconfigure(6, weight=1)
         ttk.Label(
             frame, text=f"polmon {__version__}", font=("TkDefaultFont", 16, "bold")
         ).grid(row=0, column=0, columnspan=4, pady=(0, 10))
@@ -53,34 +53,34 @@ class PolmonApp:
         self.server_url = tk.StringVar(value="http://127.0.0.1:8080")
         ttk.Entry(frame, textvariable=self.server_url).grid(row=1, column=1, sticky="ew")
         ttk.Button(frame, text="Connect", command=self.connect).grid(row=1, column=2, padx=4)
-        ttk.Label(frame, text="API token").grid(row=6, column=0, sticky="w", pady=(8, 0))
+        self.status = tk.StringVar(value="Disconnected")
+        ttk.Label(frame, textvariable=self.status).grid(row=1, column=3, sticky="w")
+        ttk.Label(frame, text="API token").grid(row=2, column=0, sticky="w")
         # Held in memory only; never written to disk, logs, or the output pane.
         self.api_token = tk.StringVar(value="")
         ttk.Entry(frame, textvariable=self.api_token, show="*").grid(
-            row=6, column=1, columnspan=3, sticky="ew", pady=(8, 0)
+            row=2, column=1, sticky="ew", pady=(4, 4)
         )
-        self.status = tk.StringVar(value="Disconnected")
-        ttk.Label(frame, textvariable=self.status).grid(row=1, column=3, sticky="w")
         ttk.Button(frame, text="Load topology", command=self.load_topology_file).grid(
-            row=2, column=0
-        )
-        ttk.Button(frame, text="Validate", command=self.validate_topology).grid(
-            row=2, column=1, sticky="w"
-        )
-        ttk.Button(frame, text="Deploy", command=self.deploy).grid(row=2, column=2)
-        ttk.Button(frame, text="Reset", command=self.reset).grid(row=2, column=3)
-        ttk.Button(frame, text="Load scenario", command=self.load_scenario_file).grid(
             row=3, column=0
         )
-        ttk.Button(frame, text="Run experiment", command=self.run_experiment).grid(
+        ttk.Button(frame, text="Validate", command=self.validate_topology).grid(
             row=3, column=1, sticky="w"
+        )
+        ttk.Button(frame, text="Deploy", command=self.deploy).grid(row=3, column=2)
+        ttk.Button(frame, text="Reset", command=self.reset).grid(row=3, column=3)
+        ttk.Button(frame, text="Load scenario", command=self.load_scenario_file).grid(
+            row=4, column=0
+        )
+        ttk.Button(frame, text="Run experiment", command=self.run_experiment).grid(
+            row=4, column=1, sticky="w"
         )
         self.selection = tk.StringVar(value="No topology or scenario selected")
         ttk.Label(frame, textvariable=self.selection).grid(
-            row=4, column=0, columnspan=4, sticky="w"
+            row=5, column=0, columnspan=4, sticky="w"
         )
         self.output = tk.Text(frame, wrap="word", height=18)
-        self.output.grid(row=5, column=0, columnspan=4, sticky="nsew", pady=(8, 0))
+        self.output.grid(row=6, column=0, columnspan=4, sticky="nsew", pady=(8, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _client(self) -> ApiClient:
@@ -122,9 +122,10 @@ class PolmonApp:
 
     def validate_topology(self) -> None:
         source = self.topology_source
+        client = self._client()  # Tk variables are read on the UI thread only
 
         def work() -> dict[str, object]:
-            result = self._client().validate_topology(source)
+            result = client.validate_topology(source)
             self.topology_id = str(result["topology_id"])
             return result
 
@@ -132,11 +133,12 @@ class PolmonApp:
 
     def deploy(self) -> None:
         source = self.topology_source
+        client = self._client()
 
         def work() -> dict[str, object]:
-            loaded = self._client().load_topology(source)
+            loaded = client.load_topology(source)
             self.topology_id = str(loaded["topology_id"])
-            return self._client().deploy(self.topology_id)
+            return client.deploy(self.topology_id)
 
         self._submit("Deploying…", work)
 
@@ -150,11 +152,12 @@ class PolmonApp:
         experiment_id = f"gui-{uuid.uuid4().hex[:12]}"
         topology_id = self.topology_id
         scenario = self.scenario_source
+        client = self._client()
 
         def work() -> dict[str, object]:
-            result = self._client().run_experiment(experiment_id, topology_id, scenario)
-            result["telemetry"] = self._client().telemetry(experiment_id)
-            result["report"] = self._client().report(experiment_id)
+            result = client.run_experiment(experiment_id, topology_id, scenario)
+            result["telemetry"] = client.telemetry(experiment_id)
+            result["report"] = client.report(experiment_id)
             return result
 
         self._submit("Running experiment…", work)
