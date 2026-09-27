@@ -29,6 +29,20 @@ for L1 and hybrid TAP experiments. Linux releases also contain
 `polmon-backend-<version>-linux-x64.tar.gz`, a Qt-free backend bundle that runs without Python,
 pip, or a virtual environment.
 
+## Which download?
+
+Every [release](https://github.com/blindicide/polmon/releases) carries these assets and a
+`SHA256SUMS.txt` (`sha256sum --check --ignore-missing SHA256SUMS.txt`, or
+`scripts/verify-release.sh vX.Y.Z`):
+
+| You want | Download | Fidelity | Needs |
+|---|---|---|---|
+| Try polmon on Windows | `polmon-<version>-windows-x64.exe` (one file) or `…-portable.zip` (unzip; starts ~2.5× faster) | L0 via the bundled local backend; **Remote Linux backend** for L1/hybrid | Nothing. Unsigned: SmartScreen warns on first run |
+| The desktop client on Linux | `polmon-<version>-linux-x64.tar.gz` | Connects to any backend | Qt's xcb libraries ([BUILD-LINUX.md](BUILD-LINUX.md)) |
+| A Linux lab backend without Python | `polmon-backend-<version>-linux-x64.tar.gz` + `polmon-backend-bundled.service` | L0; L1 and hybrid TAP when the host permits | glibc 2.35+; for L1/hybrid `iproute2`, `setpriv`, `/dev/net/tun`, passwordless `sudo` for `ip` (check with `--lab-readiness`) |
+| A headless Windows backend | `polmon-backend-<version>-windows-x64.exe` | L0 only | Nothing |
+| A Python install | `polmon-<version>-py3-none-any.whl` (+ `polmon-backend.service`) | As the Linux backend | Python 3.12; `polmon[gui]` for the client |
+
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
 namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is
 mandatory off loopback, in-namespace workloads that never run as root, verified scenario
