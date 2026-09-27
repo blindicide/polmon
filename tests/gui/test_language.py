@@ -1,0 +1,209 @@
+"""Russian by default, English at runtime: every screen switches in place and keeps its state.
+
+Assertions use widget identifiers and machine values; display text is only inspected for the
+*language* it is in (no Cyrillic in English, no untranslated English in Russian).
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+import pytest
+from conftest import connect, l0_topology, ping_scenario, wait_connected
+from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QAbstractItemView,
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPlainTextEdit,
+    QTableWidget,
+    QTabWidget,
+    QTextEdit,
+    QTreeWidget,
+)
+
+sys.path.insert(0, str(Path(__file__).parents[2] / "scripts"))
+
+from i18n_audit import CYRILLIC, _latin_prose  # noqa: E402
+
+from polmon.client import i18n  # noqa: E402
+from polmon.client.errors import Problem  # noqa: E402
+from polmon.client.locales import AUTONYMS  # noqa: E402
+from polmon.client.widgets import JsonTree  # noqa: E402
+
+LATIN_DATA = re.compile(r"^[\w.:/@+-]+$")  # identifiers, addresses, paths, versions
+
+
+def visible_texts(window) -> list[tuple[str, str]]:
+    """(where, text) for every piece of interface text: chrome, headers, cells, menus."""
+    texts: list[tuple[str, str]] = [("window title", window.windowTitle())]
+
+    def add(widget, text: object) -> None:
+        if isinstance(text, str) and text.strip():
+            texts.append((widget.objectName() or type(widget).__name__, text))
+
+    for widget in window.findChildren(QLabel):
+        add(widget, re.sub(r"<[^>]*>|&[a-z]+;", " ", widget.text()))
+        add(widget, widget.toolTip())
+    for widget in window.findChildren(QAbstractButton):
+        add(widget, widget.text())
+        add(widget, widget.toolTip())
+    for widget in window.findChildren(QGroupBox):
+        add(widget, widget.title())
+    for widget in window.findChildren(QLineEdit):
+        add(widget, widget.placeholderText())
+    for widget in window.findChildren(QComboBox):
+        if not widget.isEditable():
+            for index in range(widget.count()):
+                add(widget, widget.itemText(index))
+    for widget in window.findChildren(QTabWidget):
+        for index in range(widget.count()):
+            add(widget, widget.tabText(index))
+    for widget in window.findChildren(QAbstractItemView):
+        model = widget.model()
+        try:
+            columns = model.columnCount(QModelIndex())
+        except TypeError:  # list models (completers, combo popups) have no header
+            columns = 0
+        for column in range(columns):
+            add(widget, model.headerData(column, Qt.Orientation.Horizontal))
+        if isinstance(widget, QTableWidget):
+            for row in range(widget.rowCount()):
+                for column in range(widget.columnCount()):
+                    item = widget.item(row, column)
+                    if item is not None:
+                        add(widget, item.text())
+        if isinstance(widget, QTreeWidget) and not isinstance(widget, JsonTree):
+            for index in range(widget.topLevelItemCount()):
+                item = widget.topLevelItem(index)
+                add(widget, " ".join(item.text(c) for c in range(widget.columnCount())))
+    for menu in window.findChildren(QMenu):
+        add(menu, menu.title())
+        for action in menu.actions():
+            add(menu, action.text().replace("&", ""))
+    for widget in window.findChildren(QTextEdit) + window.findChildren(QPlainTextEdit):
+        add(widget, widget.accessibleName())  # contents are documents or the history log
+    add(window.statusBar(), window.statusBar().currentMessage())
+    return texts
+
+
+def english_leftovers(window) -> list[tuple[str, str]]:
+    return [
+        (where, text)
+        for where, text in visible_texts(window)
+        if not LATIN_DATA.match(text.strip())
+        and not text.lstrip().startswith(("{", "["))  # a JSON value shown verbatim
+        and _latin_prose(text)
+    ]
+
+
+def cyrillic_leftovers(window) -> list[tuple[str, str]]:
+    """Cyrillic text in English mode (language names are shown as autonyms on purpose)."""
+    return [
+        (where, text)
+        for where, text in visible_texts(window)
+        if CYRILLIC.search(text) and text not in AUTONYMS.values()
+    ]
+
+
+def walk_all_pages(window, qtbot) -> None:
+    for key in window.pages:
+        window.navigate(key)
+        qtbot.wait(20)
+
+
+def test_russian_is_the_default_language(window, monkeypatch) -> None:
+    from polmon.client.locales import DEFAULT_LANGUAGE
+
+    monkeypatch.delenv(i18n.LANGUAGE_ENVIRONMENT_VARIABLE, raising=False)
+    assert DEFAULT_LANGUAGE == "ru"
+    assert i18n.initial_language() == "ru"  # nothing stored, no override
+    assert i18n.initial_language("en") == "en"  # the operator's stored choice wins
+    assert window.language_actions[i18n.language()].isChecked()
+
+
+def test_runtime_switch_retranslates_every_screen_and_keeps_state(
+    window, qtbot, live_backend, tmp_path
+) -> None:
+    window.set_language("ru")
+    topology = tmp_path / "l0-small.yml"
+    topology.write_text(l0_topology(), encoding="utf-8")
+    scenario = tmp_path / "ping.yml"
+    scenario.write_text(ping_scenario(actions=2), encoding="utf-8")
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    topologies = window.pages["topologies"]
+    window.navigate("topologies", topology)
+    qtbot.waitUntil(lambda: topologies.badge.status == "valid", timeout=10_000)
+    topologies.deploy()
+    deployment = window.pages["deployment"]
+    qtbot.waitUntil(lambda: deployment.table.rowCount() == 1, timeout=20_000)
+    qtbot.waitUntil(lambda: not window.context.busy, timeout=20_000)
+    scenarios = window.pages["scenarios"]
+    window.navigate("scenarios", scenario)
+    qtbot.waitUntil(scenarios.ready, timeout=10_000)
+    scenarios.run()
+    qtbot.waitUntil(lambda: scenarios.outcome.status == "succeeded", timeout=30_000)
+    scenarios.report_button.click()
+    reports = window.pages["reports"]
+    qtbot.waitUntil(lambda: reports.report is not None, timeout=10_000)
+    walk_all_pages(window, qtbot)
+    leftovers = english_leftovers(window)
+    assert leftovers == [], "\n".join(map(repr, leftovers))
+
+    state = (
+        window.session.state,
+        window.bar.url.text(),
+        topologies.editor.toPlainText(),
+        scenarios.editor.toPlainText(),
+        deployment.table.rowCount(),
+        scenarios.sequence.rowCount(),
+        reports.report["experiment_id"],
+    )
+    window.navigate("reports")
+    window.set_language("en")
+    assert i18n.language() == "en"
+    assert window.current_page.key == "reports"  # the operator stays where they were
+    walk_all_pages(window, qtbot)
+    leftovers = cyrillic_leftovers(window)
+    assert leftovers == [], "\n".join(map(repr, leftovers))
+    assert "Traceback" not in window.log_view.toPlainText()
+    assert (
+        window.session.state,
+        window.bar.url.text(),
+        topologies.editor.toPlainText(),
+        scenarios.editor.toPlainText(),
+        deployment.table.rowCount(),
+        scenarios.sequence.rowCount(),
+        reports.report["experiment_id"],
+    ) == state
+    assert CYRILLIC.search(reports.rendered.toPlainText()) is None  # the report re-renders
+
+    window.toggle_language()  # Ctrl+Shift+U
+    assert i18n.language() == "ru"
+    walk_all_pages(window, qtbot)
+    leftovers = english_leftovers(window)
+    assert leftovers == [], "\n".join(map(repr, leftovers))
+    assert i18n.missing == set()
+
+
+@pytest.mark.parametrize("language", ["ru", "en"])
+def test_window_fits_1440_by_900_on_every_page_with_banners(window, qtbot, language) -> None:
+    window.set_language(language)
+    problem = Problem("problem.l0_only", i18n.Msg("backend.fidelity.l0_only"))
+    for page in window.pages.values():
+        page.banner.show_problem(problem)
+    for key in window.pages:
+        window.navigate(key)
+        qtbot.wait(10)
+        hint = window.minimumSizeHint().expandedTo(window.minimumSize())
+        assert hint.width() <= 1440 and hint.height() <= 900, (language, key, hint)
+    window.resize(1440, 900)
+    qtbot.wait(20)
+    assert (window.width(), window.height()) == (1440, 900)

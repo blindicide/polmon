@@ -1,9 +1,16 @@
-"""Compact, locale-independent formatting for dense operator displays (no Qt)."""
+"""Compact formatting for dense operator displays (no Qt).
+
+Numbers use a decimal point and IEC byte symbols (B, KiB, MiB) in every language; durations use
+the current language's unit abbreviations (``unit.*``: ms/мс, s/с, min/мин, h/ч), see
+docs/UI-GUIDE.md. Words come from the catalogs.
+"""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
+
+from polmon.client.i18n import tr
 
 
 def format_bytes(value: object) -> str:
@@ -22,14 +29,14 @@ def format_seconds(value: object) -> str:
         return "—"
     seconds = float(value)
     if seconds < 1:
-        return f"{seconds * 1000:.0f} ms"
+        return tr("unit.ms", value=f"{seconds * 1000:.0f}")
     if seconds < 60:
-        return f"{seconds:.1f} s"
+        return tr("unit.s", value=f"{seconds:.1f}")
     minutes, rest = divmod(int(round(seconds)), 60)
     if minutes < 60:
-        return f"{minutes}m {rest:02d}s"
+        return tr("unit.min_s", minutes=minutes, seconds=f"{rest:02d}")
     hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes:02d}m"
+    return tr("unit.h_min", hours=hours, minutes=f"{minutes:02d}")
 
 
 def format_percent(value: object) -> str:
@@ -77,12 +84,12 @@ def pretty_json(value: object) -> str:
 def progress_text(
     completed: int, total: int, elapsed: float | None, eta: float | None, detail: str = ""
 ) -> str:
-    """``step 3/10 · 30 % · 4.2 s elapsed · ETA 9.8 s · detail`` (the CLI progress contract)."""
-    parts = [f"step {completed}/{total}"]
+    """``step 3/10 · 30 % · 4.2 s elapsed · ETA 9.8 s · detail`` in the current language."""
+    parts = [tr("progress.step", completed=completed, total=total)]
     if total:
         parts.append(f"{100 * completed / total:.0f} %")
-    parts.append(f"{format_seconds(elapsed)} elapsed")
-    parts.append(f"ETA {format_seconds(eta)}" if eta is not None else "ETA —")
+    parts.append(tr("progress.elapsed", duration=format_seconds(elapsed)))
+    parts.append(tr("progress.eta", duration=format_seconds(eta) if eta is not None else "—"))
     if detail:
         parts.append(detail)
     return " · ".join(parts)

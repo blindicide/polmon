@@ -65,7 +65,23 @@ _L1_TOPOLOGY = _L0_TOPOLOGY.replace("id: local-smoke", "id: needs-linux", 1).rep
 
 
 class LocalBackendError(RuntimeError):
-    """The owned process could not be started, reached, or stopped safely."""
+    """The owned process could not be started, reached, or stopped safely.
+
+    ``message_code``/``params`` let the UI show the reason in its own language
+    (``local.<message_code>``); the English message stays for logs and the CLI probes.
+    """
+
+    def __init__(self, message: str, message_code: str = "failed", **params: object) -> None:
+        super().__init__(message)
+        self.message_code = message_code
+        self.params = params
+
+    @property
+    def problem(self):  # noqa: ANN201 - imported lazily: errors.py is a UI module
+        from polmon.client.errors import Problem
+        from polmon.client.i18n import Msg
+
+        return Problem("problem.local_start", Msg(f"local.{self.message_code}", **self.params))
 
 
 class LocalBackendCancelled(LocalBackendError):
@@ -86,7 +102,9 @@ def resolve_backend_command(override: str | Path | None = None) -> list[str]:
             found = shutil.which(selected)
             resolved = Path(found) if found else None
         if resolved is None:
-            raise LocalBackendError(f"backend override does not exist: {selected}")
+            raise LocalBackendError(
+                f"backend override does not exist: {selected}", "override_missing", path=selected
+            )
         return [str(resolved.resolve())]
 
     name = _executable_name()
@@ -113,7 +131,10 @@ def resolve_backend_command(override: str | Path | None = None) -> list[str]:
         )
         raise LocalBackendError(
             f"this client bundle has no backend beside it; {hint}, set "
-            f"{BACKEND_OVERRIDE_ENV}, or select Remote Linux backend"
+            f"{BACKEND_OVERRIDE_ENV}, or select Remote Linux backend",
+            "missing_linux" if sys.platform.startswith("linux") else "missing",
+            tarball=f"polmon-backend-{__version__}-linux-x64.tar.gz",
+            variable=BACKEND_OVERRIDE_ENV,
         )
     # Source checkout / editable install fallback. The module name is intentionally a string:
     # the client keeps its enforced import boundary from backend implementation modules.
@@ -373,6 +394,7 @@ class LocalBackendManager:
             self.token = secrets.token_urlsafe(32)
 
         last = "backend did not start"
+        reason: tuple[str, dict[str, object]] = ("not_started", {})
         for attempt in range(1, attempts + 1):
             if cancelled and cancelled():
                 self.stop()
@@ -414,7 +436,12 @@ class LocalBackendManager:
                     self._job = _WindowsKillJob(self.process)
             except OSError as error:
                 self.stop()
-                raise LocalBackendError(f"could not start {self.command[0]}: {error}") from error
+                raise LocalBackendError(
+                    f"could not start {self.command[0]}: {error}",
+                    "start_failed",
+                    command=self.command[0],
+                    reason=error.strerror or error,
+                ) from error
 
             client = ApiClient(self.url, timeout=1.0, token=self.token)
             deadline = time.monotonic() + timeout
@@ -425,6 +452,7 @@ class LocalBackendManager:
                 code = self.process.poll()
                 if code is not None:
                     last = f"backend exited with code {code} on startup attempt {attempt}"
+                    reason = ("exited", {"exit_code": code, "attempt": attempt})
                     self._close_job()
                     break
                 try:
@@ -434,12 +462,15 @@ class LocalBackendManager:
                         not isinstance(capabilities, dict)
                         or capabilities.get("fidelity") != "l0_only"
                     ):
-                        raise LocalBackendError("local backend did not advertise L0-only fidelity")
+                        raise LocalBackendError(
+                            "local backend did not advertise L0-only fidelity", "not_l0_only"
+                        )
                     return self.connection()
                 except ApiClientError:
                     time.sleep(0.1)
             else:
                 last = f"backend was not ready within {timeout:g} s on attempt {attempt}"
+                reason = ("not_ready", {"seconds": f"{timeout:g}", "attempt": attempt})
             self._terminate_child(timeout=3.0)
 
         detail = self.log_tail()
@@ -447,7 +478,13 @@ class LocalBackendManager:
         suffix = f"; log: {self.log_path}" if self.log_path else ""
         if detail:
             suffix += f"; last output: {detail}"
-        raise LocalBackendError(last + suffix)
+        raise LocalBackendError(
+            last + suffix,
+            reason[0],
+            **reason[1],
+            log=self.log_path or "—",
+            output=detail.splitlines()[-1][:200] if detail else "—",
+        )
 
     def connection(self) -> dict[str, object]:
         return {

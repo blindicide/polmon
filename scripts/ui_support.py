@@ -99,11 +99,12 @@ def settle(app, seconds: float) -> None:  # noqa: ANN001
 
 
 def auto_confirm(log: Callable[[str], None]) -> None:
-    """Answer confirmation dialogs with Yes (and record the question) in unattended runs."""
-    from PySide6.QtWidgets import QMessageBox
+    """Answer confirmation dialogs with the accept action (recording the question by its
+    catalog key) in unattended runs."""
+    from polmon.client.widgets import set_confirm_handler
 
-    def yes(parent, title, text, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-        log(f"confirmation '{title}' answered Yes: {text}")
-        return QMessageBox.StandardButton.Yes
+    def accept(title: str, text: str) -> bool:
+        log(f"confirmation '{title}' accepted")
+        return True
 
-    QMessageBox.question = yes  # type: ignore[method-assign]
+    set_confirm_handler(accept)

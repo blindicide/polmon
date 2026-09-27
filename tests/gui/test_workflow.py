@@ -6,9 +6,12 @@ import time
 
 import pytest
 from conftest import connect, l0_topology, log_text, ping_scenario, wait_connected
+from PySide6.QtCore import Qt
 
 from polmon.api import control as control_module
+from polmon.client.i18n import status_label, tr
 from polmon.client.state import ConnectionState
+from polmon.client.widgets import raw_value
 from polmon.resources import ResourceLimits
 
 
@@ -51,59 +54,62 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     assert first.text(1) == "L0" and first.child(0).text(3).count(":") == 5  # MAC shown
     assert page.networks.rowCount() >= 1
     summary = {
-        page.summary.item(r, 0).text(): page.summary.item(r, 2).text()
+        page.summary.item(r, 0).data(Qt.ItemDataRole.UserRole): raw_value(page.summary, r, 2)
         for r in range(page.summary.rowCount())
     }
-    assert summary["Endpoints"].startswith("fits")
+    assert summary["summary.endpoints"] == "fits"
 
     deploy_from_editor(qtbot, window)
     deployment = window.pages["deployment"]
     qtbot.waitUntil(lambda: deployment.table.rowCount() == 1, timeout=10_000)
-    assert deployment.table.item(0, 1).text() == "running"
+    assert raw_value(deployment.table, 0, 1) == "running"
     assert deployment.owned.count() >= 2
     tiles = deployment.tiles
     qtbot.waitUntil(lambda: tiles.endpoints.value.text() == "2", timeout=10_000)
 
     open_scenario(qtbot, window, scenario)
     scenarios = window.pages["scenarios"]
-    assert scenarios.summary.item(2, 1).text() == "compatible and deployed"
+    assert raw_value(scenarios.summary, 2, 1) == "success"  # topology compatible and deployed
     assert scenarios.sequence.rowCount() == 3
     scenarios.run()
     assert window.context.busy and window.progress.isVisible()
     qtbot.waitUntil(lambda: scenarios.outcome.status == "succeeded", timeout=30_000)
-    assert [scenarios.sequence.item(r, 5).text() for r in range(3)] == ["ok", "ok", "ok"]
-    assert scenarios.conditions.item(0, 4).text() == "met"
-    assert "succeeded" in window.statusBar().currentMessage()  # finish is announced
+    assert [raw_value(scenarios.sequence, r, 5) for r in range(3)] == ["ok", "ok", "ok"]
+    assert raw_value(scenarios.conditions, 0, 4) == "met"
+    assert status_label("succeeded") in window.statusBar().currentMessage()  # announced
     scenarios.validate(quiet=True)  # background re-validation must not wipe the run results
     qtbot.wait(500)
-    assert [scenarios.sequence.item(r, 5).text() for r in range(3)] == ["ok", "ok", "ok"]
-    assert scenarios.conditions.item(0, 4).text() == "met"
+    assert [raw_value(scenarios.sequence, r, 5) for r in range(3)] == ["ok", "ok", "ok"]
+    assert raw_value(scenarios.conditions, 0, 4) == "met"
     experiment_id = scenarios.last_record["experiment_id"]
 
     telemetry = window.pages["telemetry"]
-    assert telemetry.empty.isVisibleTo(window) or telemetry.experiment_id is None
+    assert telemetry.table_state.state == "empty" or telemetry.experiment_id is None
     scenarios.telemetry_button.click()
     qtbot.waitUntil(lambda: telemetry.model.rowCount() >= 5, timeout=10_000)
-    assert not telemetry.empty.isVisibleTo(window)
+    assert telemetry.table_state.state == "content"
     categories = {event["category"] for event in telemetry.model.events}
     assert {"scenario", "network_observation", "resource"} <= categories
     telemetry.category_boxes["resource"].setChecked(False)
     assert all(
-        telemetry.proxy.index(r, 2).data() != "resource" for r in range(telemetry.proxy.rowCount())
+        telemetry.proxy.index(r, 0).data(Qt.ItemDataRole.UserRole)["category"] != "resource"
+        for r in range(telemetry.proxy.rowCount())
     )
     telemetry.search.setText("ping-1")
     assert telemetry.proxy.rowCount() == 1
     capture = {
-        telemetry.capture.item(r, 0).text(): telemetry.capture.item(r, 1).text()
+        telemetry.capture.item(r, 0).data(Qt.ItemDataRole.UserRole): raw_value(
+            telemetry.capture, r, 1
+        )
         for r in range(telemetry.capture.rowCount())
     }
-    assert int(capture["Frames captured"]) >= 1
+    assert int(capture["capture.frames"]) >= 1
 
     scenarios.report_button.click()
     reports = window.pages["reports"]
     qtbot.waitUntil(lambda: reports.report is not None, timeout=10_000)
     assert reports.status.status == "succeeded"
-    assert reports.comparison.item(0, 5).text() == "met"
+    assert raw_value(reports.comparison, 0, 5) == "met"
     assert reports.observations.rowCount() == 3
     assert experiment_id in reports.markdown
     assert reports.rendered.toPlainText().strip()
@@ -115,7 +121,7 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
 
     window.pages["deployment"].reset()
     qtbot.waitUntil(lambda: not window.session.deployments, timeout=20_000)
-    assert window.asked and "Tear down all 1 deployment" in window.asked[-1]
+    assert window.asked and window.asked[-1] == "deployment.reset.confirm_title"
     assert "Traceback" not in log_text(window)
 
 
@@ -125,12 +131,14 @@ def test_admission_rejection_names_the_limit(window, qtbot, backend_factory, tmp
     wait_connected(qtbot, window)
     open_and_validate_topology(qtbot, window, write(tmp_path, "t.yml", l0_topology()))
     summary = window.pages["topologies"].summary
-    assert summary.item(2, 2).text().startswith("exceeds")
+    assert raw_value(summary, 2, 2) == "exceeds"
     window.pages["topologies"].deploy()
     banner = window.pages["deployment"].banner
     qtbot.waitUntil(lambda: banner.isVisible(), timeout=10_000)
-    assert banner.problem.title == "Refused by admission control"
-    assert "Endpoints: projected 2, limit 1" in banner.problem.items
+    assert banner.problem.key == "problem.admission"
+    assert banner.problem.message_code == "admission.topology_limits"
+    (violation,) = banner.problem.item_messages
+    assert violation.name == "endpoint_count" and violation.value == {"projected": 2, "limit": 1}
     assert not window.session.deployments
 
 
@@ -156,12 +164,11 @@ def test_l0_only_deployment_is_refused_in_ui_with_linux_guidance(
     deployment = window.pages["deployment"]
     deployment.target.setCurrentIndex(deployment.target.findData("needs-linux"))
     deployment.deploy()
-    assert deployment.banner.problem.title == "Local backend — L0 only"
-    assert deployment.banner.problem.detail == (
-        "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon backend on a "
-        "Linux host with network namespace privileges."
-    )
-    assert "requires a polmon backend on a Linux host" in log_text(window)
+    problem = deployment.banner.problem
+    assert problem.key == "problem.l0_only" and problem.message_code == "fidelity.l0_only"
+    # The client-side preflight renders the backend's own refusal code (no HTTP request).
+    assert problem.detail == tr("backend.fidelity.l0_only")
+    assert tr("backend.fidelity.l0_only") in log_text(window)
 
 
 def test_validation_errors_point_at_the_line(window, qtbot, live_backend, tmp_path) -> None:
@@ -173,11 +180,11 @@ def test_validation_errors_point_at_the_line(window, qtbot, live_backend, tmp_pa
     page = window.pages["topologies"]
     qtbot.waitUntil(lambda: page.problems.rowCount() > 0, timeout=10_000)
     assert page.badge.status == "invalid"
-    location = page.problems.item(0, 1).text()
-    line = int(page.problems.item(0, 0).text())
+    location = raw_value(page.problems, 0, 1)
+    line = raw_value(page.problems, 0, 0)
     assert location.startswith("networks.0.ipv4_subnet")
     assert "8.8.8.0/24" in broken.splitlines()[line - 1]
-    assert "laboratory ranges" in page.problems.item(0, 2).text()
+    assert raw_value(page.problems, 0, 2) == "backend.topology.address_outside_lab"
     assert page.editor._error_line == line
     assert page.tabs.currentWidget() is page.problems
     assert not window.session.backend_topologies  # nothing was loaded
@@ -206,10 +213,10 @@ def test_running_experiment_can_be_cancelled(
     scenarios.run()
     qtbot.waitUntil(lambda: window.progress.update_ is not None, timeout=10_000)
     update = window.progress.update_
-    assert update.total == 30 and "elapsed" in window.progress.detail.text()
+    assert update.total == 30 and "/30" in window.progress.detail.text()
     assert window.context.cancel_operation()  # Esc / Cancel: graceful backend cancellation
     qtbot.waitUntil(lambda: scenarios.outcome.status == "cancelled", timeout=20_000)
-    done = sum(scenarios.sequence.item(r, 5).text() == "ok" for r in range(30))
+    done = sum(raw_value(scenarios.sequence, r, 5) == "ok" for r in range(30))
     assert 0 < done < 30
     assert not window.context.busy
 
@@ -230,8 +237,7 @@ def test_backend_dying_mid_experiment_is_reported(
     qtbot.waitUntil(lambda: window.progress.update_ is not None, timeout=10_000)
     backend.stop()
     qtbot.waitUntil(lambda: scenarios.outcome.status == "unknown", timeout=30_000)
-    assert scenarios.banner.problem.title == "Backend lost"
-    assert "outcome is unknown" in scenarios.banner.problem.detail
+    assert scenarios.banner.problem.key == "scenarios.lost"
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.LOST, timeout=15_000)
     assert not window.context.busy
     assert "Traceback" not in log_text(window)
@@ -359,8 +365,8 @@ def test_older_backend_is_usable_with_a_clear_warning(
     wait_connected(qtbot, window)
     banner = window.pages["dashboard"].banner
     qtbot.waitUntil(lambda: banner.isVisible(), timeout=10_000)
-    assert banner.problem.title == "Older backend"
-    assert "topology listing" in banner.problem.detail
+    assert banner.problem.key == "problem.older_backend"
+    assert tr("feature.topology_listing") in banner.problem.detail
     open_and_validate_topology(qtbot, window, write(tmp_path, "t.yml", l0_topology()))
     deploy_from_editor(qtbot, window)  # tracked through the topology the client loaded
     deployment = window.pages["deployment"]

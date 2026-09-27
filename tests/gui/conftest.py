@@ -166,19 +166,27 @@ def window(qtbot, tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from polmon.client import theme
+    from polmon.client import i18n, theme
+    from polmon.client.language import apply_language
     from polmon.client.mainwindow import MainWindow
 
-    # Confirmation dialogs would block a headless run: answer "Yes" and record the question.
+    # Confirmation dialogs would block a headless run: accept them and record which (by the
+    # catalog key of their title — never by display text).
+    from polmon.client.widgets import set_confirm_handler
+
     asked: list[str] = []
 
-    def yes(parent, title, text, *args, **kwargs):
-        asked.append(text)
-        return QMessageBox.StandardButton.Yes
+    def accept(title: str, text: str) -> bool:
+        asked.append(title)
+        return True
 
-    monkeypatch.setattr(QMessageBox, "question", yes)
+    set_confirm_handler(accept)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)  # no other modal may block
     app = QApplication.instance()
     theme.apply(app, "light")
+    # POLMON_LANGUAGE selects the suite's UI language (CI runs the suite in both); Russian
+    # otherwise, as for an operator starting the client for the first time.
+    apply_language(app, i18n.initial_language())
     settings = QSettings(str(tmp_path / "client.ini"), QSettings.Format.IniFormat)
     main = MainWindow(settings)
     main.asked = asked
@@ -187,6 +195,8 @@ def window(qtbot, tmp_path, monkeypatch):
     main.show()
     yield main
     main.shutdown(wait_ms=5000)
+    set_confirm_handler(None)
+    assert not i18n.missing, f"catalog keys missing: {sorted(i18n.missing)}"
 
 
 def connect(qtbot, window, backend: LiveBackend | None = None, *, url=None, token=None) -> None:

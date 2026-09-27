@@ -10,7 +10,8 @@ from typing import NoReturn
 
 
 class ApiClientError(RuntimeError):
-    """A failed call; ``status``/``code``/``details`` mirror the backend's error document."""
+    """A failed call; ``status``/``code``/``message_code``/``params``/``details`` mirror the
+    backend's error document (``message_code`` is absent from backends before v0.4.0)."""
 
     def __init__(
         self,
@@ -19,11 +20,15 @@ class ApiClientError(RuntimeError):
         status: int | None = None,
         code: str | None = None,
         details: object = None,
+        message_code: str | None = None,
+        params: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.details = details
+        self.message_code = message_code
+        self.params = params or {}
 
 
 DEFAULT_URL = "http://127.0.0.1:8080"
@@ -107,7 +112,11 @@ class ApiClient:
         except OSError as error:
             raise ApiClientError(f"connection to backend failed: {error}") from error
         if len(body) > limit:
-            raise ApiClientError(f"download exceeds the {limit}-byte client limit")
+            raise ApiClientError(
+                f"download exceeds the {limit}-byte client limit",
+                code="download_too_large",
+                params={"limit": limit},
+            )
         return body
 
     def _dict(self, method: str, path: str, payload=None, *, timeout=None) -> dict[str, object]:
@@ -136,10 +145,16 @@ class ApiClient:
         except (UnicodeDecodeError, json.JSONDecodeError):
             document = None
         body = document.get("error") if isinstance(document, dict) else None
+        message_code: str | None = None
+        params: dict[str, object] = {}
         if isinstance(body, dict):
             code = str(body.get("code") or "error")
             message = str(body.get("message") or error.reason)
             details = body.get("details")
+            if isinstance(body.get("message_code"), str):
+                message_code = str(body["message_code"])
+            if isinstance(body.get("params"), dict):
+                params = dict(body["params"])
         else:
             code, message, details = None, str(error.reason), document
         raise ApiClientError(
@@ -149,6 +164,8 @@ class ApiClient:
             status=error.code,
             code=code,
             details=details,
+            message_code=message_code,
+            params=params,
         ) from error
 
     def health(self) -> dict[str, object]:

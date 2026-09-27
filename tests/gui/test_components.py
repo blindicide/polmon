@@ -4,6 +4,7 @@ import threading
 
 from PySide6.QtCore import QThread
 
+from polmon.client.i18n import tr
 from polmon.client.models import TelemetryFilter, TelemetryModel
 from polmon.client.tasks import Cancelled, ProgressUpdate, TaskRunner
 
@@ -225,6 +226,6 @@ def test_resource_tiles_warn_when_headroom_or_storage_runs_low(qtbot) -> None:
     )
     assert theme.hex_color("warning") in tiles.headroom.value.styleSheet()  # 4 MiB above reserve
     assert theme.hex_color("danger") in tiles.data.value.styleSheet()  # 96 % of the limit
-    assert "96% used" in tiles.data.secondary.text()
+    assert tiles.data.value.property("tone") == "danger" and "96%" in tiles.data.secondary.text()
     # No swap figure in the snapshot (a Windows backend): say so instead of implying zero use.
-    assert tiles.swap.secondary.text() == "not reported by this host"
+    assert tiles.swap.secondary.text() == tr("tile.not_reported")

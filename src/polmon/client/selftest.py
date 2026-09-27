@@ -119,6 +119,31 @@ def _self_test(out) -> int:  # noqa: ANN001
         size = f"{image.width()}x{image.height()}"
         return f"built, rendered {size} off screen, destroyed ({pages} pages)"
 
+    def languages() -> str:
+        from polmon.client import i18n
+        from polmon.client.language import apply_language, qt_translation_file
+        from polmon.client.locales import CATALOGS, DEFAULT_LANGUAGE
+
+        reference = set(CATALOGS[DEFAULT_LANGUAGE])
+        uneven = [code for code, catalog in CATALOGS.items() if set(catalog) != reference]
+        if uneven:
+            raise RuntimeError(f"catalogs differ from {DEFAULT_LANGUAGE}: {uneven}")
+        previous = i18n.language()
+        try:
+            loaded = {}
+            for code in CATALOGS:
+                if not apply_language(state["app"], code):  # type: ignore[arg-type]
+                    raise RuntimeError(f"language {code} could not be applied")
+                if code != "en" and qt_translation_file(code) is None:
+                    raise RuntimeError(f"Qt translation qtbase_{code}.qm is missing")
+                loaded[code] = i18n.tr("page.dashboard.title")
+        finally:
+            apply_language(state["app"], previous)  # type: ignore[arg-type]
+        if len(set(loaded.values())) != len(loaded):
+            raise RuntimeError("languages render identical text")
+        names = ", ".join(f"{code} ({len(CATALOGS[code])} keys)" for code in CATALOGS)
+        return f"{names}; default {DEFAULT_LANGUAGE}; Qt translations present"
+
     def client_configuration() -> str:
         from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClient, ApiClientError
         from polmon.client.errors import describe
@@ -127,7 +152,7 @@ def _self_test(out) -> int:  # noqa: ANN001
         if client.timeout != DEFAULT_TIMEOUT or client.timeout <= 0 or client.has_token:
             raise RuntimeError("unexpected default client configuration")
         problem = describe(ApiClientError("x", status=429, code="resource_limit", details={}))
-        if problem.title != "Refused by admission control":
+        if problem.key != "problem.admission":
             raise RuntimeError("error mapping is broken")
         return f"default {client.base_url}, timeout {client.timeout:g} s, no token"
 
@@ -135,6 +160,7 @@ def _self_test(out) -> int:  # noqa: ANN001
     if state.get("qt") is not None:
         check("platform plugins", plugins)
         if check("QApplication", application) is not None:
+            check("languages", languages)
             check("main window", window)
     check("API client configuration", client_configuration)
     verdict = "PASS" if failures == 0 else f"FAIL ({failures} check(s) failed)"

@@ -1,4 +1,8 @@
-"""Main window: connection bar, navigation, pages, activity log, status bar, health polling."""
+"""Main window: sidebar navigation, connection header, pages, activity log, status bar, polling.
+
+Every visible string is bound to the catalogs; *View → Language* switches Russian/English at run
+time without touching session state (connection, editors, selections, the owned local backend).
+"""
 
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
     QDoubleSpinBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -26,18 +31,19 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
-    QSizePolicy,
     QStackedWidget,
-    QToolBar,
+    QVBoxLayout,
     QWidget,
 )
 
-from polmon.client import theme
+from polmon.client import i18n, theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
+from polmon.client.i18n import Msg, bind, bind_fn, bind_text, bind_tip, tr
 from polmon.client.icon import app_icon
-from polmon.client.local_backend import LOCAL_LABEL, LocalBackendError, LocalBackendManager
+from polmon.client.language import apply_language
+from polmon.client.local_backend import LocalBackendError, LocalBackendManager
+from polmon.client.locales import AUTONYMS
 from polmon.client.pages import Context, Page
 from polmon.client.pages.benchmarks import BenchmarksPage
 from polmon.client.pages.dashboard import DashboardPage
@@ -48,7 +54,15 @@ from polmon.client.pages.telemetry import TelemetryPage
 from polmon.client.pages.topologies import TopologiesPage
 from polmon.client.state import ConnectionState, Session
 from polmon.client.tasks import CancelToken, TaskRunner
-from polmon.client.widgets import Led, OperationProgress
+from polmon.client.widgets import (
+    ActivityIndicator,
+    Led,
+    OperationProgress,
+    button,
+    confirm,
+    label,
+    primary_button,
+)
 from polmon.version import __version__
 
 ACCESSIBLE_KINDS = (
@@ -77,79 +91,119 @@ STATE_TONES = {
     ConnectionState.UNAUTHORIZED: "danger",
     ConnectionState.LOST: "danger",
 }
+# (keys, catalog key of the action): shown in Help → Keyboard shortcuts and docs/CLIENT.md.
 SHORTCUTS = (
-    ("Ctrl+Return", "Connect / disconnect"),
-    ("Ctrl+L", "Focus the backend URL"),
-    ("F5", "Refresh backend state now"),
-    ("Ctrl+O / Ctrl+Shift+O", "Open topology / scenario"),
-    ("Ctrl+S", "Save the topology or scenario being edited"),
-    ("Ctrl+Shift+V", "Validate the topology in the editor"),
-    ("Ctrl+D / Ctrl+Shift+D", "Deploy / destroy the selected topology"),
-    ("Ctrl+Shift+R", "Reset the environment"),
-    ("Ctrl+R", "Run the experiment"),
-    ("Esc", "Cancel the running operation (twice: abandon)"),
-    ("Ctrl+1 … Ctrl+7", "Switch page"),
-    ("Ctrl+Shift+T", "Toggle light/dark theme"),
-    ("Ctrl+Shift+L", "Show or hide the activity log"),
-    ("Ctrl+Q", "Quit"),
+    ("Ctrl+Return", "shortcut.connect"),
+    ("Ctrl+L", "shortcut.focus_url"),
+    ("F5", "shortcut.refresh"),
+    ("Ctrl+O / Ctrl+Shift+O", "shortcut.open"),
+    ("Ctrl+S", "shortcut.save"),
+    ("Ctrl+Shift+V", "shortcut.validate"),
+    ("Ctrl+D / Ctrl+Shift+D", "shortcut.deploy_destroy"),
+    ("Ctrl+Shift+R", "shortcut.reset"),
+    ("Ctrl+R", "shortcut.run"),
+    ("Esc", "shortcut.cancel"),
+    ("Ctrl+1 … Ctrl+7", "shortcut.pages"),
+    ("Ctrl+Shift+T", "shortcut.theme"),
+    ("Ctrl+Shift+L", "shortcut.log"),
+    ("Ctrl+Shift+U", "shortcut.language"),
+    ("F1", "shortcut.help"),
+    ("Ctrl+Q", "shortcut.quit"),
 )
+# Backend features an older backend may lack (poll degrades instead of failing).
+FEATURE_TOPOLOGIES = "topology_listing"
+FEATURE_EXPERIMENTS = "experiment_listing"
 
 
-class ConnectionBar(QToolBar):
+class ConnectionBar(QFrame):
+    """The header above the pages: connection type, remote fields, connect, state.
+
+    A plain frame rather than a QToolBar: tool bars take stylesheet padding as one uniform
+    margin and only after a re-polish, which changed the header height on a theme switch.
+    """
+
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("Connection", parent)
+        super().__init__(parent)
         self.setObjectName("connectionBar")
-        self.setMovable(False)
-        self.addWidget(QLabel(" Backend "))
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(
+            theme.SPACE["md"], theme.SPACE["sm"], theme.SPACE["md"], theme.SPACE["sm"]
+        )
+        self._layout.setSpacing(theme.SPACE["sm"])
         self.mode = QComboBox()
-        self.mode.addItem("Local backend (L0 only)", "local")
-        self.mode.addItem("Remote Linux backend", "remote")
-        self.mode.setToolTip("Local is self-contained and L0-only; remote Linux can provide L1")
+        self.mode.setObjectName("connectionMode")
+        self.mode.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.mode.setMinimumContentsLength(15)
+        self.mode.addItem("", "local")
+        self.mode.addItem("", "remote")
+        bind_fn(
+            self.mode,
+            lambda combo: [
+                combo.setItemText(index, tr(f"connection.mode.{combo.itemData(index)}"))
+                for index in range(combo.count())
+            ],
+            tag="items",
+        )
+        bind_tip(self.mode, "connection.mode.tip")
         self.addWidget(self.mode)
-        self.addWidget(QLabel("  URL "))
+        # Remote-only fields (URL, token) and the local-only log button are shown per mode.
+        self.remote_actions = [self.addWidget(label("connection.url", name="fieldLabel"))]
         # Editable combo: type a URL or pick one of the recently connected backends.
         self.url_box = QComboBox()
+        self.url_box.setObjectName("backendUrl")
         self.url_box.setEditable(True)
         self.url_box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.url_box.setMinimumWidth(280)
-        self.url_box.setToolTip(
-            "Backend base URL, e.g. http://192.168.1.10:8080 (Ctrl+L); the list holds recently "
-            "connected backends"
-        )
+        self.url_box.setMinimumWidth(205)
+        bind_tip(self.url_box, "connection.url.tip")
         self.url = self.url_box.lineEdit()
         self.url.setText(DEFAULT_URL)
-        self.addWidget(self.url_box)
-        self.addWidget(QLabel("  Token "))
+        self.remote_actions.append(self.addWidget(self.url_box))
+        self.remote_actions.append(self.addWidget(label("connection.token", name="fieldLabel")))
         self.token = QLineEdit()
+        self.token.setObjectName("apiToken")
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token.setPlaceholderText("API token (if required)")
-        self.token.setToolTip("Kept in memory only: never saved, logged or displayed")
-        self.token.setMinimumWidth(170)
-        self.addWidget(self.token)
-        self.addWidget(QLabel("  Timeout "))
+        bind(self.token, "setPlaceholderText", "connection.token.placeholder")
+        bind_tip(self.token, "connection.token.tip")
+        self.token.setMinimumWidth(80)
+        self.token.setMaximumWidth(140)
+        self.remote_actions.append(self.addWidget(self.token))
+        self.addWidget(label("connection.timeout", name="fieldLabel"))
         self.timeout = QDoubleSpinBox()
+        self.timeout.setObjectName("requestTimeout")
         self.timeout.setRange(1.0, 120.0)
         self.timeout.setDecimals(0)
         self.timeout.setSuffix(" s")
         self.timeout.setValue(DEFAULT_TIMEOUT)
-        self.timeout.setToolTip("Timeout for ordinary requests (deploy/reset allow at least 30 s)")
+        bind_tip(self.timeout, "connection.timeout.tip")
         self.addWidget(self.timeout)
-        self.connect_button = QPushButton("Connect")
-        self.connect_button.setObjectName("primary")
-        self.connect_button.setToolTip("Connect or disconnect (Ctrl+Return)")
+        self.connect_button = primary_button(
+            "connection.connect", tip="connection.connect.tip", name="connectButton"
+        )
+        self.connect_button.setMinimumWidth(128)
         self.addWidget(self.connect_button)
-        self.log_button = QPushButton("Backend log")
-        self.log_button.setToolTip("Open the owned local backend's stdout/stderr log")
+        self.log_button = button(
+            "connection.backend_log", "quiet", tip="connection.backend_log.tip",
+            name="backendLogButton",
+        )
         self.log_button.setEnabled(False)
-        self.addWidget(self.log_button)
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.addWidget(spacer)
+        self.local_actions = [self.addWidget(self.log_button)]
+        self._layout.addStretch(1)
+        self.fidelity = label(name="fidelity")
+        self.fidelity.setObjectName("fidelity")
+        self.fidelity.hide()
+        self.addWidget(self.fidelity)
         self.led = Led()
-        self.state_label = QLabel("Disconnected")
+        self.state_label = QLabel()
+        self.state_label.setObjectName("connectionState")
+        self.state_label.setMaximumWidth(170)
         self.addWidget(self.led)
         self.addWidget(self.state_label)
-        self.addWidget(QLabel(" "))
+
+    def addWidget(self, widget: QWidget) -> QWidget:  # noqa: N802 - mirrors QToolBar's API
+        self._layout.addWidget(widget)
+        return widget
 
 
 class MainWindow(QMainWindow):
@@ -167,7 +221,10 @@ class MainWindow(QMainWindow):
         self.session = Session(self)
         self.runner = TaskRunner(self)
         self.progress = OperationProgress()
-        self.context = Context(self.session, self.runner, self.progress, self.settings, self)
+        self.activity = ActivityIndicator()
+        self.context = Context(
+            self.session, self.runner, self.progress, self.settings, self, activity=self.activity
+        )
         self._poll_handle = None
         self._poll_count = 0
         self._closing = False
@@ -176,41 +233,64 @@ class MainWindow(QMainWindow):
         self._local_stop_handle = None
 
         self.bar = ConnectionBar(self)
-        self.addToolBar(self.bar)
         self.bar.connect_button.clicked.connect(self.toggle_connection)
         self.bar.mode.currentIndexChanged.connect(self._connection_mode_changed)
         self.bar.log_button.clicked.connect(self.open_backend_log)
         self.bar.url.returnPressed.connect(self.toggle_connection)
         self.bar.token.returnPressed.connect(self.toggle_connection)
 
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(212)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(0)
+        brand = QLabel("polmon")
+        brand.setObjectName("brand")
+        side.addWidget(brand)
+        side.addWidget(label("app.tagline", name="brandVersion", wrap=True))
+        side.addWidget(label("nav.section", name="navSection"))
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        self.navigation.setFixedWidth(170)
         # Polish before adding rows: the item size then includes the theme's padding. Rows added
         # to an unpolished list were laid out 14 px apart but drawn 30 px tall (overlapping).
         self.navigation.ensurePolished()
+        self.navigation.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.stack = QStackedWidget()
         self.pages: dict[str, Page] = {}
-        for index, page_class in enumerate(PAGES):
+        for page_class in PAGES:
             page = page_class(self.context)
             self.pages[page.key] = page
             self.stack.addWidget(page)
-            item = QListWidgetItem(page.title)
-            item.setToolTip(f"{page.title} (Ctrl+{index + 1})")
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, page.key)
             self.navigation.addItem(item)
+        bind_fn(self.navigation, self._retranslate_navigation, tag="items")
         self.navigation.currentRowChanged.connect(self._page_changed)
+        side.addWidget(self.navigation, 1)
+        self.sidebar_footer = QLabel()
+        self.sidebar_footer.setObjectName("sidebarFooter")
+        self.sidebar_footer.setWordWrap(True)
+        side.addWidget(self.sidebar_footer)
         central = QWidget()
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.navigation)
-        layout.addWidget(self.stack, 1)
+        layout.addWidget(sidebar)
+        content = QVBoxLayout()
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(0)
+        content.addWidget(self.bar)
+        content.addWidget(self.stack, 1)
+        layout.addLayout(content, 1)
         self.setCentralWidget(central)
 
         self.log_view = QPlainTextEdit()
+        self.log_view.setObjectName("activityLog")
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(5000)
-        self.log_dock = QDockWidget("Activity", self)
+        self.log_dock = QDockWidget(self)
+        bind(self.log_dock, "setWindowTitle", "log.dock")
         self.log_dock.setObjectName("activityDock")
         self.log_dock.setWidget(self.log_view)
         self.log_dock.setFeatures(
@@ -221,13 +301,15 @@ class MainWindow(QMainWindow):
         self.resizeDocks([self.log_dock], [110], Qt.Orientation.Vertical)
 
         status = self.statusBar()
-        self.status_led = Led()
-        self.status_text = QLabel("Disconnected")
-        self.status_version = QLabel(f"client {__version__}")
+        status.setSizeGripEnabled(False)
+        self.status_text = QLabel()
+        self.status_text.setObjectName("statusText")
+        self.status_version = QLabel()
         self.status_version.setObjectName("muted")
-        status.addWidget(self.status_led)
+        bind_text(self.status_version, "statusbar.client_version", version=__version__)
         status.addWidget(self.status_text)
         status.addWidget(self.progress, 1)
+        status.addPermanentWidget(self.activity)
         status.addPermanentWidget(self.status_version)
         self.progress.cancel_requested.connect(self.context.cancel_operation)
 
@@ -247,136 +329,201 @@ class MainWindow(QMainWindow):
         last_page = str(self.settings.value("window/page", "dashboard"))
         keys = list(self.pages)
         self.navigation.setCurrentRow(keys.index(last_page) if last_page in keys else 0)
-        self.session.log(f"polmon client {__version__} (Qt {qVersion()}, PySide6 {pyside_version})")
+        i18n.on_language_changed(self)
+        self.session.log(
+            Msg("log.client_started", version=__version__, qt=qVersion(), pyside=pyside_version)
+        )
+
+    # -- language -----------------------------------------------------------------------------
+
+    def set_language(self, language: str) -> None:
+        """Switch the UI language now; nothing else changes (no restart, no lost state)."""
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        if not apply_language(app, language):
+            return
+        self.settings.setValue("view/language", language)
+        if language in self.language_actions:
+            self.language_actions[language].setChecked(True)
+        self.session.log(Msg("log.language", language=AUTONYMS[language]))
+
+    def toggle_language(self) -> None:
+        languages = i18n.languages()
+        index = languages.index(i18n.language())
+        self.set_language(languages[(index + 1) % len(languages)])
+
+    def retranslate(self) -> None:
+        """Computed window text: status line, window title, dynamic action names."""
+        self._update_status()
+        self._update_actions()
+        self._name_for_assistive_technology()
+        for code, action in self.language_actions.items():
+            action.setChecked(code == i18n.language())
+        notice = getattr(self, "_notice", None)
+        if notice is not None and self.statusBar().currentMessage() == notice[1]:
+            self._notice = (notice[0], str(notice[0]))  # still showing: re-render it
+            self.statusBar().showMessage(self._notice[1], 15_000)
+
+    def _retranslate_navigation(self, navigation: QListWidget) -> None:
+        for index in range(navigation.count()):
+            item = navigation.item(index)
+            key = str(item.data(Qt.ItemDataRole.UserRole))
+            item.setText(tr(f"page.{key}.title"))
+            item.setToolTip(f"{tr(f'page.{key}.subtitle')} (Ctrl+{index + 1})")
 
     # -- menus and shortcuts ------------------------------------------------------------------
 
-    def _action(self, menu, text: str, shortcut: str | None, slot, tip: str = "") -> QAction:  # noqa: ANN001
-        action = QAction(text, self)
+    def _action(self, menu, key: str, shortcut: str | None, slot, tip: str = "") -> QAction:  # noqa: ANN001
+        action = QAction(self)
+        action.setObjectName(key)
+        bind(action, "setText", key)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         if tip:
-            action.setStatusTip(tip)
+            bind(action, "setStatusTip", tip)
         action.triggered.connect(slot)
         menu.addAction(action)
         self.addAction(action)  # shortcuts work even with the menu bar hidden
         return action
 
+    def _menu(self, key: str):  # noqa: ANN202
+        menu = self.menuBar().addMenu("")
+        menu.setObjectName(key)
+        bind(menu, "setTitle", key)
+        return menu
+
     def _build_menus(self) -> None:
-        menus = self.menuBar()
-        file_menu = menus.addMenu("&File")
+        file_menu = self._menu("menu.file")
         topologies = self.pages["topologies"]
         scenarios = self.pages["scenarios"]
         self._action(
             file_menu,
-            "Open &topology…",
+            "action.open_topology",
             "Ctrl+O",
-            lambda: (self.navigate("topologies"), topologies.open_dialog()),
-        )  # type: ignore[attr-defined]
+            lambda: (self.navigate("topologies"), topologies.open_dialog()),  # type: ignore[attr-defined]
+        )
         self._action(
             file_menu,
-            "Open &scenario…",
+            "action.open_scenario",
             "Ctrl+Shift+O",
-            lambda: (self.navigate("scenarios"), scenarios.open_dialog()),
-        )  # type: ignore[attr-defined]
-        self._action(file_menu, "&Save document", "Ctrl+S", self.save_document)
-        file_menu.addSeparator()
-        self._action(file_menu, "&Quit", "Ctrl+Q", self.close)
-
-        backend = menus.addMenu("&Backend")
-        self.connect_action = self._action(
-            backend, "&Connect", "Ctrl+Return", self.toggle_connection
+            lambda: (self.navigate("scenarios"), scenarios.open_dialog()),  # type: ignore[attr-defined]
         )
-        self._action(backend, "Focus backend &URL", "Ctrl+L", self._focus_url)
-        self.refresh_action = self._action(backend, "&Refresh now", "F5", self.refresh_now)
+        self._action(file_menu, "action.save", "Ctrl+S", self.save_document)
+        file_menu.addSeparator()
+        self._action(file_menu, "action.quit", "Ctrl+Q", self.close)
+
+        backend = self._menu("menu.backend")
+        self.connect_action = self._action(
+            backend, "action.connect", "Ctrl+Return", self.toggle_connection
+        )
+        self._action(backend, "action.focus_url", "Ctrl+L", self._focus_url)
+        self.refresh_action = self._action(backend, "action.refresh", "F5", self.refresh_now)
         self.backend_log_action = self._action(
-            backend, "Open local backend &log", None, self.open_backend_log
+            backend, "action.backend_log", None, self.open_backend_log
         )
         backend.addSeparator()
         deployment = self.pages["deployment"]
         self.deploy_action = self._action(
             backend,
-            "&Deploy selected topology",
+            "action.deploy",
             "Ctrl+D",
             lambda: (self.navigate("deployment"), deployment.deploy()),  # type: ignore[attr-defined]
         )
         self.destroy_action = self._action(
             backend,
-            "D&estroy selected deployment",
+            "action.destroy",
             "Ctrl+Shift+D",
             lambda: (self.navigate("deployment"), deployment.destroy()),  # type: ignore[attr-defined]
         )
         self.reset_action = self._action(
             backend,
-            "Reset &environment…",
+            "action.reset",
             "Ctrl+Shift+R",
             lambda: (self.navigate("deployment"), deployment.reset()),  # type: ignore[attr-defined]
         )
 
-        experiment = menus.addMenu("E&xperiment")
+        experiment = self._menu("menu.experiment")
         self.run_action = self._action(
             experiment,
-            "&Run experiment",
+            "action.run",
             "Ctrl+R",
             lambda: (self.navigate("scenarios"), scenarios.run()),  # type: ignore[attr-defined]
         )
         self.cancel_action = self._action(
-            experiment, "&Cancel running operation", "Esc", self.context.cancel_operation
+            experiment, "action.cancel", "Esc", self.context.cancel_operation
         )
 
-        view = menus.addMenu("&View")
+        view = self._menu("menu.view")
         for index, page in enumerate(self.pages.values()):
-            self._action(
+            action = self._action(
                 view,
-                page.title,
+                f"page.{page.key}.title",
                 f"Ctrl+{index + 1}",
                 lambda checked=False, key=page.key: self.navigate(key),
             )
+            action.setObjectName(f"navigate.{page.key}")
         view.addSeparator()
-        theme_menu = view.addMenu("&Theme")
+        language_menu = view.addMenu("")
+        language_menu.setObjectName("menu.language")
+        bind(language_menu, "setTitle", "menu.language")
+        languages = QActionGroup(self)
+        self.language_actions: dict[str, QAction] = {}
+        for code in i18n.languages():
+            action = QAction(AUTONYMS[code], self, checkable=True)  # autonyms: never translated
+            action.setObjectName(f"language.{code}")
+            action.triggered.connect(lambda checked=False, value=code: self.set_language(value))
+            languages.addAction(action)
+            language_menu.addAction(action)
+            self.language_actions[code] = action
+        self._action(view, "action.toggle_language", "Ctrl+Shift+U", self.toggle_language)
+        theme_menu = view.addMenu("")
+        theme_menu.setObjectName("menu.theme")
+        bind(theme_menu, "setTitle", "menu.theme")
         group = QActionGroup(self)
         self.theme_actions: dict[str, QAction] = {}
         for name in theme.THEMES:
-            action = QAction(name.capitalize(), self, checkable=True)
+            action = QAction(self, checkable=True)
+            action.setObjectName(f"theme.{name}")
+            bind(action, "setText", f"theme.{name}")
             action.triggered.connect(lambda checked=False, value=name: self.set_theme(value))
             group.addAction(action)
             theme_menu.addAction(action)
             self.theme_actions[name] = action
-        self._action(view, "Toggle light/dark", "Ctrl+Shift+T", self.toggle_theme)
+        self._action(view, "action.toggle_theme", "Ctrl+Shift+T", self.toggle_theme)
         log_action = self.log_dock.toggleViewAction()
+        log_action.setObjectName("action.toggle_log")
+        bind(log_action, "setText", "action.toggle_log")
         log_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         view.addAction(log_action)
         self.addAction(log_action)
 
-        help_menu = menus.addMenu("&Help")
-        self._action(help_menu, "&Keyboard shortcuts", "F1", self.show_shortcuts)
-        self._action(help_menu, "&About polmon", None, self.show_about)
+        help_menu = self._menu("menu.help")
+        self._action(help_menu, "action.shortcuts", "F1", self.show_shortcuts)
+        self._action(help_menu, "action.about", None, self.show_about)
 
     def _name_for_assistive_technology(self) -> None:
         """Give every input, editor and view an accessible name (screen readers, UI tests)."""
         explicit = {
-            self.bar.mode: "Backend connection type",
-            self.bar.url_box: "Backend URL",
-            self.bar.token: "API token",
-            self.bar.timeout: "Request timeout in seconds",
-            self.navigation: "Pages",
-            self.log_view: "Activity log",
-            self.progress.bar: "Operation progress",
+            self.bar.mode: "a11y.connection_mode",
+            self.bar.url_box: "a11y.backend_url",
+            self.bar.token: "a11y.api_token",
+            self.bar.timeout: "a11y.timeout",
+            self.navigation: "a11y.pages",
+            self.log_view: "a11y.activity_log",
+            self.progress.bar: "a11y.progress",
         }
-        for widget, name in explicit.items():
-            widget.setAccessibleName(name)
+        for widget, key in explicit.items():
+            widget.setAccessibleName(tr(key))
         for page in self.pages.values():
-            page.setAccessibleName(f"{page.title} page")
+            page.setAccessibleName(tr("a11y.page", page=page.title))
             for widget in page.findChildren(QWidget):
-                if widget.accessibleName() or not isinstance(widget, ACCESSIBLE_KINDS):
+                if not isinstance(widget, ACCESSIBLE_KINDS) or widget.property("namedByPage"):
                     continue
-                label = widget.toolTip() or getattr(widget, "placeholderText", lambda: "")()
-                if not label and isinstance(widget, QAbstractItemView):
-                    header = getattr(widget, "horizontalHeaderItem", None)
-                    first = header(0).text() if header and header(0) else ""
-                    label = f"{page.title}: {first} table" if first else f"{page.title} list"
-                if label:
-                    widget.setAccessibleName(label.split(" (")[0])
+                name = widget.toolTip() or getattr(widget, "placeholderText", lambda: "")()
+                if not name and isinstance(widget, QAbstractItemView):
+                    name = tr("a11y.view", page=page.title)
+                if name:
+                    widget.setAccessibleName(name.split(" (")[0])
 
     # -- navigation ---------------------------------------------------------------------------
 
@@ -442,31 +589,31 @@ class MainWindow(QMainWindow):
             problem = describe(error)
             session.set_state(ConnectionState.DISCONNECTED, problem)
             self.pages["dashboard"].banner.show_problem(problem)
-            session.log(f"Connect failed — {problem.text()}", "error")
+            session.log(Msg("log.connect_failed", problem=problem.text()), "error")
             return
         self.settings.setValue("connection/url", session.url)
         self.settings.setValue("connection/timeout", session.timeout)
         session.set_state(ConnectionState.CONNECTING)
-        session.log(f"Connecting to {session.url}…")
+        session.log(Msg("log.connecting", url=session.url))
         self.poll(initial=True)
 
     def _start_local_backend(self) -> None:
         if self._local_start_handle is not None or self._local_stop_handle is not None:
-            self.session.log("Local backend lifecycle change is still in progress", "warning")
+            self.session.log(Msg("log.local.busy"), "warning")
             return
         session = self.session
         session.connection_kind = "local"
-        session.url = "http://127.0.0.1 (selecting a free port)"
+        session.url = "http://127.0.0.1"
         session.token = ""
         session.timeout = float(self.bar.timeout.value())
         session.set_state(ConnectionState.CONNECTING)
-        session.log(f"Starting {LOCAL_LABEL}…")
+        session.log(Msg("log.local.starting"))
 
         def work(token: CancelToken, report) -> dict[str, object]:  # noqa: ANN001
             return self.local_backend.start(cancelled=lambda: token.cancelled)
 
         self._local_start_handle = self.runner.submit(
-            "Start local backend",
+            "local-start",
             work,
             on_success=self._local_started,
             on_failure=self._local_start_failed,
@@ -483,17 +630,18 @@ class MainWindow(QMainWindow):
         self.bar.log_button.setEnabled(True)
         self.backend_log_action.setEnabled(True)
         self.session.log(
-            f"{LOCAL_LABEL} started on {self.session.url}; log: {result.get('log_path')}"
+            Msg("log.local.started", url=self.session.url, log=result.get("log_path"))
         )
         self.poll(initial=True)
 
     def _local_start_failed(self, error: BaseException) -> None:
         if self.session.state is ConnectionState.DISCONNECTED:
             return
+        detail = error.problem.detail if isinstance(error, LocalBackendError) else str(error)
         problem = Problem(
-            "Local backend failed to start",
-            str(error),
-            f"Run polmon-backend --self-test and inspect {self.local_backend.log_path}.",
+            "problem.local_start",
+            Msg.raw(detail),
+            Msg("problem.local_start.hint", log=self.local_backend.log_path or "—"),
         )
         self.session.set_state(ConnectionState.DISCONNECTED, problem)
         self.pages["dashboard"].banner.show_problem(problem)
@@ -511,6 +659,10 @@ class MainWindow(QMainWindow):
         }
         self.bar.url_box.setEnabled(editable and not local)
         self.bar.token.setEnabled(editable and not local)
+        for widget in self.bar.remote_actions:
+            widget.setVisible(not local)
+        for widget in self.bar.local_actions:
+            widget.setVisible(local)
         self.bar.timeout.setEnabled(editable)
         self.settings.setValue("connection/kind", "local" if local else "remote")
 
@@ -537,6 +689,7 @@ class MainWindow(QMainWindow):
         box.clear()
         box.addItems(recent)
         self.bar.url.setText(current)
+        self.bar.url.setCursorPosition(0)
         box.blockSignals(False)
 
     def disconnect_backend(self) -> None:
@@ -546,7 +699,7 @@ class MainWindow(QMainWindow):
             self._poll_handle = None
         was_local = self.session.local_backend
         self.session.set_state(ConnectionState.DISCONNECTED)
-        self.session.log("Disconnected")
+        self.session.log(Msg("log.disconnected"))
         if was_local:
             if self._local_start_handle is not None:
                 self._local_start_handle.cancel()
@@ -557,15 +710,13 @@ class MainWindow(QMainWindow):
         if self._local_stop_handle is not None:
             return
         log_path = self.local_backend.log_path
-        self.session.log(f"Stopping local backend (log: {log_path})…")
+        self.session.log(Msg("log.local.stopping", log=log_path))
         self._local_stop_handle = self.runner.submit(
-            "Stop local backend",
+            "local-stop",
             lambda token, report: self.local_backend.stop(),
-            on_success=lambda result: self.session.log(
-                f"Local backend stopped (exit code {result})"
-            ),
+            on_success=lambda result: self.session.log(Msg("log.local.stopped", code=result)),
             on_failure=lambda error: self.session.log(
-                f"Local backend stop failed: {type(error).__name__}: {error}", "error"
+                Msg("log.local.stop_failed", kind=type(error).__name__), "error"
             ),
         )
         self._local_stop_handle.released.connect(self._local_stop_released)
@@ -612,7 +763,7 @@ class MainWindow(QMainWindow):
                         return None
                     raise
 
-            topologies = optional("topology listing", client.topologies)
+            topologies = optional(FEATURE_TOPOLOGIES, client.topologies)
             if topologies is None:
                 topologies = [{"topology_id": item, "deployed": True} for item in known]
             deployments: dict[str, dict[str, object]] = {}
@@ -625,12 +776,12 @@ class MainWindow(QMainWindow):
                         if error.status is None:
                             raise
                         # not (or no longer) deployed: the next poll settles it
-            if "topology listing" in missing:
+            if FEATURE_TOPOLOGIES in missing:
                 topologies = [
                     {"topology_id": item, "deployed": item in deployments} for item in known
                 ]
             experiments = (
-                optional("experiment listing", client.experiments) if include_experiments else None
+                optional(FEATURE_EXPERIMENTS, client.experiments) if include_experiments else None
             )
             return {
                 "health": health,
@@ -643,7 +794,7 @@ class MainWindow(QMainWindow):
             }
 
         self._poll_handle = self.runner.submit(
-            "Poll backend",
+            "poll",
             work,
             on_success=lambda result: self._polled(result, initial),  # type: ignore[arg-type]
             on_failure=lambda error: self._poll_failed(error, initial),
@@ -662,21 +813,29 @@ class MainWindow(QMainWindow):
         session.capabilities = capabilities if isinstance(capabilities, dict) else {}
         if session.local_backend and session.capabilities.get("fidelity") != "l0_only":
             self._poll_failed(
-                LocalBackendError("owned backend did not advertise its L0-only boundary"), initial
+                LocalBackendError(
+                    "owned backend did not advertise its L0-only boundary", "not_l0_only"
+                ),
+                initial,
             )
             return
         session.latency = result["latency"]  # type: ignore[assignment]
         if previous is not ConnectionState.CONNECTED:
             session.set_state(ConnectionState.CONNECTED)
             if previous is ConnectionState.LOST:
-                session.log("Backend reachable again", "info")
+                session.log(Msg("log.reachable_again"), "info")
             else:
-                session.log(f"Connected to {session.url} (backend {session.backend_version})")
+                session.log(
+                    Msg("log.connected", url=session.url, version=session.backend_version)
+                )
                 self._remember_url(session.url)
                 if session.backend_version != __version__:
                     session.log(
-                        f"Backend version {session.backend_version} differs from client "
-                        f"{__version__}; some features may be unavailable",
+                        Msg(
+                            "log.version_differs",
+                            backend=session.backend_version,
+                            client=__version__,
+                        ),
                         "warning",
                     )
             self.pages["dashboard"].banner.clear()
@@ -684,17 +843,15 @@ class MainWindow(QMainWindow):
         assert isinstance(missing, set)
         if missing - session.unsupported:
             session.unsupported |= missing
-            detail = (
-                f"Backend {session.backend_version} does not provide: "
-                f"{', '.join(sorted(session.unsupported))}. Deployments this client loads are "
-                "still tracked; scenario inspection, live experiment progress and benchmark jobs "
-                "need a backend of the same version as the client."
+            features = ", ".join(tr(f"feature.{item}") for item in sorted(session.unsupported))
+            problem = Problem(
+                "problem.older_backend",
+                Msg("problem.older_backend.detail", version=session.backend_version,
+                    features=features),
+                Msg("problem.older_backend.hint", version=__version__),
             )
-            session.log(detail, "warning")
-            self.pages["dashboard"].banner.show_problem(
-                Problem("Older backend", detail, f"Upgrade the backend to polmon {__version__}."),
-                "warning",
-            )
+            session.log(problem.text(), "warning")
+            self.pages["dashboard"].banner.show_problem(problem, "warning")
         session.set_resources(result["resources"])  # type: ignore[arg-type]
         session.set_topologies(result["topologies"])  # type: ignore[arg-type]
         session.set_deployments(result["deployments"])  # type: ignore[arg-type]
@@ -719,7 +876,7 @@ class MainWindow(QMainWindow):
             self.poll_timer.stop()
             session.set_state(ConnectionState.UNAUTHORIZED, problem)
             banner.show_problem(problem)
-            session.log(f"Connection refused — {problem.text()}", "error")
+            session.log(Msg("log.connection_refused", problem=problem.text()), "error")
             return
         transport = (
             isinstance(error, ApiClientError)
@@ -730,16 +887,19 @@ class MainWindow(QMainWindow):
             self.poll_timer.stop()
             session.set_state(ConnectionState.DISCONNECTED, problem)
             banner.show_problem(problem)
-            session.log(f"Connect failed — {problem.text()}", "error")
+            session.log(Msg("log.connect_failed", problem=problem.text()), "error")
             return
         if session.state is not ConnectionState.LOST:
             session.set_state(ConnectionState.LOST, problem)
-            session.log(f"Lost contact with the backend — {problem.text()}", "error")
+            session.log(Msg("log.lost", problem=problem.text()), "error")
             banner.show_problem(
                 Problem(
-                    "Backend unreachable",
-                    f"{problem.detail} Retrying every {LOST_POLL_INTERVAL_MS // 1000} s; actions "
-                    "are disabled until it answers again.",
+                    "problem.lost",
+                    Msg(
+                        "problem.lost.detail",
+                        detail=problem.detail,
+                        seconds=LOST_POLL_INTERVAL_MS // 1000,
+                    ),
                     problem.hint,
                 )
             )
@@ -755,9 +915,9 @@ class MainWindow(QMainWindow):
         # the Python child of a one-file launcher) outlives it, and releases the log file.
         self.local_backend.stop(timeout=1.0)
         problem = Problem(
-            "Local backend stopped",
-            f"The owned backend exited unexpectedly with code {code}.",
-            f"Open the backend log for details: {self.local_backend.log_path}",
+            "problem.local_stopped",
+            Msg("problem.local_stopped.detail", code=code),
+            Msg("problem.local_stopped.hint", log=self.local_backend.log_path or "—"),
         )
         self.session.set_state(ConnectionState.DISCONNECTED, problem)
         self.pages["dashboard"].banner.show_problem(problem)
@@ -766,14 +926,16 @@ class MainWindow(QMainWindow):
     def _connection_changed(self) -> None:
         state = self.session.state
         tone = STATE_TONES[state]
-        for led in (self.bar.led, self.status_led):
-            led.set_tone(tone)
-        self.bar.connect_button.setText(
-            "Connect"
-            if state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}
-            else "Disconnect"
-        )
+        self.bar.led.set_tone(tone)
         editable = state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}
+        bind(
+            self.bar.connect_button,
+            "setText",
+            "connection.connect" if editable else "connection.disconnect",
+        )
+        self.bar.connect_button.setProperty("role", "primary" if editable else "secondary")
+        self.bar.connect_button.style().unpolish(self.bar.connect_button)
+        self.bar.connect_button.style().polish(self.bar.connect_button)
         lifecycle_busy = self._local_start_handle is not None or self._local_stop_handle is not None
         self.bar.mode.setEnabled(editable and not lifecycle_busy)
         self.bar.connect_button.setEnabled(not lifecycle_busy)
@@ -785,38 +947,63 @@ class MainWindow(QMainWindow):
         session = self.session
         state = session.state
         if state is ConnectionState.CONNECTED:
-            prefix = LOCAL_LABEL if session.local_backend else "Connected"
-            text = f"{prefix} · {session.url} · backend {session.backend_version}"
+            prefix = tr("connection.local_label") if session.local_backend else tr(
+                "connection.state.connected"
+            )
+            text = tr(
+                "statusbar.connected", prefix=prefix, url=session.url,
+                version=session.backend_version,
+            )
+            short = prefix
         elif state is ConnectionState.LOST and session.lost_since:
             since = datetime.fromtimestamp(session.lost_since).strftime("%H:%M:%S")
-            text = f"Backend unreachable since {since} · retrying"
+            text = tr("statusbar.lost", since=since)
+            short = tr("connection.state.lost")
         elif state is ConnectionState.UNAUTHORIZED:
-            text = "API token required or rejected"
+            text = tr("statusbar.unauthorized")
+            short = tr("connection.state.unauthorized")
         elif state is ConnectionState.CONNECTING:
-            text = f"Connecting to {session.url}…"
+            text = tr("statusbar.connecting", url=session.url)
+            short = tr("connection.state.connecting")
         else:
-            text = "Disconnected"
-        self.bar.state_label.setText(text.split(" · ")[0])
-        self.status_text.setText(text)
-        backend = f" (backend {session.backend_version})" if session.backend_version else ""
-        where = f" — {state.value}: {session.url}{backend}" if state.value != "disconnected" else ""
+            text = short = tr("connection.state.disconnected")
+        self.bar.state_label.setText(short)
+        self.status_text.setText(f"{theme.STATUS_GLYPHS[STATE_TONES[state]]} {text}")
+        fidelity = session.capabilities.get("fidelity") if session.connected else None
+        self.bar.fidelity.setVisible(fidelity in {"l0_only", "linux_lab"})
+        if fidelity in {"l0_only", "linux_lab"}:
+            self.bar.fidelity.setText(tr(f"fidelity.badge.{fidelity}"))
+            self.bar.fidelity.setToolTip(tr(f"fidelity.badge.{fidelity}.tip"))
+        self.sidebar_footer.setText(
+            tr("sidebar.connected", url=session.url) if session.connected
+            else tr("sidebar.disconnected")
+        )
+        backend = f" ({tr('title.backend', version=session.backend_version)})" if (
+            session.backend_version
+        ) else ""
+        where = (
+            f" — {tr(f'connection.state.{state.value}')}: {session.url}{backend}"
+            if state is not ConnectionState.DISCONNECTED
+            else ""
+        )
         self.setWindowTitle(f"polmon {__version__}{where}")
 
     def _update_actions(self) -> None:
         connected = self.session.connected
         busy = self.context.busy
-        self.connect_action.setText(
-            "&Connect"
-            if self.session.state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}
-            else "Dis&connect"
-        )
+        editable = self.session.state in {
+            ConnectionState.DISCONNECTED,
+            ConnectionState.UNAUTHORIZED,
+        }
+        bind(self.connect_action, "setText", "action.connect" if editable else "action.disconnect")
         self.refresh_action.setEnabled(connected or self.session.state is ConnectionState.LOST)
         for action in (self.deploy_action, self.destroy_action, self.reset_action, self.run_action):
             action.setEnabled(connected and not busy)
         self.cancel_action.setEnabled(busy)
 
-    def _notified(self, tone: str, message: str) -> None:
-        self.statusBar().showMessage(message, 15_000)
+    def _notified(self, tone: str, message: Msg | str) -> None:
+        self._notice = (message, str(message))
+        self.statusBar().showMessage(str(message), 15_000)
         if not self.isActiveWindow():
             QApplication.alert(self)  # task-bar flash / attention hint until focused
 
@@ -825,7 +1012,8 @@ class MainWindow(QMainWindow):
     def _append_log(self, level: str, message: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
         tone = {"error": "danger", "warning": "warning"}.get(level)
-        text = html.escape(message).replace("\n", "<br>&nbsp;&nbsp;")
+        glyph = {"error": "✕ ", "warning": "! "}.get(level, "")
+        text = html.escape(glyph + message).replace("\n", "<br>&nbsp;&nbsp;")
         # Ordinary lines carry no colour so they follow the palette when the theme changes.
         body = f"<span style='color:{theme.hex_color(tone)}'>{text}</span>" if tone else text
         self.log_view.appendHtml(
@@ -841,7 +1029,9 @@ class MainWindow(QMainWindow):
         self.settings.setValue("view/theme", preference)
         if preference in self.theme_actions:
             self.theme_actions[preference].setChecked(True)
-        self.session.log(f"Theme: {preference} ({effective})")
+        self.session.log(
+            Msg("log.theme", theme=Msg(f"theme.{preference}"), effective=Msg(f"theme.{effective}"))
+        )
         for widget in self.findChildren(QWidget):
             widget.update()
 
@@ -852,22 +1042,28 @@ class MainWindow(QMainWindow):
 
     def show_shortcuts(self) -> None:
         rows = "".join(
-            f"<tr><td><b>{html.escape(keys)}</b></td><td>&nbsp;&nbsp;{html.escape(text)}</td></tr>"
-            for keys, text in SHORTCUTS
+            f"<tr><td style='padding:2px 16px 2px 0'><b>{html.escape(keys)}</b></td>"
+            f"<td>{html.escape(tr(key))}</td></tr>"
+            for keys, key in SHORTCUTS
         )
-        QMessageBox.information(self, "Keyboard shortcuts", f"<table>{rows}</table>")
+        box = QMessageBox(self)
+        box.setObjectName("shortcutsDialog")
+        box.setWindowTitle(tr("dialog.shortcuts.title"))
+        box.setText(f"<table>{rows}</table>")
+        box.addButton(tr("common.close"), QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
 
     def show_about(self) -> None:
-        QMessageBox.about(
-            self,
-            "About polmon",
-            f"<h3>polmon {__version__}</h3>"
-            "<p>Operator console for the resource-efficient isolated network attack simulation "
-            "platform. It can own a loopback-only L0 backend or connect to a remote Linux "
-            "backend for higher-fidelity laboratory networking. The Qt client itself never "
-            "performs laboratory network operations.</p>"
-            f"<p>Qt {qVersion()} · PySide6 {pyside_version} (Qt for Python, LGPLv3)</p>",
+        box = QMessageBox(self)
+        box.setObjectName("aboutDialog")
+        box.setWindowTitle(tr("dialog.about.title"))
+        box.setText(  # i18n: allow (product names and the licence)
+            f"<h3>polmon {__version__}</h3><p>{html.escape(tr('dialog.about.body'))}</p>"
+            f"<p>Qt {qVersion()} · PySide6 {pyside_version} (Qt for Python, LGPLv3)</p>"
         )
+        box.setIconPixmap(app_icon().pixmap(64, 64))
+        box.addButton(tr("common.close"), QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
 
     # -- persistence and shutdown -------------------------------------------------------------
 
@@ -888,11 +1084,12 @@ class MainWindow(QMainWindow):
         if preference not in theme.THEMES:
             preference = "system"
         self.theme_actions[preference].setChecked(True)
+        self.language_actions[i18n.language()].setChecked(True)
         geometry = settings.value("window/geometry")
         if isinstance(geometry, QByteArray):
             self.restoreGeometry(geometry)
         else:
-            self.resize(1280, 800)
+            self.resize(1440, 900)
         state = settings.value("window/state")
         if isinstance(state, QByteArray):
             self.restoreState(state)
@@ -910,15 +1107,14 @@ class MainWindow(QMainWindow):
         return self.runner.wait(wait_ms)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
-        if self.context.busy and not self._closing:
-            answer = QMessageBox.question(
-                self,
-                "Operation in progress",
-                f"'{self.context.operation_name}' is still running. Quit anyway? Remote work may "
-                "continue; an owned local backend will be stopped before exit.",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
+        if self.context.busy and not self._closing and not confirm(
+            self,
+            "dialog.quit_busy.title",
+            Msg("dialog.quit_busy.text", operation=self.context.operation_name),
+            "dialog.quit_busy.accept",
+        ):
+            event.ignore()
+            return
         self.clean_exit = self.shutdown()
         event.accept()
+

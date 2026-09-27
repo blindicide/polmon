@@ -70,17 +70,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--theme", choices=("system", "light", "dark"), help="colour theme for this session"
     )
+    parser.add_argument(
+        "--language",
+        choices=("ru", "en"),
+        help="UI language for this session (default: the saved choice, else Russian)",
+    )
     return parser
 
 
-def create_application(argv: list[str], *, theme_preference: str | None = None):  # noqa: ANN201
-    """Create (or reuse) the QApplication with HiDPI policy, identity and theme applied."""
+def create_application(  # noqa: ANN201
+    argv: list[str], *, theme_preference: str | None = None, language: str | None = None
+):
+    """Create (or reuse) the QApplication with HiDPI policy, identity, theme and language."""
     from PySide6.QtCore import QSettings, Qt
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
 
-    from polmon.client import theme
+    from polmon.client import i18n, theme
     from polmon.client.icon import app_icon
+    from polmon.client.language import apply_language
 
     existing = QApplication.instance()
     if existing is None:
@@ -101,6 +109,8 @@ def create_application(argv: list[str], *, theme_preference: str | None = None):
         QSettings("polmon", "polmon-client").value("view/theme", "system")
     )
     theme.apply(app, preference if preference in theme.THEMES else "system")
+    stored = QSettings("polmon", "polmon-client").value("view/language")
+    apply_language(app, language or i18n.initial_language(stored))
     return app
 
 
@@ -121,7 +131,9 @@ def _release_owned_console() -> None:
 def run_gui(args: argparse.Namespace, qt_arguments: list[str]) -> int:
     from polmon.client.mainwindow import MainWindow
 
-    app = create_application([sys.argv[0], *qt_arguments], theme_preference=args.theme)
+    app = create_application(
+        [sys.argv[0], *qt_arguments], theme_preference=args.theme, language=args.language
+    )
     window = MainWindow(backend_executable=args.backend_executable)
     if args.url:
         window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))

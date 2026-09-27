@@ -6,7 +6,8 @@ import os
 
 import pytest
 
-from polmon.client.local_backend import LOCAL_FIDELITY_MESSAGE, LOCAL_LABEL
+from polmon.client.i18n import tr
+from polmon.client.local_backend import LOCAL_FIDELITY_MESSAGE
 
 
 def test_gui_probe_proves_refusal_and_reaps_the_backend_on_every_exit_path(
@@ -24,12 +25,13 @@ def test_gui_probe_proves_refusal_and_reaps_the_backend_on_every_exit_path(
     assert stream.getvalue().rstrip().endswith("local-backend GUI probe: PASS")
     record = json.loads(output.read_text(encoding="utf-8"))
 
-    assert record["connected"]["state_label"] == LOCAL_LABEL
+    assert record["connected"]["state_label"] == tr("connection.local_label")
     assert record["connected"]["l0_only"] is True
-    assert record["ui_refusal"] == {"title": LOCAL_LABEL, "detail": LOCAL_FIDELITY_MESSAGE}
+    assert record["ui_refusal"]["key"] == "problem.l0_only"
+    assert record["ui_refusal"]["message_code"] == "fidelity.l0_only"
     assert record["backend_refusal"]["http_status"] == 422
     assert record["backend_refusal"]["message"] == LOCAL_FIDELITY_MESSAGE
-    assert record["backend_killed"]["ui_title"] == "Local backend stopped"
+    assert record["backend_killed"]["ui_key"] == "problem.local_stopped"
     assert record["connected"]["backend_rss_bytes"] > 10_000_000
     assert len(record["seconds_to_connected"]) == 3
     assert screenshot.stat().st_size > 10_000

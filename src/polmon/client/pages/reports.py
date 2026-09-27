@@ -4,19 +4,8 @@ from __future__ import annotations
 
 import json
 
-from PySide6.QtWidgets import (
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QSplitter,
-    QTabWidget,
-    QTextBrowser,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QSplitter, QTabWidget, QTextBrowser, QWidget
 
 from polmon.client.api import ApiClientError
 from polmon.client.formatting import (
@@ -25,111 +14,151 @@ from polmon.client.formatting import (
     format_datetime,
     format_seconds,
 )
+from polmon.client.i18n import Msg, bind, tr
 from polmon.client.pages import Context, Page
+from polmon.client.pages.scenarios import experiment_errors
+from polmon.client.reportview import experiment_markdown
 from polmon.client.tasks import CancelToken
 from polmon.client.widgets import (
+    Card,
     JsonTree,
+    StateView,
     StatusBadge,
+    button,
     cell_text,
     fill_table,
+    label,
     make_table,
-    muted,
 )
 
 
 class ReportsPage(Page):
     key = "reports"
-    title = "Reports"
 
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self.report: dict[str, object] | None = None
         self.markdown = ""
+        self.markdown_missing = False
         self.experiment_id: str | None = None
 
         splitter = QSplitter()
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        row.addWidget(muted("Experiments on the backend (newest first)"), 1)
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.setToolTip("Reload the experiment list (F5)")
+        splitter.setChildrenCollapsible(False)
+        list_card = Card("reports.list", hint="reports.list.hint", name="list")
+        self.refresh_button = button("common.refresh", "quiet", tip="reports.refresh.tip",
+                                     name="refreshButton")
         self.refresh_button.clicked.connect(self.refresh_list)
-        row.addWidget(self.refresh_button)
-        left_layout.addLayout(row)
+        list_card.add_action(self.refresh_button)
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Filter by experiment, scenario, topology or status…")
+        self.filter.setObjectName("reportFilter")
+        bind(self.filter, "setPlaceholderText", "reports.filter")
         self.filter.setClearButtonEnabled(True)
         self.filter.textChanged.connect(self._apply_filter)
-        left_layout.addWidget(self.filter)
+        list_card.add(self.filter)
         self.list = make_table(
-            ("Experiment", "Scenario", "Topology", "Status", "Started"), stretch=0
+            (
+                "column.experiment",
+                "column.scenario",
+                "column.topology",
+                "column.status",
+                "column.started",
+            ),
+            stretch=None,
+            mono=(0, 2),
+            name="experimentList",
         )
         self.list.itemSelectionChanged.connect(self._chosen)
-        left_layout.addWidget(self.list, 1)
-        self.empty = muted(
-            "No experiments on this backend yet. Deploy a topology and run a scenario; its report "
-            "appears here."
-        )
-        self.empty.hide()
-        left_layout.addWidget(self.empty)
-        splitter.addWidget(left)
+        self.list_state = StateView(self.list)
+        list_card.add(self.list_state, 1)
+        splitter.addWidget(list_card)
 
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        header = QGroupBox("Report")
-        grid = QGridLayout(header)
+        report_card = Card(name="report")
+        header = QHBoxLayout()
+        self.title_label = label(name="cardTitle")
+        self.title_label.setObjectName("reportTitle")
         self.status = StatusBadge()
-        self.title_label = QLabel("Select an experiment")
-        self.title_label.setObjectName("pageTitle")
-        self.meta = muted()
-        grid.addWidget(self.title_label, 0, 0)
-        grid.addWidget(self.status, 0, 1)
-        grid.addWidget(self.meta, 1, 0, 1, 2)
-        grid.setColumnStretch(0, 1)
-        save_row = QHBoxLayout()
-        self.save_json = QPushButton("Save JSON…")
-        self.save_markdown = QPushButton("Save Markdown…")
+        header.addWidget(self.title_label, 1)
+        header.addWidget(self.status)
+        self.save_json = button("reports.save_json", "quiet", name="saveJson")
+        self.save_markdown = button("reports.save_markdown", "quiet", name="saveMarkdown")
         self.save_json.clicked.connect(lambda: self._save("json"))
         self.save_markdown.clicked.connect(lambda: self._save("md"))
-        save_row.addStretch(1)
-        save_row.addWidget(self.save_json)
-        save_row.addWidget(self.save_markdown)
-        grid.addLayout(save_row, 2, 0, 1, 2)
-        right_layout.addWidget(header)
+        header.addWidget(self.save_json)
+        header.addWidget(self.save_markdown)
+        report_card.body.addLayout(header)
+        self.meta = label(name="muted", wrap=True)
+        self.meta.setObjectName("reportMeta")
+        report_card.add(self.meta)
 
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("reportTabs")
         self.comparison = make_table(
-            ("Role", "Action", "Field", "Expected", "Actual", "Outcome"), stretch=0
+            (
+                "column.role",
+                "column.action",
+                "column.field",
+                "column.expected",
+                "column.actual",
+                "column.outcome",
+            ),
+            stretch=None,
+            mono=(1,),
+            name="comparison",
         )
-        self.observations = make_table(("Action", "Success", "Detail", "Data"), stretch=3)
-        self.errors = make_table(("Error",), stretch=0)
-        self.resources = make_table(("Statistic", "Value"), stretch=1)
+        self.observations = make_table(
+            ("column.event", "column.success", "column.detail", "column.data"), stretch=3,
+            mono=(0, 3), name="observations",
+        )
+        self.errors = make_table(("column.error",), stretch=0, name="reportErrors")
+        self.resources = make_table(("column.statistic", "column.value"), stretch=1,
+                                    sortable=False, name="reportResources")
         self.rendered = QTextBrowser()
+        self.rendered.setObjectName("reportMarkdown")
         self.rendered.setOpenExternalLinks(False)
         self.json = JsonTree()
-        self.tabs.addTab(self.comparison, "Expected vs actual")
-        self.tabs.addTab(self.observations, "Observations")
-        self.tabs.addTab(self.errors, "Errors")
-        self.tabs.addTab(self.resources, "Resources && capture")
-        self.tabs.addTab(self.rendered, "Report")
-        self.tabs.addTab(self.json, "JSON")
-        right_layout.addWidget(self.tabs, 1)
-        splitter.addWidget(right)
-        splitter.setSizes([520, 700])
+        self.json.setObjectName("reportJson")
+        for widget in (
+            self.comparison, self.observations, self.errors, self.resources, self.rendered,
+            self.json,
+        ):
+            self.tabs.addTab(widget, "")
+        self.report_state = StateView(self.tabs)
+        report_card.add(self.report_state, 1)
+        splitter.addWidget(report_card)
+        splitter.setSizes([470, 790])
         self.root.addWidget(splitter, 1)
 
         self.session.experiments_changed.connect(self._fill_list)
+        self.retranslate()
         self.refresh_actions()
+
+    def retranslate(self) -> None:
+        errors = len(self.report.get("errors") or []) if self.report else 0  # type: ignore[union-attr]
+        titles = (
+            tr("reports.tab.comparison"),
+            tr("reports.tab.observations"),
+            tr("reports.tab.errors_count", count=errors) if errors else tr("reports.tab.errors"),
+            tr("reports.tab.resources"),
+            tr("reports.tab.markdown"),
+            tr("reports.tab.json"),
+        )
+        for index, title in enumerate(titles):
+            self.tabs.setTabText(index, title)
+        self._fill_list()
+        if self.report is not None and self.experiment_id is not None:
+            self._render(self.experiment_id)
+        elif self.experiment_id is None:
+            self.title_label.setText(tr("reports.select"))
+            self.meta.setText("")
+            self.report_state.show_empty(Msg("reports.none_selected"),
+                                         Msg("reports.none_selected_hint"))
 
     def refresh_list(self) -> None:
         if not self.session.connected:
             return
         client = self.session.client()
         self.context.run(
-            "List experiments",
+            Msg("operation.list_experiments"),
             lambda token, report: client.experiments(),
             on_success=lambda items: self.session.set_experiments(items),  # type: ignore[arg-type]
             banner=self.banner,
@@ -149,11 +178,17 @@ class ReportsPage(Page):
             )
             for item in experiments
         ]
-        self.empty.setVisible(not rows and self.session.connected)
+        if rows:
+            self.list_state.show_content()
+        elif self.session.connected:
+            self.list_state.show_empty(Msg("reports.empty"), Msg("reports.empty_hint"))
+        else:
+            self.list_state.show_empty(Msg("common.offline"), Msg("common.offline_hint"))
         self.list.blockSignals(True)
-        fill_table(self.list, rows, colors={3: "status"})
-        for index, row in enumerate(rows):
-            if row[0] == selected:
+        fill_table(self.list, rows, colors={3: "status"}, data=[row[0] for row in rows])
+        for index in range(self.list.rowCount()):
+            item = self.list.item(index, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected:
                 self.list.selectRow(index)
         self.list.blockSignals(False)
         self._apply_filter()
@@ -171,8 +206,9 @@ class ReportsPage(Page):
         rows = self.list.selectionModel().selectedRows()
         if rows:
             item = self.list.item(rows[0].row(), 0)
-            if item is not None and item.text() != self.experiment_id:
-                self.open_report(item.text())
+            identifier = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            if identifier and identifier != self.experiment_id:
+                self.open_report(str(identifier))
 
     def open_report(self, experiment_id: str) -> None:
         self.experiment_id = experiment_id
@@ -185,16 +221,14 @@ class ReportsPage(Page):
             except ApiClientError as error:
                 if error.status not in {404, 405}:
                     raise
-                markdown = (
-                    "*This backend does not serve the Markdown report (older version); the "
-                    "JSON report and the other tabs are complete.*"
-                )
+                markdown = None
             return {"report": document, "markdown": markdown}
 
         self.title_label.setText(experiment_id)
-        self.meta.setText("Loading report…")
+        self.meta.setText("")
+        self.report_state.show_loading(Msg("reports.loading", experiment=experiment_id))
         self.context.run(
-            f"Open report {experiment_id}",
+            Msg("operation.open_report", experiment=experiment_id),
             work,
             on_success=lambda result: self._show(experiment_id, result),  # type: ignore[arg-type]
             on_failure=lambda error: self._failed(experiment_id),
@@ -207,7 +241,8 @@ class ReportsPage(Page):
             self.report = None
             self.markdown = ""
             self.status.set_status("")
-            self.meta.setText("No report is available for this experiment.")
+            self.report_state.show_error(Msg("reports.unavailable"),
+                                         Msg("reports.unavailable_hint"))
             for table in (self.comparison, self.observations, self.errors, self.resources):
                 table.setRowCount(0)
             self.rendered.clear()
@@ -220,7 +255,16 @@ class ReportsPage(Page):
         report = result["report"]
         assert isinstance(report, dict)
         self.report = report
-        self.markdown = str(result.get("markdown") or "")
+        markdown = result.get("markdown")
+        self.markdown_missing = markdown is None
+        self.markdown = str(markdown or "")
+        self.json.load(report)
+        self.retranslate()
+        self.refresh_actions()
+
+    def _render(self, experiment_id: str) -> None:
+        report = self.report
+        assert report is not None
         execution = report.get("execution") or {}
         scenario = report.get("scenario") or {}
         topology = report.get("topology") or {}
@@ -228,20 +272,27 @@ class ReportsPage(Page):
         assert isinstance(topology, dict)
         status = str(report.get("status"))
         self.status.set_status(status)
+        self.title_label.setText(experiment_id)
         duration = duration_between(execution.get("started_at"), execution.get("finished_at"))
         self.meta.setText(
-            f"Scenario {scenario.get('id')} on topology {topology.get('id')} · started "
-            f"{format_datetime(execution.get('started_at'))} · duration "
-            f"{format_seconds(duration)} · cleanup "
-            f"{'performed' if execution.get('cleanup_performed') else 'not performed'} · "
-            f"polmon {report.get('polmon_version')}"
+            tr(
+                "reports.meta",
+                scenario=scenario.get("id"),
+                topology=topology.get("id"),
+                started=format_datetime(execution.get("started_at")),
+                duration=format_seconds(duration),
+                cleanup=tr("reports.cleanup.done")
+                if execution.get("cleanup_performed")
+                else tr("reports.cleanup.not_done"),
+                version=report.get("polmon_version"),
+            )
         )
         comparisons = report.get("expected_vs_actual") or []
         fill_table(
             self.comparison,
             [
                 (
-                    item["role"].replace("_", " "),
+                    tr(f"condition.role.{item['role']}"),
                     item["action"],
                     item["field"],
                     cell_text(item["expected"]),
@@ -275,14 +326,15 @@ class ReportsPage(Page):
                 )
                 for event in observed
             ],
+            colors={1: "success"},
         )
-        errors = report.get("errors") or []
-        fill_table(self.errors, [(item,) for item in errors] or [("No errors recorded",)])
-        self.tabs.setTabText(2, f"Errors ({len(errors)})" if errors else "Errors")
+        errors = experiment_errors(report)
+        fill_table(self.errors, [(item,) for item in errors] or [(tr("reports.no_errors"),)])
         fill_table(self.resources, self._resource_rows(report))
-        self.rendered.setMarkdown(self.markdown)
-        self.json.load(report)
-        self.refresh_actions()
+        # The UI renders its own localized view; the backend's English Markdown artifact is
+        # what "Save Markdown" writes.
+        self.rendered.setMarkdown(experiment_markdown(report))
+        self.report_state.show_content()
 
     @staticmethod
     def _resource_rows(report: dict[str, object]) -> list[tuple[str, object]]:
@@ -296,14 +348,15 @@ class ReportsPage(Page):
         capture = report.get("capture") or {}
         assert isinstance(capture, dict)
         return [
-            ("Resource samples", len(samples)),
-            ("Peak backend RSS", format_bytes(max(rss)) if rss else "—"),
-            ("Minimum available memory", format_bytes(min(available)) if available else "—"),
-            ("Frames captured", capture.get("frame_count")),
-            ("Bytes captured", format_bytes(capture.get("captured_bytes"))),
-            ("Frames dropped", capture.get("dropped_frames")),
-            ("Frames truncated", capture.get("truncated_frames")),
-            ("Capture file (on the backend)", capture.get("path")),
+            (tr("reports.resources.samples"), len(samples)),
+            (tr("reports.resources.peak_rss"), format_bytes(max(rss)) if rss else "—"),
+            (tr("reports.resources.min_available"),
+             format_bytes(min(available)) if available else "—"),
+            (tr("capture.frames"), capture.get("frame_count")),
+            (tr("capture.bytes"), format_bytes(capture.get("captured_bytes"))),
+            (tr("capture.dropped"), capture.get("dropped_frames")),
+            (tr("capture.truncated"), capture.get("truncated_frames")),
+            (tr("capture.file"), capture.get("path")),
         ]
 
     def _save(self, kind: str) -> None:
@@ -311,12 +364,12 @@ class ReportsPage(Page):
             return
         if kind == "json":
             path = self.context.ask_save(
-                self, "Save report", f"{self.experiment_id}.json", "JSON (*.json)"
+                self, "reports.save.dialog", f"{self.experiment_id}.json", "json"
             )
             content = json.dumps(self.report, indent=2, sort_keys=True, ensure_ascii=False)
         else:
             path = self.context.ask_save(
-                self, "Save report", f"{self.experiment_id}.md", "Markdown (*.md)"
+                self, "reports.save.dialog", f"{self.experiment_id}.md", "markdown"
             )
             content = self.markdown
         if path is None:
@@ -326,7 +379,7 @@ class ReportsPage(Page):
         except OSError as error:
             self.banner.show_problem(self.context.problem(error))
             return
-        self.session.log(f"Saved report to {path}")
+        self.session.log(Msg("log.saved", kind=Msg("document.report"), path=path))
 
     def refresh_actions(self) -> None:
         self.refresh_button.setEnabled(self.session.connected)
@@ -338,3 +391,4 @@ class ReportsPage(Page):
             self.refresh_list()
         if isinstance(argument, str):
             self.open_report(argument)
+

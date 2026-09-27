@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal
 
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClient
 from polmon.client.errors import Problem
+from polmon.client.i18n import Msg
 
 
 class ConnectionState(StrEnum):
@@ -107,8 +108,9 @@ class Session(QObject):
     def loaded(self, topology_id: str | None) -> bool:
         return any(item.get("topology_id") == topology_id for item in self.backend_topologies)
 
-    def log(self, message: str, level: str = "info") -> None:
-        self.logged.emit(level, message)
+    def log(self, message: Msg | str, level: str = "info") -> None:
+        """Append to the activity log, rendered in the language current at this moment."""
+        self.logged.emit(level, str(message))
 
     def limits(self) -> dict[str, object]:
         limits = (self.resources or {}).get("limits")

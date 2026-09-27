@@ -18,7 +18,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from polmon.client.api import ApiClient, ApiClientError
-from polmon.client.local_backend import _L1_TOPOLOGY, LOCAL_FIDELITY_MESSAGE, LOCAL_LABEL
+from polmon.client.i18n import language, tr
+from polmon.client.local_backend import _L1_TOPOLOGY, LOCAL_LABEL
 
 
 class ProbeFailure(RuntimeError):
@@ -106,11 +107,12 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     record["connected"] = {
         "backend_pid": process.pid,
         "state_label": window.bar.state_label.text(),
+        "language": language(),
         "status_bar": window.status_text.text(),
         "l0_only": session.l0_only,
         "backend_rss_bytes": (session.resources or {}).get("snapshot", {}).get("process_rss_bytes"),
     }
-    if window.bar.state_label.text() != LOCAL_LABEL or not session.l0_only:
+    if window.bar.state_label.text() != tr("connection.local_label") or not session.l0_only:
         raise ProbeFailure("the Local backend fidelity indicator is missing")
 
     # 2. L1 topology: the backend answers 422 and the UI refuses before any deploy call.
@@ -137,9 +139,14 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     page.deploy()
     _wait(app, lambda: page.banner.problem is not None, 5.0, "the UI refusal banner")
     problem = page.banner.problem
-    record["ui_refusal"] = {"title": problem.title, "detail": problem.detail}
-    if problem.title != LOCAL_LABEL or problem.detail != LOCAL_FIDELITY_MESSAGE:
-        raise ProbeFailure(f"unexpected UI refusal: {problem.title!r} {problem.detail!r}")
+    record["ui_refusal"] = {
+        "key": problem.key,
+        "message_code": problem.message_code,
+        "title": problem.title,
+        "detail": problem.detail,
+    }
+    if problem.key != "problem.l0_only" or problem.message_code != "fidelity.l0_only":
+        raise ProbeFailure(f"unexpected UI refusal: {problem!r}")
     if session.deployments:
         raise ProbeFailure("a deployment exists after the refusal")
     if screenshot is not None:
@@ -164,10 +171,11 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
     record["backend_killed"] = {
         "backend_pid": process.pid,
         "exit_code": process.returncode,
+        "ui_key": banner.key if banner else None,
         "ui_title": banner.title if banner else None,
         "ui_detail": banner.detail if banner else None,
     }
-    if banner is None or banner.title != "Local backend stopped":
+    if banner is None or banner.key != "problem.local_stopped":
         raise ProbeFailure("the killed backend was not reported in the UI")
     if window.local_backend._job is not None or window.local_backend._log is not None:
         raise ProbeFailure("the dead backend was not reaped (job/log still open)")

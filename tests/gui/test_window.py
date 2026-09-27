@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence, QPalette
 from PySide6.QtWidgets import QApplication
 
+from polmon.client.i18n import tr
 from polmon.client.state import ConnectionState
 from polmon.version import __version__
 
@@ -79,8 +80,7 @@ def test_unreachable_backend_is_explained_and_ui_stays_live(window, qtbot) -> No
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.DISCONNECTED, timeout=10_000)
     timer.stop()
     banner = window.pages["dashboard"].banner
-    assert banner.isVisible() and banner.problem.title == "Backend unreachable"
-    assert "connection refused" in banner.problem.detail.lower()
+    assert banner.isVisible() and banner.problem.key == "problem.refused"
     assert ticks, "the event loop must keep running while connecting"
     assert "Traceback" not in log_text(window)
 
@@ -92,8 +92,9 @@ def test_local_preset_starts_connects_and_reaps_owned_backend(window, qtbot) -> 
     process = window.local_backend.process
     assert process is not None and process.poll() is None
     assert window.session.l0_only
-    assert window.bar.state_label.text() == "Local backend — L0 only"
-    assert "Local backend — L0 only" in window.status_text.text()
+    assert window.bar.state_label.text() == tr("connection.local_label")
+    assert tr("connection.local_label") in window.status_text.text()
+    assert window.bar.fidelity.isVisible()  # persistent fidelity indicator
     assert window.bar.log_button.isEnabled()
     window.disconnect_backend()
     qtbot.waitUntil(lambda: process.poll() is not None, timeout=20_000)
@@ -114,7 +115,7 @@ def test_local_backend_death_is_actionable(window, qtbot) -> None:
     window.poll()
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.DISCONNECTED, timeout=5_000)
     problem = window.pages["dashboard"].banner.problem
-    assert problem.title == "Local backend stopped"
+    assert problem.key == "problem.local_stopped"
     assert str(window.local_backend.log_path) in problem.hint
 
 
@@ -137,7 +138,8 @@ def test_slow_backend_times_out_without_blocking(window, qtbot) -> None:
         )
         timer.stop()
         problem = window.pages["dashboard"].banner.problem
-        assert problem.title == "Backend did not respond" and "2 s timeout" in problem.detail
+        assert problem.key == "problem.timeout"
+        assert problem.detail_message.params["seconds"] == "2"
     finally:
         listener.close()
 
@@ -165,7 +167,7 @@ def test_malformed_responses_are_reported(window, qtbot) -> None:
             lambda: window.session.state is ConnectionState.DISCONNECTED, timeout=10_000
         )
         problem = window.pages["dashboard"].banner.problem
-        assert problem.title == "Unexpected response"
+        assert problem.key == "problem.malformed"
     finally:
         server.shutdown()
         server.server_close()
@@ -174,7 +176,7 @@ def test_malformed_responses_are_reported(window, qtbot) -> None:
 def test_token_is_required_used_and_never_shown(window, qtbot, live_backend) -> None:
     connect(qtbot, window, live_backend, token="")
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.UNAUTHORIZED, timeout=10_000)
-    assert window.pages["dashboard"].banner.problem.title == "API token required"
+    assert window.pages["dashboard"].banner.problem.key == "problem.unauthorized"
     assert window.bar.token.isEnabled()  # the operator can now enter it
     connect(qtbot, window, live_backend)
     wait_connected(qtbot, window)
@@ -183,7 +185,7 @@ def test_token_is_required_used_and_never_shown(window, qtbot, live_backend) -> 
     assert live_backend.token not in window.windowTitle()
     assert window.settings.value("connection/token") is None
     limits = window.pages["dashboard"].limits
-    assert limits.item(0, 1).text() == "250"
+    assert limits.values["limit.max_endpoint_count"].property("raw") == 250
     window.disconnect_backend()
     assert window.session.state is ConnectionState.DISCONNECTED and window.session.resources is None
 
@@ -194,7 +196,7 @@ def test_backend_loss_is_detected_and_recovered_from(window, qtbot, backend_fact
     wait_connected(qtbot, window)
     backend.stop()
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.LOST, timeout=15_000)
-    assert "unreachable" in window.status_text.text().lower()
+    assert window.pages["dashboard"].banner.problem.key == "problem.lost"
     assert not window.run_action.isEnabled() and not window.deploy_action.isEnabled()
 
 
@@ -261,7 +263,7 @@ def test_inputs_editors_and_views_have_accessible_names(window) -> None:
             if not widget.accessibleName():
                 unnamed.append(f"{key}: {type(widget).__name__} ({widget.toolTip()!r})")
     assert not unnamed, sorted(set(unnamed))
-    assert window.bar.token.accessibleName() == "API token"
+    assert window.bar.token.accessibleName() == tr("a11y.api_token")
 
 
 def test_client_guide_lists_exactly_the_bound_shortcuts() -> None:
@@ -274,7 +276,10 @@ def test_client_guide_lists_exactly_the_bound_shortcuts() -> None:
     section = guide.split("## Keyboard shortcuts", 1)[1].split("##", 1)[0]
     rows = re.findall(r"^\| ([^|]+?) \| ([^|]+?) \|$", section, re.M)
     documented = [(keys, action) for keys, action in rows if keys not in {"Keys", "---"}]
-    assert documented == list(SHORTCUTS)
+    # The guide is English documentation: compare with the English catalog, by key.
+    from polmon.client.locales import CATALOGS
+
+    assert documented == [(keys, CATALOGS["en"][key]) for keys, key in SHORTCUTS]
 
 
 def test_smoke_start_shows_the_window_and_reports(qapp) -> None:

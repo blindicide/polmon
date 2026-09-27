@@ -7,28 +7,33 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QSplitter,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
-    QVBoxLayout,
     QWidget,
 )
 
-from polmon.client import theme
+from polmon.client import i18n, theme
 from polmon.client.api import ApiClientError
+from polmon.client.errors import error_message, yaml_problem
+from polmon.client.i18n import Msg, bind_fn, bind_tip, tr
 from polmon.client.pages import Context, Page, default_folder, write_document
 from polmon.client.widgets import (
+    RAW_ROLE,
+    Card,
+    StateView,
     StatusBadge,
     YamlEditor,
+    button,
+    danger_button,
     fill_table,
     make_table,
+    monospace_font,
     muted,
     primary_button,
 )
@@ -37,34 +42,67 @@ from polmon.client.yamlmap import document_id, locate, reason_line
 MAX_DOCUMENT_BYTES = 2_000_000
 
 
-class DocumentLibrary(QGroupBox):
+def problem_rows(source: str, error: ApiClientError) -> list[tuple[object, object, object]]:
+    """(line, location, message) for each validation problem of a 422 answer."""
+    details = error.details if isinstance(error.details, dict) else {}
+    rows: list[tuple[object, object, object]] = []
+    errors = details.get("errors")
+    if isinstance(errors, list):
+        for item in errors:
+            if isinstance(item, dict):
+                location = str(item.get("location") or "")
+                rows.append(
+                    (locate(source, location), location or Msg("validation.document"),
+                     error_message(item))
+                )
+    elif "problem_code" in details or isinstance(details.get("reason"), str):
+        line = details.get("line")
+        if not isinstance(line, int) and isinstance(details.get("reason"), str):
+            line = reason_line(str(details["reason"]))
+        rows.append((line, Msg("validation.yaml_syntax"), yaml_problem(details)))
+    else:
+        from polmon.client.errors import backend_message
+
+        rows.append(
+            (None, Msg("validation.document"),
+             backend_message(error.message_code, error.params, str(error).split(": ", 1)[-1]))
+        )
+    return rows
+
+
+class DocumentLibrary(Card):
     """YAML files of one folder; double-click (or Enter) opens one."""
 
     def __init__(self, title: str, key: str, page: Page) -> None:
-        super().__init__(title)
+        super().__init__(title, name=f"{key}Library")
         self.key = key
         self.page = page
-        layout = QVBoxLayout(self)
         self.folder_label = muted()
+        self.folder_label.setObjectName("caption")
         self.list = QListWidget()
+        self.list.setObjectName(f"{key}Files")
+        self.list.setFont(monospace_font())
         self.list.itemActivated.connect(
             lambda item: page.open_path(Path(item.data(Qt.ItemDataRole.UserRole)))
         )
         buttons = QHBoxLayout()
-        self.open_button = QPushButton("Open file…")
-        self.folder_button = QPushButton("Folder…")
+        buttons.setSpacing(theme.SPACE["sm"])
+        self.open_button = button("library.open", tip="library.open.tip", name="openFile")
+        self.folder_button = button("library.folder", "quiet", tip="library.folder.tip",
+                                    name="chooseFolder")
         self.open_button.clicked.connect(page.open_dialog)
         self.folder_button.clicked.connect(self.choose_folder)
         buttons.addWidget(self.open_button)
         buttons.addWidget(self.folder_button)
-        layout.addWidget(self.folder_label)
-        layout.addWidget(self.list, 1)
-        layout.addLayout(buttons)
+        buttons.addStretch(1)
+        self.add(self.folder_label)
+        self.add(self.list, 1)
+        self.body.addLayout(buttons)
         stored = page.context.settings.value(f"folders/{key}", "")
         self.set_folder(Path(str(stored)) if stored else default_folder(key))
 
     def choose_folder(self) -> None:
-        folder = self.page.context.ask_folder(self, "Choose a folder of YAML documents", self.key)
+        folder = self.page.context.ask_folder(self, "library.folder.dialog", self.key)
         if folder is not None:
             self.set_folder(folder)
 
@@ -86,7 +124,6 @@ class DocumentLibrary(QGroupBox):
 
 class TopologiesPage(Page):
     key = "topologies"
-    title = "Topologies"
 
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
@@ -94,95 +131,152 @@ class TopologiesPage(Page):
         self.saved_source = ""
         self.result: dict[str, object] | None = None
         self.validated_source: str | None = None
+        self.problem_rows: list[tuple[object, object, object]] = []
         self._auto = QTimer(self)
         self._auto.setSingleShot(True)
         self._auto.setInterval(700)
         self._auto.timeout.connect(lambda: self.validate(quiet=True))
 
         splitter = QSplitter()
+        splitter.setChildrenCollapsible(False)
         # -- left: library and backend-loaded topologies
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        self.library = DocumentLibrary("Library", "topologies", self)
-        left_layout.addWidget(self.library, 3)
-        loaded_box = QGroupBox("Loaded on backend")
-        loaded_layout = QVBoxLayout(loaded_box)
+        left = QSplitter(Qt.Orientation.Vertical)
+        left.setChildrenCollapsible(False)
+        self.library = DocumentLibrary("library.title", "topologies", self)
+        left.addWidget(self.library)
+        loaded_card = Card("topologies.loaded", name="loaded")
         self.loaded = QListWidget()
-        self.loaded.setToolTip("Double-click to open the backend's normalized copy")
+        self.loaded.setObjectName("loadedTopologies")
+        self.loaded.setFont(monospace_font())
+        bind_tip(self.loaded, "topologies.loaded.tip")
         self.loaded.itemActivated.connect(self.open_loaded)
-        loaded_layout.addWidget(self.loaded)
-        self.unload_button = QPushButton("Unload")
-        self.unload_button.setToolTip(
-            "Remove the selected definition from the backend (it must not be deployed)"
+        self.loaded_state = StateView(self.loaded)
+        loaded_card.add(self.loaded_state, 1)
+        self.unload_button = danger_button(
+            "topologies.unload", tip="topologies.unload.tip", name="unloadButton"
         )
         self.unload_button.clicked.connect(self.unload_selected)
         self.loaded.itemSelectionChanged.connect(self.refresh_actions)
-        loaded_layout.addWidget(self.unload_button)
-        left_layout.addWidget(loaded_box, 2)
+        loaded_card.add_action(self.unload_button)
+        left.addWidget(loaded_card)
+        left.setSizes([420, 260])
         splitter.addWidget(left)
 
         # -- centre: editor
-        centre = QWidget()
-        centre_layout = QVBoxLayout(centre)
-        centre_layout.setContentsMargins(0, 0, 0, 0)
+        editor_card = Card(name="editor")
         header = QHBoxLayout()
-        self.document_label = QLabel("Untitled topology")
+        self.document_label = QLabel()
+        self.document_label.setObjectName("cardTitle")
+        self.document_name: str | None = None
         self.badge = StatusBadge()
         header.addWidget(self.document_label, 1)
         header.addWidget(self.badge)
-        centre_layout.addLayout(header)
+        editor_card.body.addLayout(header)
         self.editor = YamlEditor()
-        self.editor.setAccessibleName("Topology YAML editor")
-        self.editor.textChanged.connect(self._edited)
-        centre_layout.addWidget(self.editor, 1)
+        self.editor.setObjectName("topologyEditor")
+        editor_card.add(self.editor, 1)
         actions = QHBoxLayout()
-        self.validate_button = QPushButton("Validate")
-        self.validate_button.setToolTip("Validate on the backend (Ctrl+Shift+V)")
-        self.load_button = QPushButton("Load to backend")
-        self.load_button.setToolTip("Store this definition on the backend without deploying")
-        self.deploy_button = primary_button("Deploy…")
-        self.deploy_button.setToolTip("Load and deploy this topology (Ctrl+D)")
-        self.save_button = QPushButton("Save as…")
+        actions.setSpacing(theme.SPACE["sm"])
+        self.validate_button = button(
+            "editor.validate", tip="topologies.validate.tip", name="validateButton"
+        )
+        self.load_button = button("topologies.load", tip="topologies.load.tip", name="loadButton")
+        self.deploy_button = primary_button(
+            "topologies.deploy", tip="topologies.deploy.tip", name="deployTopology"
+        )
+        self.save_button = button("editor.save_as", "quiet", tip="editor.save_as.tip",
+                                  name="saveAs")
         self.validate_button.clicked.connect(lambda: self.validate(quiet=False))
         self.load_button.clicked.connect(self.load_to_backend)
         self.deploy_button.clicked.connect(self.deploy)
         self.save_button.clicked.connect(self.save_as)
-        for button in (self.validate_button, self.load_button, self.deploy_button):
-            actions.addWidget(button)
+        for widget in (self.deploy_button, self.load_button, self.validate_button):
+            actions.addWidget(widget)
         actions.addStretch(1)
         actions.addWidget(self.save_button)
-        centre_layout.addLayout(actions)
-        splitter.addWidget(centre)
+        editor_card.body.addLayout(actions)
+        splitter.addWidget(editor_card)
 
         # -- right: inspection
+        inspect_card = Card("topologies.inspection", name="inspection")
         self.tabs = QTabWidget()
-        self.summary = make_table(("Property", "Value", "Admission"), stretch=1)
+        self.tabs.setObjectName("topologyTabs")
+        self.summary = make_table(
+            ("column.property", "column.value", "column.admission"), stretch=1, sortable=False,
+            name="topologySummary",
+        )
         self.nodes = QTreeWidget()
-        self.nodes.setHeaderLabels(["Node / interface", "Class", "Network", "MAC", "IPv4", "Notes"])
+        self.nodes.setObjectName("topologyNodes")
+        bind_fn(
+            self.nodes,
+            lambda tree: tree.setHeaderLabels(
+                [tr(key) for key in (
+                    "column.node_interface", "column.class", "column.network", "column.mac",
+                    "column.ipv4", "column.notes",
+                )]
+            ),
+            tag="headers",
+        )
         self.nodes.setAlternatingRowColors(True)
-        self.networks = make_table(("Network", "IPv4 subnet", "Interfaces", "Members"), stretch=3)
-        self.problems = make_table(("Line", "Location", "Problem"), stretch=2)
+        self.networks = make_table(
+            ("column.network", "column.subnet", "column.interfaces", "column.members"),
+            stretch=3, mono=(0, 1), name="topologyNetworks",
+        )
+        self.problems = make_table(
+            ("column.line", "column.location", "column.problem"), stretch=2, mono=(1,),
+            name="topologyProblems",
+        )
         self.problems.setWordWrap(True)
         self.problems.itemActivated.connect(self._goto_problem)
-        self.tabs.addTab(self.summary, "Summary")
-        self.tabs.addTab(self.nodes, "Nodes")
-        self.tabs.addTab(self.networks, "Networks")
-        self.tabs.addTab(self.problems, "Problems")
-        splitter.addWidget(self.tabs)
-        splitter.setSizes([210, 430, 470])
-        splitter.setStretchFactor(1, 1)
+        for widget in (self.summary, self.nodes, self.networks, self.problems):
+            self.tabs.addTab(widget, "")
+        self.summary_state = StateView(self.tabs)
+        inspect_card.add(self.summary_state, 1)
+        splitter.addWidget(inspect_card)
+        splitter.setSizes([220, 420, 600])
+        for index, factor in enumerate((0, 2, 3)):  # growth goes to the editor and inspection
+            splitter.setStretchFactor(index, factor)
         self.root.addWidget(splitter, 1)
 
         QShortcut(QKeySequence("Ctrl+Shift+V"), self, lambda: self.validate(quiet=False))
         self.session.topologies_changed.connect(self._refresh_loaded)
         self.session.resources_changed.connect(self._refresh_summary)
+        self.retranslate()
         self.refresh_actions()
+        # Connected last: the editor signals while the page is still being built.
+        self.editor.textChanged.connect(self._edited)
+
+    def retranslate(self) -> None:
+        count = len(self.problem_rows)
+        titles = (
+            tr("topologies.tab.summary"),
+            tr("topologies.tab.nodes"),
+            tr("topologies.tab.networks"),
+            tr("editor.tab.problems_count", count=count) if count else tr("editor.tab.problems"),
+        )
+        for index, title in enumerate(titles):
+            self.tabs.setTabText(index, title)
+        self._update_label()
+        self._refresh_summary()
+        self._refresh_loaded()
+        if self.problem_rows:
+            fill_table(self.problems, self.problem_rows)
+        self._update_state()
+
+    def _update_state(self) -> None:
+        if self.result or self.problem_rows:
+            self.summary_state.show_content()
+        elif self.source().strip():
+            self.summary_state.show_empty(Msg("topologies.not_validated"),
+                                          Msg("topologies.not_validated_hint"))
+        else:
+            self.summary_state.show_empty(Msg("topologies.no_document"),
+                                          Msg("topologies.no_document_hint"))
 
     # -- documents ----------------------------------------------------------------------------
 
     def open_dialog(self) -> None:
-        path = self.context.ask_open(self, "Open topology", "topologies")
+        path = self.context.ask_open(self, "topologies.open.dialog", "topologies")
         if path is not None:
             self.open_path(path)
 
@@ -190,7 +284,9 @@ class TopologiesPage(Page):
         try:
             if path.stat().st_size > MAX_DOCUMENT_BYTES:
                 self.banner.show_message(
-                    "Document too large", f"{path.name} exceeds the 2 MB document limit.", "danger"
+                    Msg("problem.too_large.title"),
+                    Msg("editor.too_large", name=path.name),
+                    "danger",
                 )
                 return
             text = path.read_text(encoding="utf-8")
@@ -200,12 +296,12 @@ class TopologiesPage(Page):
         self.path = path
         self.saved_source = text
         self.set_source(text, path.name)
-        self.session.log(f"Opened topology {path}")
+        self.session.log(Msg("log.opened", kind=Msg("document.topology"), path=path))
 
-    def set_source(self, text: str, label: str) -> None:
+    def set_source(self, text: str, name: str | None) -> None:
+        self.document_name = name
         self.editor.setPlainText(text)
-        self.document_label.setText(label)
-        self.document_label.setToolTip(str(self.path or label))
+        self._update_label()
         self.validate(quiet=True)
 
     def source(self) -> str:
@@ -215,7 +311,7 @@ class TopologiesPage(Page):
         topology_id = str(item.data(Qt.ItemDataRole.UserRole))
         client = self.session.client()
         self.context.run(
-            f"Fetch topology {topology_id}",
+            Msg("operation.fetch_topology", topology=topology_id),
             lambda token, report: client.topology(topology_id),
             on_success=lambda result: self._opened_loaded(result),  # type: ignore[arg-type]
             banner=self.banner,
@@ -228,7 +324,7 @@ class TopologiesPage(Page):
         topology_id = str(item.data(Qt.ItemDataRole.UserRole))
         client = self.session.client()
         self.context.run(
-            f"Unload topology {topology_id}",
+            Msg("operation.unload", topology=topology_id),
             lambda token, report: client.unload_topology(topology_id),
             on_success=lambda result: self._unloaded(topology_id),
             banner=self.banner,
@@ -241,7 +337,8 @@ class TopologiesPage(Page):
     def _opened_loaded(self, result: dict[str, object]) -> None:
         self.path = None
         self.set_source(
-            str(result.get("normalized_yaml") or ""), f"{result['topology_id']} " "(backend copy)"
+            str(result.get("normalized_yaml") or ""),
+            tr("topologies.backend_copy", topology=result["topology_id"]),
         )
 
     def save(self) -> None:
@@ -256,17 +353,21 @@ class TopologiesPage(Page):
         suggested = (
             self.path.name if self.path else f"{document_id(self.source()) or 'topology'}.yml"
         )
-        path = self.context.ask_save(self, "Save topology", suggested, "YAML (*.yml *.yaml)")
+        path = self.context.ask_save(self, "topologies.save.dialog", suggested, "yaml")
         if path is not None and write_document(self, path, self.source(), "topology"):
             self.path = path
+            self.document_name = path.name
             self.saved_source = self.source()
             self._update_label()
 
     def _update_label(self) -> None:
-        name = self.path.name if self.path else self.document_label.text().rstrip(" •")
+        name = self.path.name if self.path else self.document_name
         dirty = self.path is not None and self.source() != self.saved_source
-        self.document_label.setText(f"{name} •" if dirty else name)
-        self.document_label.setToolTip("Unsaved changes" if dirty else str(self.path or name))
+        text = name or tr("topologies.untitled")
+        self.document_label.setText(f"{text} •" if dirty else text)
+        self.document_label.setToolTip(
+            tr("editor.unsaved") if dirty else str(self.path or text)
+        )
 
     def _edited(self) -> None:
         self.editor.set_error_line(None)
@@ -276,6 +377,7 @@ class TopologiesPage(Page):
             self.badge.set_status("modified")
         if self.session.connected and self.source().strip():
             self._auto.start()
+        self._update_state()
         self.refresh_actions()
 
     # -- backend actions ----------------------------------------------------------------------
@@ -288,12 +390,12 @@ class TopologiesPage(Page):
         if not self.session.connected:
             if not quiet:
                 self.banner.show_message(
-                    "Not connected", "Connect to a backend to validate topologies.", "warning"
+                    Msg("common.not_connected"), Msg("topologies.validate.offline"), "warning"
                 )
             return
         client = self.session.client()
         self.context.run(
-            "Validate topology",
+            Msg("operation.validate_topology"),
             lambda token, report: client.validate_topology(source),
             on_success=lambda result: self._show_result(source, result),  # type: ignore[arg-type]
             on_failure=lambda error: self._show_failure(source, error),
@@ -305,7 +407,7 @@ class TopologiesPage(Page):
         source = self.source()
         client = self.session.client()
         self.context.run(
-            "Load topology",
+            Msg("operation.load_topology"),
             lambda token, report: client.load_topology(source),
             on_success=lambda result: self._loaded(source, result),  # type: ignore[arg-type]
             on_failure=lambda error: self._show_failure(source, error),
@@ -315,7 +417,7 @@ class TopologiesPage(Page):
     def _loaded(self, source: str, result: dict[str, object]) -> None:
         self.session.known_topologies.add(str(result.get("topology_id")))
         self._show_result(source, result)
-        self.session.log(f"Topology {result.get('topology_id')} loaded on the backend")
+        self.session.log(Msg("log.topology_loaded", topology=result.get("topology_id")))
         self.context.navigate("refresh")
 
     def deploy(self) -> None:
@@ -334,31 +436,17 @@ class TopologiesPage(Page):
             return
         if not isinstance(error, ApiClientError) or error.status != 422:
             return
-        details = error.details if isinstance(error.details, dict) else {}
-        rows = []
-        errors = details.get("errors")
-        if isinstance(errors, list):
-            for item in errors:
-                if isinstance(item, dict):
-                    location = str(item.get("location") or "")
-                    rows.append(
-                        (locate(source, location), location or "document", item.get("message"))
-                    )
-        elif isinstance(details.get("reason"), str):
-            reason = str(details["reason"])
-            rows.append((reason_line(reason), "YAML syntax", reason.splitlines()[0]))
-        else:
-            message = str(error).split(": ", 1)[-1]
-            rows.append((None, "document", message))
+        rows = problem_rows(source, error)
         self.result = None
         self.validated_source = source
+        self.problem_rows = rows
         fill_table(self.problems, rows)
         self.problems.resizeRowsToContents()
         self.problems.setProperty("count", len(rows))
-        self.tabs.setTabText(3, f"Problems ({len(rows)})")
+        self.retranslate()
         self.tabs.setCurrentWidget(self.problems)
         self.badge.set_status("invalid")
-        first = next((line for line, _, _ in rows if line), None)
+        first = next((line for line, _, _ in rows if isinstance(line, int)), None)
         self.editor.set_error_line(first)
         self.refresh_actions()
 
@@ -375,21 +463,22 @@ class TopologiesPage(Page):
         self.result = result
         self.validated_source = source
         self.badge.set_status("valid" if result else "")
+        self.problem_rows = []
         self.problems.setRowCount(0)
-        self.tabs.setTabText(3, "Problems")
         self.nodes.clear()
         self.networks.setRowCount(0)
         if result:
             self._fill_structure(result)
             if self.tabs.currentWidget() is self.problems:
                 self.tabs.setCurrentWidget(self.summary)
-        self._refresh_summary()
+        self.retranslate()
         self.refresh_actions()
 
     def _fill_structure(self, result: dict[str, object]) -> None:
         topology = result.get("topology") or {}
         assert isinstance(topology, dict)
         members: dict[str, list[str]] = {}
+        mono = monospace_font()
         for node in topology.get("nodes") or []:
             services = ", ".join(
                 f"{item['id']} {item['protocol']}/{item['port']} ({item['implementation']})"
@@ -404,9 +493,10 @@ class TopologiesPage(Page):
             parent = QTreeWidgetItem(
                 self.nodes, [node["id"], node["class"].upper(), "", "", "", notes]
             )
+            parent.setFont(0, mono)
             parent.setForeground(1, theme.color("info" if node["class"] == "l0" else "success"))
             for interface in node.get("interfaces") or []:
-                QTreeWidgetItem(
+                child = QTreeWidgetItem(
                     parent,
                     [
                         interface["id"],
@@ -417,6 +507,8 @@ class TopologiesPage(Page):
                         "",
                     ],
                 )
+                for column in (0, 2, 3, 4):
+                    child.setFont(column, mono)
                 members.setdefault(interface["network"], []).append(node["id"])
         self.nodes.expandAll()
         for column in range(5):
@@ -447,75 +539,92 @@ class TopologiesPage(Page):
         assert isinstance(snapshot, dict)
         deployed_here = self.session.deployed(str(result.get("topology_id")))
 
-        def fit(requested: int, limit_key: str, active_key: str) -> str:
+        def fit(requested: int, limit_key: str, active_key: str) -> tuple[str, str]:
             if limit_key not in limits:
-                return "—"
+                return "—", ""
             limit = int(limits[limit_key])  # type: ignore[arg-type]
             active = 0 if deployed_here else int(snapshot.get(active_key) or 0)
             free = limit - active
-            return f"fits ({free} free)" if requested <= free else f"exceeds ({free} free)"
+            verdict = "fits" if requested <= free else "exceeds"
+            return tr(f"topologies.fit.{verdict}", free=free), verdict
 
         memory = int(estimate.get("memory_mb") or 0)
         available = snapshot.get("available_memory_bytes")
         reserve = int(limits.get("memory_safety_threshold_mb") or 0)
-        memory_fit = "—"
+        memory_fit: tuple[str, str] = ("—", "")
         if isinstance(available, int) and limits:
             spare = available // 1_048_576 - reserve
-            memory_fit = (
-                f"fits ({spare} MiB spare)" if memory <= spare else (f"exceeds ({spare} MiB spare)")
-            )
+            verdict = "fits" if memory <= spare else "exceeds"
+            memory_fit = (tr(f"topologies.fit.memory_{verdict}", spare=spare), verdict)
+        l2 = estimate.get("l2_virtual_machines")
         rows = [
-            ("Topology", result.get("topology_id"), ""),
-            ("Networks", len(topology.get("networks") or []), ""),
+            ("summary.topology", result.get("topology_id"), ("", "")),
+            ("summary.networks", len(topology.get("networks") or []), ("", "")),
             (
-                "Endpoints",
+                "summary.endpoints",
                 estimate.get("endpoint_count"),
-                fit(
-                    int(estimate.get("endpoint_count") or 0),
-                    "max_endpoint_count",
-                    "active_endpoints",
-                ),
+                fit(int(estimate.get("endpoint_count") or 0), "max_endpoint_count",
+                    "active_endpoints"),
             ),
-            ("L0 synthetic endpoints", estimate.get("l0_endpoints"), ""),
+            ("summary.l0", estimate.get("l0_endpoints"), ("", "")),
             (
-                "L1 namespaces",
+                "summary.l1",
                 estimate.get("l1_namespaces"),
-                fit(
-                    int(estimate.get("l1_namespaces") or 0),
-                    "max_active_namespaces",
-                    "active_namespaces",
-                ),
+                fit(int(estimate.get("l1_namespaces") or 0), "max_active_namespaces",
+                    "active_namespaces"),
             ),
             (
-                "L2 virtual machines",
-                estimate.get("l2_virtual_machines"),
-                "unsupported" if estimate.get("l2_virtual_machines") else "",
+                "summary.l2",
+                l2,
+                (tr("topologies.fit.unsupported"), "exceeds") if l2 else ("", ""),
             ),
-            ("Estimated memory", f"{memory} MiB", memory_fit),
-            ("Estimated CPU", f"{estimate.get('cpu_millicores')} mCPU", ""),
-            ("Estimated disk", f"{estimate.get('disk_mb')} MiB", ""),
-            ("Deployed", "yes" if deployed_here else "no", ""),
+            ("summary.memory", f"{memory} MiB", memory_fit),
+            ("summary.cpu", f"{estimate.get('cpu_millicores')} mCPU", ("", "")),
+            ("summary.disk", f"{estimate.get('disk_mb')} MiB", ("", "")),
+            (
+                "summary.deployed",
+                tr("common.yes") if deployed_here else tr("common.no"),
+                ("", ""),
+            ),
         ]
-        fill_table(self.summary, rows)
-        for row, (_, _, verdict) in enumerate(rows):
+        fill_table(self.summary, [(tr(key), value, verdict[0]) for key, value, verdict in rows])
+        for row, (key, _, (_, verdict)) in enumerate(rows):
             item = self.summary.item(row, 2)
+            first = self.summary.item(row, 0)
+            if first is not None:
+                first.setData(Qt.ItemDataRole.UserRole, key)
+            if item is not None:
+                item.setData(RAW_ROLE, verdict or None)
             if item is not None and verdict:
-                bad = verdict.startswith(("exceeds", "unsupported"))
+                bad = verdict == "exceeds"
                 item.setForeground(theme.color("danger" if bad else "success"))
+                item.setText(f"{theme.STATUS_GLYPHS['danger' if bad else 'success']} "
+                             f"{item.text()}")
 
     def _refresh_loaded(self) -> None:
         self.loaded.clear()
         for item in self.session.backend_topologies:
             topology_id = str(item.get("topology_id"))
-            marker = "  ● deployed" if item.get("deployed") else ""
+            marker = f"   ● {tr('status.deployed')}" if item.get("deployed") else ""
             entry = QListWidgetItem(f"{topology_id}{marker}")
             entry.setData(Qt.ItemDataRole.UserRole, topology_id)
             entry.setToolTip(
-                f"{item.get('node_count')} nodes, {item.get('network_count')} networks"
+                tr(
+                    "topologies.loaded.summary",
+                    nodes=i18n.tr_n("count.nodes", int(item.get("node_count") or 0)),
+                    networks=i18n.tr_n("count.networks", int(item.get("network_count") or 0)),
+                )
             )
             if item.get("deployed"):
                 entry.setForeground(theme.color("success"))
             self.loaded.addItem(entry)
+        if self.session.backend_topologies:
+            self.loaded_state.show_content()
+        elif self.session.connected:
+            self.loaded_state.show_empty(Msg("topologies.loaded.empty"),
+                                         Msg("topologies.loaded.empty_hint"))
+        else:
+            self.loaded_state.show_empty(Msg("common.offline"), Msg("common.offline_hint"))
         self._refresh_summary()
 
     def refresh_actions(self) -> None:

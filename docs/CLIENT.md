@@ -93,10 +93,13 @@ and the task bar flashes. The *Activity* dock (Ctrl+Shift+L) logs every operatio
 | Ctrl+1 … Ctrl+7 | Switch page |
 | Ctrl+Shift+T | Toggle light/dark theme |
 | Ctrl+Shift+L | Show or hide the activity log |
+| Ctrl+Shift+U | Switch between Russian and English |
+| F1 | Show this list |
 | Ctrl+Q | Quit |
 
-F1 shows the same list in the client. The theme follows the operating system unless chosen in
-*View → Theme*.
+F1 shows the same list in the client (in the UI language). The theme follows the operating
+system unless chosen in *View → Theme*; the language is Russian unless chosen in
+*View → Language* (or started with `--language en`).
 
 ## Troubleshooting
 

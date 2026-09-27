@@ -78,6 +78,10 @@ UNUSED_HOST_LIBRARIES = (
 )
 
 
+# qtbase_<code>.qm for every UI language except English (Qt's built-in language).
+KEPT_TRANSLATIONS = {"qtbase_ru.qm"}
+
+
 def _plugin_name(path: str) -> str:
     stem = path.replace("\\", "/").rsplit("/", 1)[-1].split(".")[0]
     return stem.removeprefix("lib")
@@ -87,7 +91,8 @@ def keep(dest: str, os_name: str) -> bool:
     """Whether a collected file (by its destination path) belongs in the bundle."""
     normalized = "/" + dest.replace("\\", "/")
     if "/translations/" in normalized:
-        return False  # the UI is English only
+        # Qt's own strings (standard buttons, context menus) for the non-English UI languages.
+        return normalized.rsplit("/", 1)[-1] in KEPT_TRANSLATIONS
     if os_name == "linux" and normalized.rsplit("/", 1)[-1].startswith(UNUSED_HOST_LIBRARIES):
         return False
     if "/plugins/platforms/" in normalized:

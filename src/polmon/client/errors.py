@@ -1,41 +1,101 @@
-"""Turn any client-side failure into a short, actionable operator message (never a traceback)."""
+"""Turn any client-side failure into a short, actionable operator message (never a traceback).
+
+A :class:`Problem` holds catalog keys and parameters, not text: it renders in the current
+language whenever it is displayed, so a banner shown before a language switch follows it.
+Backend refusals carry ``message_code`` + ``params`` (see docs/API.md) and are rendered from
+``backend.<message_code>``; tests assert on ``Problem.key`` and ``Problem.message_code``.
+"""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Sequence
 
 from polmon.client.api import ApiClientError
+from polmon.client.i18n import Msg, has, tr
 
-# Human labels for the violation keys the backend's admission control reports.
-LIMIT_LABELS = {
-    "endpoint_count": "Endpoints",
-    "active_namespaces": "Active namespaces",
-    "available_memory": "Available memory",
-    "concurrent_experiments": "Concurrent experiments",
-    "duration_seconds": "Experiment duration (s)",
-    "data_directory": "Data directory",
-    "disk_free": "Free disk",
-    "max_endpoints": "Benchmark max endpoints",
-    "max_namespaces": "Benchmark max namespaces",
-    "memory_reserve_mb": "Benchmark memory reserve (MiB)",
-    "max_run_seconds": "Benchmark run time (s)",
-    "concurrent_benchmarks": "Concurrent benchmarks",
-    "active_experiments": "Active experiments",
-    "benchmark_jobs": "Running benchmark jobs",
-}
+# Parameters of admission-control violations (``details`` of HTTP 429 responses).
+LIMIT_FIELDS = (
+    "projected",
+    "limit",
+    "active",
+    "requested",
+    "minimum",
+    "required_mb_including_reserve",
+    "available_mb",
+    "used_mb",
+    "free_mb",
+)
+
+Text = Msg | str
 
 
-@dataclass(frozen=True, slots=True)
+def _render(value: Text | None) -> str:
+    return "" if value is None else str(value)
+
+
 class Problem:
-    """What went wrong (``title``), the specifics (``detail``/``items``) and what to do."""
+    """What went wrong (``key`` → title), the specifics (``detail``/``items``) and what to do.
 
-    title: str
-    detail: str
-    hint: str | None = None
-    items: tuple[str, ...] = field(default_factory=tuple)
-    status: int | None = None
-    code: str | None = None
+    ``key`` names catalog entries: ``<key>.title`` and, unless a hint is given, ``<key>.hint``
+    when it exists. ``detail``, ``hint`` and ``items`` are :class:`Msg` values (or verbatim data)
+    rendered on access.
+    """
+
+    __slots__ = ("_detail", "_hint", "_items", "_title", "code", "key", "message_code", "status")
+
+    def __init__(
+        self,
+        key: str,
+        detail: Text = "",
+        hint: Text | None = None,
+        items: Sequence[Text] = (),
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        message_code: str | None = None,
+        title: Text | None = None,
+    ) -> None:
+        self.key = key
+        self._title = title if title is not None else Msg(f"{key}.title")
+        self._detail = detail
+        if hint is None and has(f"{key}.hint"):
+            hint = Msg(f"{key}.hint")
+        self._hint = hint
+        self._items = tuple(items)
+        self.status = status
+        self.code = code
+        self.message_code = message_code
+
+    @classmethod
+    def message(cls, title: Text, detail: Text) -> Problem:
+        """A plain titled message (banners that are not failures)."""
+        return cls("problem.message", detail, title=title)
+
+    @property
+    def title(self) -> str:
+        return _render(self._title)
+
+    @property
+    def detail(self) -> str:
+        return _render(self._detail)
+
+    @property
+    def hint(self) -> str | None:
+        return _render(self._hint) if self._hint is not None else None
+
+    @property
+    def items(self) -> tuple[str, ...]:
+        return tuple(_render(item) for item in self._items)
+
+    @property
+    def item_messages(self) -> tuple[object, ...]:
+        """The unrendered items (``Msg`` / limit / located values) for identifier-based checks."""
+        return self._items
+
+    @property
+    def detail_message(self) -> Text:
+        return self._detail
 
     def text(self) -> str:
         lines = [f"{self.title}: {self.detail}"]
@@ -44,76 +104,130 @@ class Problem:
             lines.append(self.hint)
         return "\n".join(lines)
 
-
-def _pairs(value: object) -> str:
-    if isinstance(value, dict):
-        return ", ".join(f"{key.replace('_', ' ')} {item}" for key, item in value.items())
-    return str(value)
+    def __repr__(self) -> str:
+        return f"Problem({self.key!r}, message_code={self.message_code!r}, status={self.status})"
 
 
-def limit_items(details: object) -> tuple[str, ...]:
+def backend_message(message_code: object, params: object, fallback: str = "") -> Text:
+    """The client rendering of a backend ``message_code``; older backends send no code, so their
+    English text is quoted inside a localized sentence rather than shown bare."""
+    if isinstance(message_code, str) and has(f"backend.{message_code}"):
+        values = params if isinstance(params, dict) else {}
+        return Msg(f"backend.{message_code}", **{str(k): v for k, v in values.items()})
+    if isinstance(message_code, str) and message_code.startswith("pydantic."):
+        return Msg("backend.pydantic.other", check=message_code.removeprefix("pydantic."))
+    if fallback:
+        return Msg("backend.uncoded", message=fallback)
+    return Msg("backend.unknown", code=str(message_code or "—"))
+
+
+def _limit_field(name: str) -> str:
+    key = f"limit.field.{name}"
+    return tr(key) if has(key) else name.replace("_", " ")
+
+
+def _limit_label(name: str) -> str:
+    key = f"limit.{name}"
+    return tr(key) if has(key) else name.replace("_", " ")
+
+
+class _LimitItem:
+    """``Endpoints: projected 300, limit 250`` in the current language."""
+
+    __slots__ = ("name", "value")
+
+    def __init__(self, name: str, value: object) -> None:
+        self.name, self.value = name, value
+
+    def __str__(self) -> str:
+        if isinstance(self.value, dict):
+            pairs = ", ".join(f"{_limit_field(k)} {v}" for k, v in self.value.items())
+        else:
+            pairs = str(self.value)
+        return f"{_limit_label(self.name)}: {pairs}"
+
+
+def limit_items(details: object) -> tuple[Text, ...]:
     """One line per violated limit, e.g. ``Endpoints: projected 300, limit 250``."""
     if not isinstance(details, dict):
         return ()
-    return tuple(
-        f"{LIMIT_LABELS.get(key, key.replace('_', ' '))}: {_pairs(value)}"
-        for key, value in details.items()
-    )
+    return tuple(_LimitItem(key, value) for key, value in details.items())  # type: ignore[misc]
 
 
-def validation_items(details: object) -> tuple[str, ...]:
+class _LocatedItem:
+    __slots__ = ("location", "message")
+
+    def __init__(self, location: str, message: Text) -> None:
+        self.location, self.message = location, message
+
+    def __str__(self) -> str:
+        where = self.location or tr("validation.document")
+        return f"{where}: {self.message}"
+
+
+def error_message(item: dict[str, object]) -> Text:
+    """One validation error item (``details.errors[]``) as a localized message."""
+    return backend_message(item.get("message_code"), item.get("params"), str(item.get("message")))
+
+
+def yaml_problem(details: dict[str, object]) -> Text:
+    code = details.get("problem_code")
+    if isinstance(code, str) and has(f"backend.yaml.{code}"):
+        return Msg(f"backend.yaml.{code}", key=details.get("key") or "")
+    return Msg("backend.yaml.syntax")
+
+
+def validation_items(details: object) -> tuple[Text, ...]:
     if not isinstance(details, dict):
         return ()
     errors = details.get("errors")
     if isinstance(errors, list):
-        items = []
-        for error in errors:
-            if isinstance(error, dict):
-                location = str(error.get("location") or "document")
-                items.append(f"{location}: {error.get('message')}")
-        return tuple(items)
+        return tuple(
+            _LocatedItem(str(error.get("location") or ""), error_message(error))  # type: ignore[misc]
+            for error in errors
+            if isinstance(error, dict)
+        )
+    if "problem_code" in details:
+        return (yaml_problem(details),)
     reason = details.get("reason")
-    if isinstance(reason, str):
-        return tuple(line.strip() for line in reason.splitlines() if line.strip())
-    other = {key: value for key, value in details.items() if key not in {"errors", "reason"}}
-    return tuple(f"{key.replace('_', ' ')}: {_pairs(value)}" for key, value in other.items())
+    if isinstance(reason, str):  # an older backend: its parser's own words
+        return tuple(Msg.raw(line.strip()) for line in reason.splitlines()[:2] if line.strip())
+    return ()
+
+
+# Substrings of operating-system and HTTP-library error text (never shown).
+TRANSPORT_PATTERNS = (
+    (("timed out", "timeout"), "problem.timeout"),  # i18n: allow
+    (("refused", "10061"), "problem.refused"),
+    # i18n: allow
+    (("name or service not known", "getaddrinfo", "11001", "nodename nor servname"), "problem.dns"),
+    (("reset", "aborted", "closed", "10054"), "problem.dropped"),
+)
 
 
 def _transport(error: ApiClientError, url: str | None, timeout: float | None) -> Problem:
-    message = str(error)
-    where = f" at {url}" if url else ""
-    lowered = message.lower()
-    if "timed out" in lowered or "timeout" in lowered:
-        limit = f"the {timeout:g} s timeout" if timeout else "its timeout"
-        return Problem(
-            "Backend did not respond",
-            f"The request{where} exceeded {limit}.",
-            "Check that the backend is not overloaded, or raise the timeout in the connection bar.",
-        )
-    if "refused" in lowered or "10061" in lowered:
-        return Problem(
-            "Backend unreachable",
-            f"Nothing is listening{where} (connection refused).",
-            "Start the backend on the Linux host (polmon-backend --host … --port …) and check "
-            "the URL.",
-        )
-    if "name or service not known" in lowered or "getaddrinfo" in lowered or "11001" in lowered:
-        return Problem(
-            "Unknown host",
-            f"The backend host name{where} could not be resolved.",
-            "Check the spelling of the URL or use the server's IP address.",
-        )
-    if "reset" in lowered or "aborted" in lowered or "closed" in lowered:
-        return Problem(
-            "Connection dropped",
-            f"The backend{where} closed the connection mid-request.",
-            "The backend may have stopped or restarted; reconnect and retry.",
-        )
+    lowered = str(error).lower()
+    where = url or "—"
+    for needles, key in TRANSPORT_PATTERNS:
+        if any(needle in lowered for needle in needles):
+            if key == "problem.timeout":
+                return Problem(key, Msg(f"{key}.detail", url=where, seconds=f"{timeout or 0:g}"))
+            return Problem(key, Msg(f"{key}.detail", url=where))
+    reason = str(error).removeprefix("unable to reach backend: ").strip()
     return Problem(
-        "Backend unreachable",
-        message.removeprefix("unable to reach backend: ").capitalize() + ".",
-        "Check the URL, the network path and that the backend is running.",
+        "problem.unreachable", Msg("problem.unreachable.detail", url=where, reason=reason)
     )
+
+
+STATUS_KEYS = {
+    401: "problem.unauthorized",
+    404: "problem.unsupported",
+    405: "problem.unsupported",
+    409: "problem.conflict",
+    413: "problem.too_large",
+    429: "problem.admission",
+    422: "problem.rejected",
+}
 
 
 def describe(
@@ -122,88 +236,44 @@ def describe(
     """Map ``error`` to a :class:`Problem`; unknown errors keep only their type and message."""
     if isinstance(error, ApiClientError):
         status, code, details = error.status, error.code, error.details
-        message = str(error)
-        backend_message = re.sub(r"^server returned HTTP \d+(?: \S+)?: ", "", message)
+        if code == "download_too_large":
+            return Problem("problem.download", Msg("problem.download.detail", **error.params))
         if code == "malformed_response":
-            return Problem(
-                "Unexpected response",
-                message[:1].upper() + message[1:],
-                "Check that the URL points at a polmon backend of a compatible version.",
-                code=code,
-            )
+            return Problem("problem.malformed", Msg("problem.malformed.detail"), code=code)
         if status is None:
             return _transport(error, url, timeout)
-        common = {"status": status, "code": code}
-        if status == 401:
-            return Problem(
-                "API token required",
-                "The backend rejected the request: a valid API token is required.",
-                "Enter the backend's token (POLMON_API_TOKEN or its token file) in the "
-                "connection bar.",
-                **common,
-            )
-        if status in {404, 405}:
-            return Problem(
-                "Not supported by this backend",
-                f"The backend does not provide this operation (HTTP {status}).",
-                "The backend is older than this client; upgrade it to the same polmon version.",
-                **common,
-            )
-        if status == 413:
-            return Problem(
-                "Document too large",
-                backend_message,
-                "Topology and scenario documents are limited to 2 MB.",
-                items=validation_items(details),
-                **common,
-            )
-        if status == 429:
-            return Problem(
-                "Refused by admission control",
-                backend_message,
-                "Reduce the workload, destroy other deployments, or raise the backend's "
-                "configured limits.",
-                items=limit_items(details),
-                **common,
-            )
-        if status == 409:
-            return Problem(
-                "Conflict",
-                backend_message,
-                "Destroy or reset the conflicting deployment, then retry.",
-                items=validation_items(details),
-                **common,
-            )
-        if status == 422:
-            return Problem(
-                "Rejected",
-                backend_message,
-                "Correct the listed fields and validate again.",
-                items=validation_items(details),
-                **common,
-            )
+        common = {"status": status, "code": code, "message_code": error.message_code}
         if status >= 500:
-            return Problem(
-                "Backend error",
-                f"The backend failed with HTTP {status}.",
-                "Check the backend log (journalctl --user -u polmon-backend) and retry.",
-                **common,
-            )
-        return Problem(
-            f"Request failed (HTTP {status})",
-            backend_message,
-            items=validation_items(details),
-            **common,
-        )
+            return Problem("problem.server", Msg("problem.server.detail", status=status), **common)
+        key = STATUS_KEYS.get(status, "problem.request")
+        if status == 401:
+            return Problem(key, Msg("problem.unauthorized.detail"), **common)
+        if status in {404, 405}:
+            return Problem(key, Msg("problem.unsupported.detail", status=status), **common)
+        fallback = re.sub(r"^server returned HTTP \d+(?: \S+)?: ", "", str(error))
+        detail = backend_message(error.message_code, error.params, fallback)
+        items = limit_items(details) if status == 429 else validation_items(details)
+        if error.message_code == "fidelity.l0_only":
+            key = "problem.l0_only"
+        elif error.message_code == "fidelity.linux_lab_unavailable":
+            key = "problem.linux_lab"
+            items = ()
+        title = Msg("problem.request.title", status=status) if key == "problem.request" else None
+        return Problem(key, detail, items=items, title=title, **common)
     if isinstance(error, ValueError):
-        return Problem(
-            "Invalid settings", str(error), "Use a URL such as http://192.168.1.10:8080."
-        )
+        return Problem("problem.settings", Msg("problem.settings.detail"))
     if isinstance(error, UnicodeDecodeError):
-        return Problem("Unreadable file", "The file is not valid UTF-8 text.")
+        return Problem("problem.unreadable", Msg("problem.unreadable.detail"))
     if isinstance(error, OSError):
         filename = getattr(error, "filename", None)
         return Problem(
-            "File error", error.strerror or str(error), f"File: {filename}" if filename else None
+            "problem.file",
+            Msg("problem.file.detail", reason=error.strerror or str(error)),
+            Msg("problem.file.hint", path=filename) if filename else Msg.raw(""),
         )
-    return Problem("Unexpected client error", f"{type(error).__name__}: {error}")
+    local = getattr(error, "problem", None)
+    if isinstance(local, Problem):  # client-side errors that already know their message
+        return local
+    return Problem(
+        "problem.unexpected", Msg("problem.unexpected.detail", kind=type(error).__name__)
+    )

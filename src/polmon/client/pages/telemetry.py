@@ -11,127 +11,160 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QLineEdit,
     QPlainTextEdit,
-    QPushButton,
     QSplitter,
     QTableView,
-    QVBoxLayout,
     QWidget,
 )
 
+from polmon.client import theme
 from polmon.client.formatting import format_bytes, pretty_json
+from polmon.client.i18n import Msg, bind, bind_text, bind_tip, status_label, tr, tr_n
 from polmon.client.models import CATEGORIES, TelemetryFilter, TelemetryModel
 from polmon.client.pages import Context, Page
 from polmon.client.tasks import CancelToken
-from polmon.client.widgets import StatusBadge, fill_table, make_table, monospace_font, muted
+from polmon.client.widgets import (
+    RAW_ROLE,
+    Card,
+    StateView,
+    StatusBadge,
+    accessible,
+    button,
+    fill_table,
+    label,
+    make_table,
+    monospace_font,
+)
 
 PAGE_SIZE = 1000
+FINISHED = {"succeeded", "failed", "timed_out", "cancelled", "error", "interrupted"}
 
 
 class TelemetryPage(Page):
     key = "telemetry"
-    title = "Telemetry"
 
     def __init__(self, context: Context, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self.experiment_id: str | None = None
         self.status: str | None = None
+        self.record: dict[str, object] = {}
         self._polling = False
 
+        source = Card("telemetry.source", name="source")
         top = QHBoxLayout()
-        top.addWidget(QLabel("Experiment"))
+        top.setSpacing(theme.SPACE["sm"])
+        top.addWidget(label("telemetry.experiment", name="fieldLabel"))
         self.selector = QComboBox()
-        self.selector.setAccessibleName("Experiment")
+        self.selector.setObjectName("experimentSelector")
+        accessible(self.selector, "a11y.experiment_selector")
+        self.selector.setFont(monospace_font())
         self.selector.setMinimumWidth(300)
+        self.selector.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.selector.setMinimumContentsLength(40)
         self.selector.activated.connect(self._chosen)
         top.addWidget(self.selector)
         self.badge = StatusBadge()
         top.addWidget(self.badge)
-        self.follow = QCheckBox("Follow live")
+        self.follow = QCheckBox()
+        self.follow.setObjectName("followLive")
+        bind_text(self.follow, "telemetry.follow")
+        bind_tip(self.follow, "telemetry.follow.tip")
         self.follow.setChecked(True)
-        self.follow.setToolTip("Poll for new events every second while the experiment runs")
-        top.addWidget(self.follow)
-        self.refresh_button = QPushButton("Refresh")
+        top.addStretch(1)
+        self.refresh_button = button("common.refresh", "quiet", tip="telemetry.refresh.tip",
+                                     name="refreshButton")
         self.refresh_button.clicked.connect(self.refresh_list)
         top.addWidget(self.refresh_button)
-        self.export_button = QPushButton("Export CSV…")
-        self.export_button.setToolTip("Save the events currently shown (filters applied) as CSV")
+        self.export_button = button("telemetry.export", tip="telemetry.export.tip",
+                                    name="exportCsv")
         self.export_button.clicked.connect(self.export_csv)
         top.addWidget(self.export_button)
-        self.capture_button = QPushButton("Save capture…")
-        self.capture_button.setToolTip("Download the experiment's PCAP (open it in Wireshark)")
+        self.capture_button = button("telemetry.save_capture", tip="telemetry.save_capture.tip",
+                                     name="saveCapture")
         self.capture_button.clicked.connect(self.save_capture)
         self.capture_button.setEnabled(False)
         top.addWidget(self.capture_button)
-        top.addStretch(1)
-        self.root.addLayout(top)
+        source.body.addLayout(top)
 
         filters = QHBoxLayout()
+        filters.setSpacing(theme.SPACE["md"])
+        filters.addWidget(label("telemetry.categories", name="sectionLabel"))
         self.category_boxes: dict[str, QCheckBox] = {}
         for category in CATEGORIES:
-            box = QCheckBox(category.replace("_", " "))
+            box = QCheckBox()
+            box.setObjectName(f"category_{category}")
+            bind(box, "setText", f"category.{category}")
             box.setChecked(True)
             box.toggled.connect(self._filter_changed)
             self.category_boxes[category] = box
             filters.addWidget(box)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Filter events, nodes, payloads…")
+        self.search.setObjectName("telemetrySearch")
+        bind(self.search, "setPlaceholderText", "telemetry.search")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter_changed)
-        filters.addWidget(self.search, 1)
-        self.count = muted()
-        filters.addWidget(self.count)
-        self.root.addLayout(filters)
+        search_row = QHBoxLayout()
+        search_row.setSpacing(theme.SPACE["md"])
+        search_row.addWidget(self.search, 1)
+        search_row.addWidget(self.follow)
+        self.count = label(name="muted")
+        self.count.setObjectName("eventCount")
+        search_row.addWidget(self.count)
+        filters.addStretch(1)
+        source.body.addLayout(filters)
+        source.body.addLayout(search_row)
+        self.root.addWidget(source)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
         self.model = TelemetryModel(parent=self)
         self.proxy = TelemetryFilter(self)
         self.proxy.setSourceModel(self.model)
         self.table = QTableView()
+        self.table.setObjectName("telemetryTable")
         self.table.setModel(self.proxy)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(22)
+        self.table.verticalHeader().setDefaultSectionSize(24)
         header = self.table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         for column in range(5):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
+        for column, width in enumerate((56, 110, 200, 190, 130)):
+            header.resizeSection(column, width)
         self.table.selectionModel().currentRowChanged.connect(self._event_selected)
-        table_box = QWidget()
-        table_layout = QVBoxLayout(table_box)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-        self.empty = muted(
-            "No experiment selected. Run one on the Scenarios page, or pick an experiment above "
-            "(Refresh loads the list from the backend)."
-        )
-        table_layout.addWidget(self.empty)
-        table_layout.addWidget(self.table, 1)
-        splitter.addWidget(table_box)
+        events = Card("telemetry.events", name="events")
+        self.table_state = StateView(self.table)
+        events.add(self.table_state, 1)
+        splitter.addWidget(events)
 
         lower = QSplitter()
-        payload_box = QGroupBox("Selected event")
-        payload_layout = QVBoxLayout(payload_box)
+        lower.setChildrenCollapsible(False)
+        payload_card = Card("telemetry.selected", name="payload")
         self.payload = QPlainTextEdit()
-        self.payload.setAccessibleName("Selected event payload")
+        self.payload.setObjectName("eventPayload")
         self.payload.setReadOnly(True)
         self.payload.setFont(monospace_font())
-        payload_layout.addWidget(self.payload)
-        lower.addWidget(payload_box)
-        capture_box = QGroupBox("Capture summary")
-        capture_layout = QVBoxLayout(capture_box)
-        self.capture = make_table(("Measure", "Value"), stretch=1)
-        capture_layout.addWidget(self.capture)
-        lower.addWidget(capture_box)
-        lower.setSizes([600, 360])
+        bind(self.payload, "setPlaceholderText", "telemetry.selected.placeholder")
+        payload_card.add(self.payload, 1)
+        lower.addWidget(payload_card)
+        capture_card = Card("telemetry.capture", name="capture")
+        self.capture = make_table(("column.measure", "column.value"), stretch=1, sortable=False,
+                                  name="captureSummary")
+        capture_card.add(self.capture, 1)
+        lower.addWidget(capture_card)
+        lower.setSizes([700, 480])
         splitter.addWidget(lower)
-        splitter.setSizes([460, 200])
+        splitter.setSizes([470, 210])
         self.root.addWidget(splitter, 1)
 
         self.timer = QTimer(self)
@@ -141,6 +174,12 @@ class TelemetryPage(Page):
         self.session.experiments_changed.connect(self._refresh_selector)
         self._update_count()
 
+    def retranslate(self) -> None:
+        self.model.retranslate()
+        self._refresh_selector()
+        self._show_capture(self.record)
+        self._update_count()
+
     # -- selection ----------------------------------------------------------------------------
 
     def refresh_list(self) -> None:
@@ -148,7 +187,7 @@ class TelemetryPage(Page):
             return
         client = self.session.client()
         self.context.run(
-            "List experiments",
+            Msg("operation.list_experiments"),
             lambda token, report: client.experiments(),
             on_success=lambda items: self.session.set_experiments(items),  # type: ignore[arg-type]
             banner=self.banner,
@@ -162,7 +201,7 @@ class TelemetryPage(Page):
         seen = set()
         active = self.session.active_experiment
         if active:
-            self.selector.addItem(f"{active}  (running)", active)
+            self.selector.addItem(tr("telemetry.running_item", experiment=active), active)
             seen.add(active)
         for item in self.session.experiments:
             experiment_id = str(item.get("experiment_id"))
@@ -170,10 +209,14 @@ class TelemetryPage(Page):
                 continue
             seen.add(experiment_id)
             self.selector.addItem(
-                f"{experiment_id}  ·  {item.get('scenario_id')}  ·  {item.get('status')}",
+                f"{experiment_id}  ·  {item.get('scenario_id')}  ·  "
+                f"{status_label(item.get('status'))}",
                 experiment_id,
             )
         index = self.selector.findData(current) if current else -1
+        if current and index < 0:
+            self.selector.addItem(current, current)
+            index = self.selector.count() - 1
         self.selector.setCurrentIndex(index)
         self.selector.blockSignals(False)
 
@@ -186,6 +229,7 @@ class TelemetryPage(Page):
         if experiment_id != self.experiment_id:
             self.experiment_id = experiment_id
             self.status = None
+            self.record = {}
             self.model.clear()
             self.payload.clear()
             self.capture.setRowCount(0)
@@ -196,24 +240,13 @@ class TelemetryPage(Page):
             self.selector.addItem(experiment_id, experiment_id)
             index = self.selector.count() - 1
         self.selector.setCurrentIndex(index)
+        self._update_count()
         self._poll(force=True)
 
     # -- polling ------------------------------------------------------------------------------
 
     def _tick(self) -> None:
-        if (
-            self.isVisible()
-            and self.follow.isChecked()
-            and self.status
-            not in {
-                "succeeded",
-                "failed",
-                "timed_out",
-                "cancelled",
-                "error",
-                "interrupted",
-            }
-        ):
+        if self.isVisible() and self.follow.isChecked() and self.status not in FINISHED:
             self._poll()
 
     def _poll(self, *, force: bool = False) -> None:
@@ -238,7 +271,7 @@ class TelemetryPage(Page):
 
         self._polling = True
         self.context.run(
-            f"Telemetry {experiment_id}",
+            Msg("operation.telemetry", experiment=experiment_id),
             work,
             on_success=lambda result: self._received(experiment_id, result),  # type: ignore[arg-type]
             on_failure=lambda error: self._poll_failed(),
@@ -263,6 +296,7 @@ class TelemetryPage(Page):
             self.table.scrollToBottom()
         record = result.get("record") or {}
         assert isinstance(record, dict)
+        self.record = record
         self.status = str(record.get("status"))
         self.badge.set_status(self.status)
         self.capture_button.setEnabled(isinstance(record.get("capture"), dict))
@@ -275,23 +309,31 @@ class TelemetryPage(Page):
         rows: list[tuple[str, object]] = []
         if isinstance(capture, dict):
             rows += [
-                ("Frames captured", capture.get("frame_count")),
-                ("Bytes captured", format_bytes(capture.get("captured_bytes"))),
-                ("Frames dropped (capture limit)", capture.get("dropped_frames")),
-                ("Frames truncated (snap length)", capture.get("truncated_frames")),
-                ("Capture file (on the backend)", capture.get("path")),
+                ("capture.frames", capture.get("frame_count")),
+                ("capture.bytes", format_bytes(capture.get("captured_bytes"))),
+                ("capture.dropped", capture.get("dropped_frames")),
+                ("capture.truncated", capture.get("truncated_frames")),
+                ("capture.file", capture.get("path")),
             ]
         elif self.status in {"running", "cancelling"}:
-            rows.append(("Capture", "written when the experiment finishes"))
+            rows.append(("capture.title", tr("capture.pending")))
         if isinstance(progress, dict) and progress:
             rows.append(
                 (
-                    "Actions completed",
+                    "capture.actions",
                     f"{progress.get('completed_actions')}/{progress.get('total_actions')}",
                 )
             )
-        rows.append(("Events received", len(self.model.events) + self.model.dropped))
-        fill_table(self.capture, rows)
+        if self.experiment_id:
+            rows.append(("capture.events", len(self.model.events) + self.model.dropped))
+        fill_table(self.capture, [(tr(key), value) for key, value in rows])
+        for row, (key, _) in enumerate(rows):
+            item = self.capture.item(row, 0)
+            if item is not None:
+                item.setData(Qt.ItemDataRole.UserRole, key)
+                value_item = self.capture.item(row, 1)
+                if value_item is not None:
+                    value_item.setData(RAW_ROLE, rows[row][1])
 
     def _filter_changed(self) -> None:
         self.proxy.set_categories(
@@ -302,10 +344,19 @@ class TelemetryPage(Page):
 
     def _update_count(self) -> None:
         self.export_button.setEnabled(self.model.rowCount() > 0)
-        self.empty.setVisible(self.experiment_id is None)
         shown, total = self.proxy.rowCount(), self.model.rowCount()
-        dropped = f" ({self.model.dropped} oldest dropped)" if self.model.dropped else ""
-        self.count.setText(f"{shown} of {total} events{dropped}")
+        text = tr("telemetry.count", shown=shown, total=tr_n("count.events", total))
+        if self.model.dropped:
+            text += " " + tr("telemetry.dropped", count=self.model.dropped)
+        self.count.setText(text)
+        if self.experiment_id is None:
+            self.table_state.show_empty(Msg("telemetry.none"), Msg("telemetry.none_hint"))
+        elif total == 0 and self.status is None:
+            self.table_state.show_loading(Msg("telemetry.loading"))
+        elif total == 0:
+            self.table_state.show_empty(Msg("telemetry.no_events"))
+        else:
+            self.table_state.show_content()
 
     def visible_events(self) -> list[dict[str, object]]:
         return [
@@ -336,7 +387,7 @@ class TelemetryPage(Page):
         if not self.experiment_id:
             return
         path = self.context.ask_save(
-            self, "Export telemetry", f"{self.experiment_id}-telemetry.csv", "CSV (*.csv)"
+            self, "telemetry.export.dialog", f"{self.experiment_id}-telemetry.csv", "csv"
         )
         if path is None:
             return
@@ -345,7 +396,7 @@ class TelemetryPage(Page):
         except OSError as error:
             self.banner.show_problem(self.context.problem(error))
             return
-        self.session.log(f"Exported {count} telemetry events to {path}")
+        self.session.log(Msg("log.exported", count=count, path=path))
 
     def save_capture(self, path: Path | None = None) -> None:
         """Download the capture of the shown experiment into ``path`` (asks when omitted)."""
@@ -354,7 +405,7 @@ class TelemetryPage(Page):
             return
         if path is None:
             path = self.context.ask_save(
-                self, "Save capture", f"{experiment_id}.pcap", "Packet capture (*.pcap)"
+                self, "telemetry.save_capture.dialog", f"{experiment_id}.pcap", "pcap"
             )
             if path is None:
                 return
@@ -367,9 +418,11 @@ class TelemetryPage(Page):
             return len(data)
 
         self.context.run(
-            f"Save capture {experiment_id}",
+            Msg("operation.save_capture", experiment=experiment_id),
             work,
-            on_success=lambda size: self.session.log(f"Saved {size} bytes of capture to {target}"),
+            on_success=lambda size: self.session.log(
+                Msg("log.capture_saved", size=format_bytes(size), path=target)
+            ),
             banner=self.banner,
         )
 
@@ -379,7 +432,7 @@ class TelemetryPage(Page):
 
     def refresh_actions(self) -> None:
         self.refresh_button.setEnabled(self.session.connected)
-        self.export_button.setEnabled(bool(self.experiment_id))
+        self.export_button.setEnabled(bool(self.experiment_id) and self.model.rowCount() > 0)
 
     def activated(self, argument: object = None) -> None:
         if self.session.connected and not self.session.experiments:
@@ -388,3 +441,4 @@ class TelemetryPage(Page):
             self.show_experiment(argument)
         elif self.session.active_experiment and not self.experiment_id:
             self.show_experiment(self.session.active_experiment)
+
