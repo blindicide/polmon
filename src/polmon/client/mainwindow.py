@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import sys
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -94,6 +95,7 @@ STATE_TONES = {
     ConnectionState.UNAUTHORIZED: "danger",
     ConnectionState.LOST: "danger",
 }
+LOG_LINES = 5000  # activity-log capacity
 # (keys, catalog key of the action): shown in Help → Keyboard shortcuts and docs/CLIENT.md.
 SHORTCUTS = (
     ("Ctrl+Return", "shortcut.connect"),
@@ -339,7 +341,10 @@ class MainWindow(QMainWindow):
         self.log_view = QPlainTextEdit()
         self.log_view.setObjectName("activityLog")
         self.log_view.setReadOnly(True)
-        self.log_view.setMaximumBlockCount(5000)
+        self.log_view.setMaximumBlockCount(LOG_LINES)
+        # (time, level, message) of every line, kept to re-render the log in another language
+        # or theme; messages are Msg/Problem values rendered on display.
+        self._log_entries: deque[tuple[str, str, object]] = deque(maxlen=LOG_LINES)
         self.log_dock = QDockWidget(self)
         bind(self.log_dock, "setWindowTitle", "log.dock")
         self.log_dock.setObjectName("activityDock")
@@ -404,7 +409,8 @@ class MainWindow(QMainWindow):
         self.set_language(languages[(index + 1) % len(languages)])
 
     def retranslate(self) -> None:
-        """Computed window text: status line, window title, dynamic action names."""
+        """Computed window text: status line, window title, dynamic action names, the log."""
+        self._rerender_log()
         self._update_status()
         self._update_actions()
         self._name_for_assistive_technology()
@@ -663,7 +669,7 @@ class MainWindow(QMainWindow):
             problem = describe(error)
             session.set_state(ConnectionState.DISCONNECTED, problem)
             self.pages["dashboard"].banner.show_problem(problem)
-            session.log(Msg("log.connect_failed", problem=problem.text()), "error")
+            session.log(Msg("log.connect_failed", problem=problem), "error")
             return
         self.settings.setValue("connection/url", session.url)
         self.settings.setValue("connection/timeout", session.timeout)
@@ -719,7 +725,7 @@ class MainWindow(QMainWindow):
         )
         self.session.set_state(ConnectionState.DISCONNECTED, problem)
         self.pages["dashboard"].banner.show_problem(problem)
-        self.session.log(problem.text(), "error")
+        self.session.log(problem, "error")
 
     def _local_start_released(self) -> None:
         self._local_start_handle = None
@@ -924,7 +930,7 @@ class MainWindow(QMainWindow):
                     features=features),
                 Msg("problem.older_backend.hint", version=__version__),
             )
-            session.log(problem.text(), "warning")
+            session.log(problem, "warning")
             self.pages["dashboard"].banner.show_problem(problem, "warning")
         session.set_resources(result["resources"])  # type: ignore[arg-type]
         session.set_topologies(result["topologies"])  # type: ignore[arg-type]
@@ -950,7 +956,7 @@ class MainWindow(QMainWindow):
             self.poll_timer.stop()
             session.set_state(ConnectionState.UNAUTHORIZED, problem)
             banner.show_problem(problem)
-            session.log(Msg("log.connection_refused", problem=problem.text()), "error")
+            session.log(Msg("log.connection_refused", problem=problem), "error")
             return
         transport = (
             isinstance(error, ApiClientError)
@@ -961,11 +967,11 @@ class MainWindow(QMainWindow):
             self.poll_timer.stop()
             session.set_state(ConnectionState.DISCONNECTED, problem)
             banner.show_problem(problem)
-            session.log(Msg("log.connect_failed", problem=problem.text()), "error")
+            session.log(Msg("log.connect_failed", problem=problem), "error")
             return
         if session.state is not ConnectionState.LOST:
             session.set_state(ConnectionState.LOST, problem)
-            session.log(Msg("log.lost", problem=problem.text()), "error")
+            session.log(Msg("log.lost", problem=problem), "error")
             banner.show_problem(
                 Problem(
                     "problem.lost",
@@ -995,7 +1001,7 @@ class MainWindow(QMainWindow):
         )
         self.session.set_state(ConnectionState.DISCONNECTED, problem)
         self.pages["dashboard"].banner.show_problem(problem)
-        self.session.log(problem.text(), "error")
+        self.session.log(problem, "error")
 
     def _connection_changed(self) -> None:
         state = self.session.state
@@ -1089,16 +1095,31 @@ class MainWindow(QMainWindow):
 
     # -- log ----------------------------------------------------------------------------------
 
-    def _append_log(self, level: str, message: str) -> None:
-        stamp = datetime.now().strftime("%H:%M:%S")
+    def _append_log(self, level: str, message: object) -> None:
+        entry = (datetime.now().strftime("%H:%M:%S"), level, message)
+        self._log_entries.append(entry)
+        self.log_view.appendHtml(self._log_html(*entry))
+
+    @staticmethod
+    def _log_html(stamp: str, level: str, message: object) -> str:
         tone = {"error": "danger", "warning": "warning"}.get(level)
         glyph = {"error": "✕ ", "warning": "! "}.get(level, "")
-        text = html.escape(glyph + message).replace("\n", "<br>&nbsp;&nbsp;")
-        # Ordinary lines carry no colour so they follow the palette when the theme changes.
+        text = html.escape(glyph + str(message)).replace("\n", "<br>&nbsp;&nbsp;")
         body = f"<span style='color:{theme.hex_color(tone)}'>{text}</span>" if tone else text
-        self.log_view.appendHtml(
-            f"<span style='color:{theme.hex_color('muted')}'>{stamp}</span> {body}"
-        )
+        return f"<span style='color:{theme.hex_color('muted')}'>{stamp}</span> {body}"
+
+    def _rerender_log(self) -> None:
+        """Show the whole log again in the current language and theme colours."""
+        view = self.log_view
+        bar = view.verticalScrollBar()
+        at_end = bar.value() == bar.maximum()
+        view.setUpdatesEnabled(False)
+        view.clear()
+        for entry in self._log_entries:
+            view.appendHtml(self._log_html(*entry))
+        if at_end:
+            bar.setValue(bar.maximum())
+        view.setUpdatesEnabled(True)
 
     # -- theme --------------------------------------------------------------------------------
 
@@ -1121,6 +1142,7 @@ class MainWindow(QMainWindow):
             self.session.log(Msg("log.theme", theme=Msg(f"theme.{preference}")))
         for widget in self.findChildren(QWidget):
             widget.update()
+        self._rerender_log()  # tone colours of the new theme
 
     def toggle_theme(self) -> None:
         self.set_theme("light" if theme.current() == "dark" else "dark")

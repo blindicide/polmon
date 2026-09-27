@@ -104,6 +104,9 @@ class Problem:
             lines.append(self.hint)
         return "\n".join(lines)
 
+    def __str__(self) -> str:  # rendered on display: a logged problem follows a language switch
+        return self.text()
+
     def __repr__(self) -> str:
         return f"Problem({self.key!r}, message_code={self.message_code!r}, status={self.status})"
 

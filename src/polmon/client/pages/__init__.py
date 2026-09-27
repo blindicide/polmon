@@ -95,7 +95,7 @@ class Context(QObject):
                 session.log(Msg("log.cancelled", name=name), "warning")
             else:
                 problem = describe(error, url=url, timeout=timeout)
-                session.log(Msg("log.failed", name=name, problem=problem.text()), "error")
+                session.log(Msg("log.failed", name=name, problem=problem), "error")
                 if banner is not None:
                     banner.show_problem(problem)
             if on_failure is not None:

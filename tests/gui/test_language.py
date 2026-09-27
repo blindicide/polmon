@@ -174,6 +174,12 @@ def test_runtime_switch_retranslates_every_screen_and_keeps_state(
     leftovers = cyrillic_leftovers(window)
     assert leftovers == [], "\n".join(map(repr, leftovers))
     assert "Traceback" not in window.log_view.toPlainText()
+    log = [
+        line
+        for line in window.log_view.toPlainText().splitlines()
+        if CYRILLIC.search(line) and not any(name in line for name in AUTONYMS.values())
+    ]
+    assert log == [], log  # the activity log is re-rendered in English too
     assert (
         window.session.state,
         window.bar.url.text(),

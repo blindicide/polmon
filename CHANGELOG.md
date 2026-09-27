@@ -6,6 +6,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Changed
 
+- The activity log follows a language or theme switch: earlier lines are re-rendered in the
+  new language (problems included) instead of keeping the old one.
 - Identifiers render in a real monospaced font on every platform (Cascadia Mono, Consolas,
   DejaVu Sans Mono, Liberation Mono or Menlo, whichever is installed); on Windows they fell back
   to the platform's fixed font or to the proportional UI font.

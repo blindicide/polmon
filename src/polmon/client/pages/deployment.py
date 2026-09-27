@@ -293,7 +293,7 @@ class DeploymentPage(Page):
         ):
             problem = fidelity_refusal()
             self.banner.show_problem(problem, "warning")
-            self.session.log(Msg("log.refused", problem=problem.text()), "warning")
+            self.session.log(Msg("log.refused", problem=problem), "warning")
             return
         endpoints = estimate.get("endpoint_count") if isinstance(estimate, dict) else None
         expected = (

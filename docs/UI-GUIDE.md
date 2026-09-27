@@ -23,8 +23,10 @@ stylesheet), `widgets.py` (components), `i18n.py` and `locales/` (catalogs).
   `backend.<message_code>`. The English backend `message` appears only, quoted, when an older
   backend sends no code. Tracebacks never reach the UI.
 - **What stays as is:** identifiers and data (topology, node and experiment IDs, URLs, file
-  paths, YAML and JSON documents, event names), the activity log's history (lines keep the
-  language they were written in), and the kept technical terms below.
+  paths, YAML and JSON documents, event names), language names (each in its own language),
+  and the kept technical terms below. The activity log keeps its messages, not their text:
+  after a switch every line — including earlier ones — is shown in the new language (and a
+  theme switch recolours it).
 
 ### Gates
 
