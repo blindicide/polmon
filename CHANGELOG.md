@@ -4,6 +4,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-27
+
 ### Added
 
 - `polmon-backend --data-dir PATH` chooses where telemetry, captures, reports and benchmark
@@ -14,6 +16,14 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   Local backend preset finds and owns the backend of its own version (it previously always
   reported "no backend beside it" on Linux). Build Linux runs the packaged client's local
   self-test, GUI probe and killed-client check against the packaged backend in that layout.
+
+### Changed
+
+- `scripts/ui_screenshots.py` no longer re-applies the theme after building the window, so the
+  committed screenshots show exactly what a launch renders (the re-application had hidden the
+  overlapping-sidebar bug fixed in v0.3.0); all 13 were regenerated from v0.3.1.
+- `uv.lock` names the current version again (it said 0.2.3 through v0.3.1); a unit test keeps
+  `uv.lock`, `pyproject.toml` and `polmon.version` in agreement.
 
 ## [0.3.1] - 2026-09-27
 
