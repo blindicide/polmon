@@ -36,6 +36,7 @@ from polmon.client.widgets import (
     monospace_font,
     muted,
     primary_button,
+    tint,
 )
 from polmon.client.yamlmap import document_id, locate, reason_line
 
@@ -494,7 +495,7 @@ class TopologiesPage(Page):
                 self.nodes, [node["id"], node["class"].upper(), "", "", "", notes]
             )
             parent.setFont(0, mono)
-            parent.setForeground(1, theme.color("info" if node["class"] == "l0" else "success"))
+            tint(parent, "info" if node["class"] == "l0" else "success", 1)
             for interface in node.get("interfaces") or []:
                 child = QTreeWidgetItem(
                     parent,
@@ -597,7 +598,7 @@ class TopologiesPage(Page):
                 item.setData(RAW_ROLE, verdict or None)
             if item is not None and verdict:
                 bad = verdict == "exceeds"
-                item.setForeground(theme.color("danger" if bad else "success"))
+                tint(item, "danger" if bad else "success")
                 item.setText(f"{theme.STATUS_GLYPHS['danger' if bad else 'success']} "
                              f"{item.text()}")
 
@@ -616,7 +617,7 @@ class TopologiesPage(Page):
                 )
             )
             if item.get("deployed"):
-                entry.setForeground(theme.color("success"))
+                tint(entry, "success")
             self.loaded.addItem(entry)
         if self.session.backend_topologies:
             self.loaded_state.show_content()

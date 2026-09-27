@@ -65,6 +65,7 @@ from polmon.client.widgets import (
     confirm,
     label,
     primary_button,
+    retint_items,
 )
 from polmon.version import __version__
 
@@ -1143,6 +1144,7 @@ class MainWindow(QMainWindow):
         for widget in self.findChildren(QWidget):
             widget.update()
         self._rerender_log()  # tone colours of the new theme
+        retint_items(self)
 
     def toggle_theme(self) -> None:
         self.set_theme("light" if theme.current() == "dark" else "dark")

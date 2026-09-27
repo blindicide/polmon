@@ -4,6 +4,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Status colours in tables, trees and lists follow a theme switch: they kept the previous
+  theme's colour (a dark-green "✓ успешно" on the dark theme's background).
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed

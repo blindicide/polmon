@@ -32,6 +32,7 @@ from polmon.client.widgets import (
     make_table,
     monospace_font,
     primary_button,
+    tint,
 )
 from polmon.client.yamlmap import document_id
 
@@ -436,7 +437,7 @@ class ScenariosPage(Page):
         fill_table(self.summary, [(tr(key), value) for key, value in rows])
         state_item = self.summary.item(2, 1)
         if state_item is not None:
-            state_item.setForeground(theme.color(tone))
+            tint(state_item, tone)
             state_item.setData(RAW_ROLE, tone)
         self.badge.set_status("valid" if not problems else "incompatible")
         self.refresh_actions()

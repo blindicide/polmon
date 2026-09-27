@@ -370,3 +370,18 @@ def test_tab_order_follows_reading_order(window) -> None:
     positions = [order.index(name) for name in expected]
     assert positions == sorted(positions), order
     assert order[-1] == "activityLog", order
+
+
+def test_status_colours_follow_a_theme_switch(window) -> None:
+    """Tinted cells keep their tone, not a colour: switching theme recolours them."""
+    from polmon.client import theme
+    from polmon.client.widgets import TONE_ROLE, fill_table
+
+    table = window.pages["dashboard"].recent
+    fill_table(table, [("gui-1", "s", "t", "succeeded", "—")], colors={3: "status"})
+    window.set_theme("light")
+    assert table.item(0, 3).foreground().color() == theme.color("success")
+    window.set_theme("dark")
+    assert table.item(0, 3).data(TONE_ROLE) == "success"
+    assert table.item(0, 3).foreground().color() == theme.color("success")  # dark value now
+    assert theme.TOKENS["dark"]["success"] != theme.TOKENS["light"]["success"]

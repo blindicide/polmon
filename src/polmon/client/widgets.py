@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QListWidget,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
+    QTreeWidgetItemIterator,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +59,9 @@ from polmon.client.tasks import ProgressUpdate, TaskHandle
 # Item data role holding a cell's machine value (raw status, identifier, number) for tests and
 # for behaviour that must not depend on the display language.
 RAW_ROLE = Qt.ItemDataRole.UserRole + 1
+# The theme tone ("success", "danger" …) an item's text is tinted with; retint_items() re-applies
+# it after a theme switch (colours stored on items would otherwise keep the old theme's value).
+TONE_ROLE = Qt.ItemDataRole.UserRole + 2
 
 
 class ThemeAware:
@@ -339,7 +344,7 @@ def fill_table(
             item.setData(RAW_ROLE, value.key if isinstance(value, Msg) else value)
             item.setToolTip(text if len(text) > 40 else "")
             if status:
-                item.setForeground(theme.color(theme.status_color(str(value))))
+                tint(item, theme.status_color(str(value)))
             if font is not None and column in mono:
                 item.setFont(font)
             if isinstance(value, int | float) and not isinstance(value, bool):
@@ -411,6 +416,42 @@ class _TrimOnResize(QObject):
         if event.type() == QEvent.Type.Resize:
             _fit_to_view(self.parent())  # type: ignore[arg-type]
         return False
+
+
+def tint(item: object, tone: str, column: int | None = None) -> None:
+    """Colour a table, tree or list item's text by a theme tone, and remember the tone."""
+    if column is None:
+        item.setData(TONE_ROLE, tone)  # type: ignore[attr-defined]
+        item.setForeground(theme.color(tone))  # type: ignore[attr-defined]
+    else:
+        item.setData(column, TONE_ROLE, tone)  # type: ignore[attr-defined]
+        item.setForeground(column, theme.color(tone))  # type: ignore[attr-defined]
+
+
+def retint_items(root: QWidget) -> None:
+    """Re-apply the current theme's colours to every tinted item under ``root``."""
+    for table in root.findChildren(QTableWidget):
+        for row in range(table.rowCount()):
+            for column in range(table.columnCount()):
+                item = table.item(row, column)
+                tone = item.data(TONE_ROLE) if item is not None else None
+                if tone:
+                    item.setForeground(theme.color(tone))
+    for tree in root.findChildren(QTreeWidget):
+        iterator = QTreeWidgetItemIterator(tree)
+        while iterator.value() is not None:
+            node = iterator.value()
+            for column in range(tree.columnCount()):
+                tone = node.data(column, TONE_ROLE)
+                if tone:
+                    node.setForeground(column, theme.color(tone))
+            iterator += 1
+    for view in root.findChildren(QListWidget):
+        for row in range(view.count()):
+            entry = view.item(row)
+            tone = entry.data(TONE_ROLE)
+            if tone:
+                entry.setForeground(theme.color(tone))
 
 
 def raw_value(table: QTableWidget, row: int, column: int) -> object:
