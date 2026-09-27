@@ -80,6 +80,24 @@ inexpensive for the backend: it polls `health`, `resources`, `topologies` and de
 every 3 s (a few small JSON requests), telemetry once per second only while the Telemetry page
 follows a running experiment, and never overlaps polls.
 
+### v0.4.0: Russian UI and redesign
+
+Measured by the packaged clients' `--smoke-start` on hosted runners at commit 04281ea (Build
+Windows run 36294462584, Build Linux run 36294463788), against v0.3.0's numbers below:
+
+| Item | v0.4.0 | v0.3.0 |
+|---|---:|---:|
+| Windows one-file EXE | 51,226,560 B | 51,027,301 B |
+| Linux client tarball | 49,956,523 B | 49,768,161 B |
+| Idle RSS after 10 s, Windows | 105.4–106.0 MiB (4 starts) | 92.9 MiB |
+| Idle RSS after 10 s, Linux bundle | 103.0 MiB (3 starts) | 93.2 MiB |
+| Largest minimum window size over all pages (Russian) | 1284×848 Windows, 1398×813 Linux | — |
+
+The artifacts grew by about 0.2 MB (the Russian Qt translation `qtbase_ru.qm` and both
+catalogs). Idle memory grew by 10–13 MiB (11–14 %); the growth has not been attributed to a
+component yet (candidates: the richer widget tree, the painted stylesheet images, the catalogs
+and the Qt translator).
+
 ## Self-contained backend (v0.3.0)
 
 The backend is frozen separately and explicitly excludes PySide6 (the builds fail if any Qt file
