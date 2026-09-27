@@ -19,6 +19,17 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   (`GlobalMemoryStatusEx`) and lifetime CPU utilisation (`GetProcessTimes`); swap stays
   unreported on Windows (the page file is not swap) and the dashboard says "not reported by this
   host" instead of implying none is used.
+- On Linux a local backend outlived a client that was killed (`SIGKILL`, crash): it runs in its
+  own session and only Windows had a kill-on-close job, so it was reparented to init and kept
+  serving. The client now holds a lifeline pipe on the backend's stdin (`--exit-with-stdin`);
+  EOF — the client stopping it, or the OS closing the pipe when the client dies — shuts the
+  backend down gracefully on every platform, so a normal stop on Windows also exits 0 instead of
+  being terminated.
+
+### Added
+
+- Build Linux's fresh-runner job starts the bundled systemd user unit for real and drives the
+  HTTP workflow through it. The README has a "Which download?" table.
 
 ## [0.3.0] - 2026-09-26
 
