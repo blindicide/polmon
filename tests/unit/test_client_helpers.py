@@ -9,12 +9,7 @@ import pytest
 from polmon.client import i18n
 from polmon.client.api import ApiClientError
 from polmon.client.errors import describe, limit_items
-from polmon.client.formatting import (
-    estimate_eta,
-    format_bytes,
-    format_seconds,
-    progress_text,
-)
+from polmon.client.formatting import duration, estimate_eta, format_duration, progress_text
 from polmon.client.i18n import Msg
 from polmon.client.yamlmap import document_id, locate, reason_line
 
@@ -61,7 +56,7 @@ def test_transport_failures_are_actionable(language) -> None:  # noqa: ANN001
     windows_refused = describe(ApiClientError("unable to reach backend: [WinError 10061] ..."))
     assert windows_refused.key == "problem.refused"
     slow = describe(ApiClientError("unable to reach backend: timed out"), timeout=5)
-    assert slow.key == "problem.timeout" and slow.detail_message.params["seconds"] == "5"
+    assert slow.key == "problem.timeout" and slow.detail_message.params["timeout"] == duration(5)
     reset = describe(ApiClientError("connection to backend failed: [Errno 104] reset by peer"))
     assert reset.key == "problem.dropped"
     assert not i18n.missing
@@ -122,19 +117,13 @@ def test_uncoded_backend_text_is_quoted_inside_a_localized_sentence(language) ->
     assert "something old" in older.detail
 
 
-def test_formatting_is_compact_and_total(language) -> None:  # noqa: ANN001
-    assert format_bytes(512) == "512 B"
-    assert format_bytes(3 * 1_048_576) == "3.0 MiB"
-    assert format_bytes(None) == "—"
-    assert format_seconds(0.25) == "250 ms"  # unit symbols are the same in every language
-    assert format_seconds(75) == "1 min 15 s"
-    assert format_seconds(3700) == "1 h 01 min"
+def test_progress_text_is_total(language) -> None:  # noqa: ANN001
     assert estimate_eta(2, 10, 4.0) == 16.0
     assert estimate_eta(0, 10, 4.0) is None
     text = progress_text(3, 10, 4.2, 9.8, "action ping")
     parts = text.split(" · ")
-    assert "3/10" in parts[0] and parts[1] == "30 %" and parts[-1] == "action ping"
-    assert "4.2 s" in parts[2] and "9.8 s" in parts[3]
+    assert "3/10" in parts[0] and parts[1] == "30\u00a0%" and parts[-1] == "action ping"
+    assert format_duration(4.2) in parts[2] and format_duration(9.8) in parts[3]
 
 
 def test_yaml_locations_resolve_to_lines() -> None:

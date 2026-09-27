@@ -36,6 +36,10 @@ def test_client_has_no_hard_coded_user_facing_literals() -> None:
         'status = f"Deployed {count} nodes to the backend"',
         'MESSAGE = "The backend is not reachable"',
         'combo.addItem("Local backend")',
+        'timeout.setSuffix(" s")',  # units come from the catalogs, in agreement with the value
+        'text = f"{minutes} min {rest:02d} s"',
+        'limit = f"{value} MiB"',
+        'shown = f"{elapsed:.1f}ms"',
     ],
 )
 def test_lint_flags_hard_coded_text(source: str) -> None:
@@ -53,7 +57,9 @@ def test_lint_flags_hard_coded_text(source: str) -> None:
         'raise ValueError("unexpected response from the backend")',
         'reason = text.removeprefix("unable to reach backend: ")',
         'pattern = "*.yml *.yaml"',
-        'timeout.setSuffix(" s")',  # unit symbols are not translated
+        'unit_suffix(timeout, "second")',
+        'style = "min-height: 28px"',
+        'plural = f"{name}s"',
         'label.setText("Local backend")  # i18n: allow',
         'def f():\n    """Explain in plain English what happens."""',
     ],
@@ -93,6 +99,10 @@ def test_catalogs_are_complete() -> None:
         ("ru", "common.close", "  ", "ru: common.close: empty"),
         ("ru", "common.close", "Закрыть лог", "ru: common.close: glossary: use «журнал действий»"),
         ("ru", "common.close", "Развертывание", "ru: common.close: glossary: use «развёртывание"),
+        ("ru", "tile.limit", "лимит {limit} MiB", "ru: tile.limit: English unit symbols ['MiB']"),
+        ("ru", "progress.elapsed", "прошло {duration} s",
+         "ru: progress.elapsed: English unit symbols ['s']"),
+        ("ru", "unit.minute", "min", "ru: unit.minute: English unit symbols ['min']"),
     ],
 )
 def test_completeness_detects_broken_catalogs(

@@ -46,7 +46,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "показывается",
     "connection.timeout": "Тайм-аут",
     "connection.timeout.tip": "Тайм-аут обычных запросов (развёртывание и сброс получают не "
-    "меньше 30 s)",
+    "меньше 30 секунд)",
     "connection.connect": "Подключиться",
     "connection.disconnect": "Отключиться",
     "connection.stop_local.confirm_title": "Остановить локальный бэкенд",
@@ -224,9 +224,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "operation.list_benchmarks": "Список результатов бенчмарков",
     "operation.open_benchmark": "Открытие результата {name}",
     "progress.step": "шаг {completed}/{total}",
-    "progress.elapsed": "прошло {duration}",
-    "progress.eta": "осталось ≈ {duration}",
-    "progress.elapsed_only": "прошло {seconds} s",
+    "progress.elapsed": "прошло: {duration}",
+    "progress.eta": "осталось: ≈ {duration}",
+    "progress.elapsed_only": "прошло: {duration}",
     "progress.cancel_tip": "Отменить текущую операцию (Esc)",
     "activity.working": "Выполняется: {name}",
     # -- состояния (машинные значения словами) --------------------------------------------------
@@ -324,6 +324,23 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     },
     "json.key": "Ключ",
     "json.value": "Значение",
+    # -- единицы измерения (слова и символы; форма числа по количеству) -------------------------
+    "unit.decimal_separator": ",",
+    "unit.millisecond": {
+        "one": "миллисекунда", "few": "миллисекунды", "many": "миллисекунд",
+        "other": "миллисекунды",
+    },
+    "unit.second": {"one": "секунда", "few": "секунды", "many": "секунд", "other": "секунды"},
+    "unit.minute": {"one": "минута", "few": "минуты", "many": "минут", "other": "минуты"},
+    "unit.hour": {"one": "час", "few": "часа", "many": "часов", "other": "часа"},
+    "unit.byte": {"one": "байт", "few": "байта", "many": "байт", "other": "байта"},
+    "unit.kib": "КиБ",
+    "unit.mib": "МиБ",
+    "unit.gib": "ГиБ",
+    "unit.tib": "ТиБ",
+    "unit.millicore": {
+        "one": "миллиядро", "few": "миллиядра", "many": "миллиядер", "other": "миллиядра",
+    },
     # -- столбцы таблиц -------------------------------------------------------------------------
     "column.number": "№",
     "column.topology": "Топология",
@@ -392,7 +409,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "dashboard.limits": "Лимиты допуска",
     "dashboard.limits.hint": "заданы на бэкенде",
     "dashboard.resources": "Ресурсы в реальном времени",
-    "dashboard.resources.hint": "опрос каждые 3 s",
+    "dashboard.resources.hint": "опрос каждые 3 секунды",
     "dashboard.recent": "Последние эксперименты",
     "dashboard.recent.open": "Все отчёты",
     "dashboard.recent.empty": "Экспериментов пока нет",
@@ -426,7 +443,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "tile.cpu.detail": "в среднем {lifetime} · время ЦП {time}",
     "tile.headroom.detail": "доступно {available} − резерв {reserve}",
     "tile.swap.detail": "подкачка хоста используется",
-    "tile.data.detail": "лимит {limit} MiB (занято {share})",
+    "tile.data.detail": "лимит {limit} (занято {share})",
     # -- развёртывание --------------------------------------------------------------------------
     "deployment.target": "Развернуть топологию",
     "deployment.topology": "Топология",
@@ -442,7 +459,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "deployment.reset.tip": "Разобрать все развёртывания; определения и отчёты сохраняются "
     "(Ctrl+Shift+R)",
     "deployment.estimate": "Оценка: конечных точек {endpoints} (L0: {l0}, пространств имён L1: "
-    "{namespaces}), около {memory} MiB памяти.",
+    "{namespaces}), памяти около {memory}.",
     "deployment.hint_offline": "Подключитесь к бэкенду, чтобы развёртывать топологии.",
     "deployment.hint_choose": "Выберите загруженную топологию или откройте её на странице "
     "«Топологии».",
@@ -485,7 +502,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "editor.save_as": "Сохранить как…",
     "editor.save_as.tip": "Сохранить документ в файл (Ctrl+S сохраняет в открытый файл)",
     "editor.unsaved": "Есть несохранённые изменения",
-    "editor.too_large": "{name} превышает лимит размера документа 2 MB.",
+    "editor.too_large": "{name} превышает лимит размера документа (2 МБ).",
     "editor.tab.problems": "Проблемы",
     "editor.tab.problems_count": "Проблемы ({count})",
     "validation.document": "документ",
@@ -520,8 +537,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "topologies.save.dialog": "Сохранить топологию",
     "topologies.fit.fits": "помещается (свободно: {free})",
     "topologies.fit.exceeds": "превышает (свободно: {free})",
-    "topologies.fit.memory_fits": "помещается (запас {spare} MiB)",
-    "topologies.fit.memory_exceeds": "превышает (запас {spare} MiB)",
+    "topologies.fit.memory_fits": "помещается (запас {spare})",
+    "topologies.fit.memory_exceeds": "превышает (запас {spare})",
     "topologies.fit.unsupported": "не поддерживается",
     "summary.topology": "Топология",
     "summary.networks": "Сети",
@@ -575,7 +592,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "scenarios.cancel_requested": "{experiment}: запрошена отмена…",
     "scenarios.progress.cancelling": "отмена",
     "scenarios.progress.action": "действие {action}",
-    "scenarios.progress_line": "{experiment}: {status} · действий {completed}/{total} · прошло "
+    "scenarios.progress_line": "{experiment}: {status} · действий {completed}/{total} · прошло: "
     "{elapsed}",
     "scenarios.finished_line": "{experiment}: {status}",
     "scenarios.errors": "ошибки: {errors}",
@@ -699,7 +716,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "benchmarks.limits.hint": "сверяются с лимитами бэкенда",
     "benchmarks.max_endpoints": "Конечные точки",
     "benchmarks.max_namespaces": "Пространства имён",
-    "benchmarks.max_run": "Секунд на прогон",
+    "benchmarks.max_run": "Время на прогон",
     "benchmarks.max_incremental": "Прирост памяти",
     "benchmarks.reserve": "Резерв памяти",
     "benchmarks.job": "Задание",
@@ -752,7 +769,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- проблемы (сообщения клиента) -----------------------------------------------------------
     "problem.message.title": "Сообщение",
     "problem.timeout.title": "Бэкенд не ответил",
-    "problem.timeout.detail": "Запрос к {url} превысил тайм-аут {seconds} s.",
+    "problem.timeout.detail": "Запрос к {url} превысил тайм-аут ({timeout}).",
     "problem.timeout.hint": "Проверьте, не перегружен ли бэкенд, или увеличьте тайм-аут на "
     "панели подключения.",
     "problem.refused.title": "Бэкенд недоступен",
@@ -774,7 +791,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.malformed.detail": "Сервер ответил, но не как бэкенд polmon.",
     "problem.malformed.hint": "Убедитесь, что URL указывает на бэкенд polmon совместимой версии.",
     "problem.download.title": "Файл слишком большой",
-    "problem.download.detail": "Файл превышает лимит загрузки клиента ({limit} байт).",
+    "problem.download.detail": "Файл превышает лимит загрузки клиента ({limit}).",
     "problem.unauthorized.title": "Нужен токен API",
     "problem.unauthorized.detail": "Бэкенд отклонил запрос: требуется действительный токен API.",
     "problem.unauthorized.hint": "Укажите токен бэкенда (POLMON_API_TOKEN или его файл токена) "
@@ -783,7 +800,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.unsupported.detail": "Бэкенд не предоставляет эту операцию (HTTP {status}).",
     "problem.unsupported.hint": "Бэкенд старше клиента; обновите его до той же версии polmon.",
     "problem.too_large.title": "Документ слишком большой",
-    "problem.too_large.hint": "Документы топологий и сценариев ограничены 2 MB.",
+    "problem.too_large.hint": "Размер документов топологий и сценариев ограничен: 2 МБ.",
     "problem.admission.title": "Отклонено контролем допуска",
     "problem.admission.hint": "Уменьшите нагрузку, разберите другие развёртывания или увеличьте "
     "лимиты, заданные на бэкенде.",
@@ -802,7 +819,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "повторите.",
     "problem.settings.title": "Неверные настройки",
     "problem.settings.detail": "URL бэкенда должен быть абсолютным адресом http:// или https://, "
-    "а тайм-аут — от 1 до 120 s.",
+    "а тайм-аут — от 1 до 120 секунд.",
     "problem.settings.hint": "Укажите URL вида http://192.168.1.10:8080.",
     "problem.unreadable.title": "Файл не читается",
     "problem.unreadable.detail": "Файл не является текстом в кодировке UTF-8.",
@@ -818,8 +835,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.local_stopped.detail": "Собственный бэкенд неожиданно завершился с кодом {code}.",
     "problem.local_stopped.hint": "Подробности — в журнале бэкенда: {log}",
     "problem.lost.title": "Бэкенд недоступен",
-    "problem.lost.detail": "{detail} Повтор каждые {seconds} s; действия недоступны, пока бэкенд "
-    "не ответит.",
+    "problem.lost.detail": "{detail} Интервал повтора: {interval}; действия недоступны, пока "
+    "бэкенд не ответит.",
     "problem.older_backend.title": "Устаревший бэкенд",
     "problem.older_backend.detail": "Бэкенд {version} не предоставляет: {features}. "
     "Развёртывания, загруженные этим клиентом, по-прежнему отслеживаются; для анализа "
@@ -839,21 +856,21 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "local.not_l0_only": "Собственный бэкенд не сообщил о границе «только L0».",
     "local.exited": "Бэкенд завершился с кодом {exit_code} при попытке запуска {attempt}. "
     "Последний вывод: {output}",
-    "local.not_ready": "Бэкенд не стал готов за {seconds} s при попытке {attempt}. Последний "
-    "вывод: {output}",
+    "local.not_ready": "Бэкенд не стал готов за отведённое время ({timeout}), попытка "
+    "{attempt}. Последний вывод: {output}",
     "local.not_started": "Бэкенд не запустился. Последний вывод: {output}",
     # -- нарушения лимитов допуска --------------------------------------------------------------
     "limit.endpoint_count": "Конечные точки",
     "limit.active_namespaces": "Активные пространства имён",
     "limit.available_memory": "Доступная память",
     "limit.concurrent_experiments": "Одновременные эксперименты",
-    "limit.duration_seconds": "Длительность эксперимента (s)",
+    "limit.duration_seconds": "Длительность эксперимента",
     "limit.data_directory": "Каталог данных",
     "limit.disk_free": "Свободное место на диске",
     "limit.max_endpoints": "Бенчмарк: максимум конечных точек",
     "limit.max_namespaces": "Бенчмарк: максимум пространств имён",
-    "limit.memory_reserve_mb": "Бенчмарк: резерв памяти (MiB)",
-    "limit.max_run_seconds": "Бенчмарк: время прогона (s)",
+    "limit.memory_reserve_mb": "Бенчмарк: резерв памяти",
+    "limit.max_run_seconds": "Бенчмарк: время прогона",
     "limit.concurrent_benchmarks": "Одновременные бенчмарки",
     "limit.active_experiments": "Активные эксперименты",
     "limit.benchmark_jobs": "Выполняемые задания бенчмарков",
@@ -862,14 +879,14 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "limit.field.active": "активно",
     "limit.field.requested": "запрошено",
     "limit.field.minimum": "минимум",
-    "limit.field.required_mb_including_reserve": "требуется (MiB, с резервом)",
-    "limit.field.available_mb": "доступно (MiB)",
-    "limit.field.used_mb": "занято (MiB)",
-    "limit.field.free_mb": "свободно (MiB)",
-    "limit.field.limit_mb": "лимит (MiB)",
-    "limit.field.reserve_mb": "резерв (MiB)",
-    "limit.field.next_experiment_capture_limit_mb": "захват следующего эксперимента (MiB)",
-    "limit.field.size_bytes": "размер (байт)",
+    "limit.field.required_mb_including_reserve": "требуется с резервом",
+    "limit.field.available_mb": "доступно",
+    "limit.field.used_mb": "занято",
+    "limit.field.free_mb": "свободно",
+    "limit.field.limit_mb": "лимит",
+    "limit.field.reserve_mb": "резерв",
+    "limit.field.next_experiment_capture_limit_mb": "захват следующего эксперимента",
+    "limit.field.size_bytes": "размер",
     # -- сообщения бэкенда (по message_code и параметрам) ---------------------------------------
     "backend.uncoded": "Ответ бэкенда: «{message}»",
     "backend.unknown": "Бэкенд сообщил об ошибке (код {code}).",
@@ -881,7 +898,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "и остальным (chmod 600).",
     "backend.auth.token_too_short": "Токен API должен содержать не менее {minimum} символов.",
     "backend.auth.unsafe_binding": "Прослушивание {host} без токена API запрещено.",
-    "backend.request.too_large": "Тело запроса превышает лимит бэкенда ({limit_bytes} байт).",
+    "backend.request.too_large": "Тело запроса превышает лимит бэкенда ({limit_bytes}).",
     "backend.fidelity.l0_only": "Локальный бэкенд поддерживает только синтетические узлы L0; "
     "для L1/L2 нужен бэкенд polmon на хосте Linux с правами на сетевые пространства имён.",
     "backend.fidelity.l0_benchmarks_only": "Локальный бэкенд выполняет только бенчмарки L0; для "
@@ -984,7 +1001,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.orchestration.ownership_conflict": "Часть этих лабораторных ресурсов уже "
     "принадлежит другому развёртыванию.",
     "backend.hybrid.bridge_not_forwarding": "Мост {bridge} не перешёл в режим пересылки за "
-    "{seconds} s.",
+    "отведённое время ({seconds}).",
     "backend.hybrid.no_tap_boundary": "У конечной точки-источника нет границы TAP.",
     "backend.hybrid.response_timeout": "Истёк тайм-аут ожидания ответа гибридной сети.",
     "backend.synthetic.event_limit": "Достигнут лимит синтетических событий.",

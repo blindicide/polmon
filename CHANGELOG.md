@@ -4,7 +4,35 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- **Units are localized** (operator order after v0.4.1; it supersedes the Phase IV rule that
+  unit symbols stay untranslated). Durations read as Russian words that agree with the number
+  — *250 миллисекунд*, *1 секунда*, *4,2 секунды*, *5 минут* (was *5 min 00 s*), *1 минута
+  15 секунд*, *2 часа 5 минут* — sizes as *512 байт*, *3,0 МиБ*, *2,2 ГиБ*, CPU shares as
+  *250 миллиядер*, with the Russian decimal comma and a no-break space before the unit. This
+  covers every screen: dashboard limits, tiles and latency, topology estimates, deployment
+  times, scenario and report durations, the Markdown report, admission-limit items (values now
+  carry their unit instead of a *(MiB)* label), backend messages with a duration or size
+  parameter, the activity log, progress lines and tooltips. Spin boxes show the unit after the
+  value and change its form with it (*1 секунда*, *30 секунд*, *0,5 секунды*). English keeps
+  the symbols (*5 min*, *3.0 MiB*). Values render on display, so they follow a language
+  switch.
+- The header timeout field has no step buttons (arrow keys, the wheel and typing still work),
+  so the longer Russian unit leaves the URL whole at 1440×900; the token field is narrower.
+
+### Added
+
+- Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled
+  in client code (`" s"`, `f"{v} MiB"`), `i18n-completeness` on an English unit symbol in the
+  Russian catalog, and the GUI suite walks every screen of a connected window — labels, tiles,
+  table cells and tooltips, spin boxes, the report and the activity log — and fails on a
+  number followed by an English unit; the same test asserts that the connected pages still fit
+  1440×900. All three fail on v0.4.1 ([evidence](docs/evidence/i18n/unit-leak-guard.txt)).
+
 ### Fixed
+
+- The topology node inspector re-renders node resources after a language switch.
 
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).

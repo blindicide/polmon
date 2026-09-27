@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QListWidget, QSplitter, QW
 
 from polmon.client import theme
 from polmon.client.errors import Problem
-from polmon.client.formatting import format_seconds
+from polmon.client.formatting import duration, format_duration, format_mebibytes
 from polmon.client.i18n import Msg, bind_tip, status_msg, tr
 from polmon.client.pages import Context, Page
 from polmon.client.pages.dashboard import ResourceTiles
@@ -189,7 +189,7 @@ class DeploymentPage(Page):
                     deployment.get("backend"),
                     estimate.get("endpoint_count"),
                     estimate.get("l1_namespaces"),
-                    format_seconds(deployment.get("deployment_seconds")),
+                    format_duration(deployment.get("deployment_seconds")),
                 )
             )
             seconds = deployment.get("deployment_seconds")
@@ -271,7 +271,7 @@ class DeploymentPage(Page):
                     endpoints=estimate.get("endpoint_count", "—"),
                     l0=estimate.get("l0_endpoints", "—"),
                     namespaces=estimate.get("l1_namespaces", "—"),
-                    memory=estimate.get("memory_mb", "—"),
+                    memory=format_mebibytes(estimate.get("memory_mb")),
                 )
             )
         elif not self.session.connected:
@@ -342,7 +342,7 @@ class DeploymentPage(Page):
                     "log.deploy.done",
                     topology=result.get("topology_id"),
                     state=status_msg(result.get("state")),
-                    duration=format_seconds(result.get("deployment_seconds")),
+                    duration=duration(result.get("deployment_seconds")),
                 )
             )
         self.context.navigate("refresh")

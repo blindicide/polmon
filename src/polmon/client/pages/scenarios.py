@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSplitter, QTabWid
 from polmon.client import theme
 from polmon.client.api import ApiClientError
 from polmon.client.errors import Problem, backend_message
-from polmon.client.formatting import estimate_eta, format_seconds
+from polmon.client.formatting import duration, estimate_eta, format_duration
 from polmon.client.i18n import Joined, Msg, status_msg, tr
 from polmon.client.pages import Context, Page, write_document
 from polmon.client.pages.topologies import MAX_DOCUMENT_BYTES, DocumentLibrary, problem_rows
@@ -431,7 +431,7 @@ class ScenariosPage(Page):
             ("summary.initial_conditions", ", ".join(scenario.get("initial_conditions") or [])),
             ("summary.permitted_actions", ", ".join(scenario.get("permitted_actions") or [])),
             ("summary.actions", len(scenario.get("sequence") or [])),
-            ("summary.timeout", format_seconds(scenario.get("timeout_seconds"))),
+            ("summary.timeout", format_duration(scenario.get("timeout_seconds"))),
             ("summary.cleanup", scenario.get("cleanup_policy")),
         ]
         fill_table(self.summary, [(tr(key), value) for key, value in rows])
@@ -615,7 +615,7 @@ class ScenariosPage(Page):
                 status=status_msg(record.get("status")),
                 completed=update.completed,
                 total=update.total,
-                elapsed=format_seconds(update.elapsed),
+                elapsed=duration(update.elapsed),
             )
         )
 

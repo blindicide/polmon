@@ -16,6 +16,7 @@ from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
+    QAbstractSpinBox,
     QComboBox,
     QGroupBox,
     QLabel,
@@ -38,6 +39,11 @@ from polmon.client.locales import AUTONYMS  # noqa: E402
 from polmon.client.widgets import JsonTree  # noqa: E402
 
 LATIN_DATA = re.compile(r"^[\w.:/@+-]+$")  # identifiers, addresses, paths, versions
+# A number followed by an English unit symbol: "5 min 00 s", "4.2 s", "512 MiB", "250 mCPU".
+ENGLISH_UNIT_AFTER_NUMBER = re.compile(
+    r"(?<![\w.])\d+(?:[.,]\d+)?[\s\u00a0]*"
+    r"(ms|s|sec|min|h|B|KB|MB|GB|KiB|MiB|GiB|TiB|mCPU|bytes?)(?![\w-])"
+)
 
 
 def visible_texts(window) -> list[tuple[str, str]]:
@@ -58,6 +64,9 @@ def visible_texts(window) -> list[tuple[str, str]]:
         add(widget, widget.title())
     for widget in window.findChildren(QLineEdit):
         add(widget, widget.placeholderText())
+    for widget in window.findChildren(QAbstractSpinBox):
+        add(widget, widget.text())  # value and unit suffix
+        add(widget, widget.toolTip())
     for widget in window.findChildren(QComboBox):
         if not widget.isEditable():
             for index in range(widget.count()):
@@ -79,6 +88,7 @@ def visible_texts(window) -> list[tuple[str, str]]:
                     item = widget.item(row, column)
                     if item is not None:
                         add(widget, item.text())
+                        add(widget, item.toolTip())
         if isinstance(widget, QTreeWidget) and not isinstance(widget, JsonTree):
             for index in range(widget.topLevelItemCount()):
                 item = widget.topLevelItem(index)
@@ -100,6 +110,18 @@ def english_leftovers(window) -> list[tuple[str, str]]:
         if not LATIN_DATA.match(text.strip())
         and not text.lstrip().startswith(("{", "["))  # a JSON value shown verbatim
         and _latin_prose(text)
+    ]
+
+
+def unit_leftovers(window, *documents: str) -> list[tuple[str, str]]:
+    """English unit symbols after a number anywhere in the interface, the activity log and the
+    given rendered documents (a Russian report)."""
+    texts = visible_texts(window) + [("activity log", window.log_view.toPlainText())]
+    texts += [("document", document) for document in documents]
+    return [
+        (where, match.group(0))
+        for where, text in texts
+        for match in ENGLISH_UNIT_AFTER_NUMBER.finditer(text)
     ]
 
 
@@ -156,6 +178,8 @@ def test_runtime_switch_retranslates_every_screen_and_keeps_state(
     walk_all_pages(window, qtbot)
     leftovers = english_leftovers(window)
     assert leftovers == [], "\n".join(map(repr, leftovers))
+    units = unit_leftovers(window, reports.rendered.toPlainText())
+    assert units == [], units
 
     state = (
         window.session.state,
@@ -196,6 +220,51 @@ def test_runtime_switch_retranslates_every_screen_and_keeps_state(
     walk_all_pages(window, qtbot)
     leftovers = english_leftovers(window)
     assert leftovers == [], "\n".join(map(repr, leftovers))
+    units = unit_leftovers(window, reports.rendered.toPlainText())
+    assert units == [], units  # values rendered in English came back in Russian
+    assert i18n.missing == set()
+
+
+def test_russian_ui_shows_no_english_units(window, qtbot, live_backend, tmp_path) -> None:
+    """Durations, sizes and CPU shares read in Russian words on every screen (dashboard limits
+    and tiles, estimates, deployment times, spin boxes, tooltips, the log) — also after English
+    was shown in between."""
+    window.set_language("ru")
+    topology = tmp_path / "l0-small.yml"
+    topology.write_text(l0_topology(), encoding="utf-8")
+    connect(qtbot, window, live_backend)
+    wait_connected(qtbot, window)
+    topologies = window.pages["topologies"]
+    window.navigate("topologies", topology)
+    qtbot.waitUntil(lambda: topologies.badge.status == "valid", timeout=10_000)
+    topologies.deploy()
+    deployment = window.pages["deployment"]
+    qtbot.waitUntil(lambda: deployment.table.rowCount() == 1, timeout=20_000)
+    qtbot.waitUntil(lambda: not window.context.busy, timeout=20_000)
+    window.set_language("en")
+    window.set_language("ru")
+    walk_all_pages(window, qtbot)
+    units = unit_leftovers(window)
+    assert units == [], "\n".join(map(repr, units))
+    for key, page in window.pages.items():  # words are longer than symbols: still no scrolling
+        needed = window.minimum_size_for(page)
+        assert needed.width() <= 1440 and needed.height() <= 900, (key, needed)
+
+    from polmon.client.formatting import format_duration, format_mebibytes
+
+    limits = window.pages["dashboard"].limits.values
+    duration = limits["limit.max_experiment_duration_seconds"]
+    assert duration.text().endswith(format_duration(duration.property("raw")))
+    reserve = limits["limit.memory_safety_threshold_mb"]
+    assert reserve.text().endswith(format_mebibytes(reserve.property("raw")))
+    timeout = window.bar.timeout
+    assert timeout.suffix().strip() == i18n.tr_n("unit.second", timeout.value())
+    timeout.setValue(1)
+    assert timeout.suffix().strip() == i18n.tr_n("unit.second", 1)  # agrees with the value
+    idle = window.pages["benchmarks"].idle  # one decimal shown: "0,5 секунды", "1,0 секунды"
+    for value in (0.5, 1.0):
+        idle.setValue(value)
+        assert idle.suffix().strip() == i18n.tr_n("unit.second", 0.5), value
     assert i18n.missing == set()
 
 

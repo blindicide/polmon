@@ -79,9 +79,14 @@ class LocalBackendError(RuntimeError):
     @property
     def problem(self):  # noqa: ANN201 - imported lazily: errors.py is a UI module
         from polmon.client.errors import Problem
+        from polmon.client.formatting import duration
         from polmon.client.i18n import Msg
 
-        return Problem("problem.local_start", Msg(f"local.{self.message_code}", **self.params))
+        params = {
+            name: duration(value) if name == "timeout" else value
+            for name, value in self.params.items()
+        }
+        return Problem("problem.local_start", Msg(f"local.{self.message_code}", **params))
 
 
 class LocalBackendCancelled(LocalBackendError):
@@ -470,7 +475,7 @@ class LocalBackendManager:
                     time.sleep(0.1)
             else:
                 last = f"backend was not ready within {timeout:g} s on attempt {attempt}"
-                reason = ("not_ready", {"seconds": f"{timeout:g}", "attempt": attempt})
+                reason = ("not_ready", {"timeout": timeout, "attempt": attempt})
             self._terminate_child(timeout=3.0)
 
         detail = self.log_tail()

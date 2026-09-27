@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from polmon.client import theme
-from polmon.client.formatting import format_bytes, pretty_json
+from polmon.client.formatting import format_bytes, pretty_json, size
 from polmon.client.i18n import Msg, bind, bind_text, bind_tip, status_label, tr, tr_n
 from polmon.client.models import CATEGORIES, TelemetryFilter, TelemetryModel
 from polmon.client.pages import Context, Page
@@ -420,8 +420,8 @@ class TelemetryPage(Page):
         self.context.run(
             Msg("operation.save_capture", experiment=experiment_id),
             work,
-            on_success=lambda size: self.session.log(
-                Msg("log.capture_saved", size=format_bytes(size), path=target)
+            on_success=lambda written: self.session.log(
+                Msg("log.capture_saved", size=size(written), path=target)
             ),
             banner=self.banner,
         )

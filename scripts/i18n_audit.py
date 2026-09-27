@@ -73,6 +73,17 @@ KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$")
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 WORD = re.compile(r"[A-Za-z][A-Za-z'’-]+")
 PRAGMA = "i18n: allow"
+# English unit symbols after a number or a formatted value: quantities are formatted by
+# polmon.client.formatting (unit words and symbols from the catalogs), never spelled in code.
+UNIT_SYMBOL = re.compile(
+    r"(?:^\s*|\d\s*|\{\}\s+|\{\}(?=ms|[KMGT]i?B|mCPU))"
+    r"(ms|s|sec|min|h|B|KB|MB|GB|KiB|MiB|GiB|TiB|mCPU)(?![A-Za-z0-9_-])"
+)
+# The same symbols anywhere in a Russian catalog text (outside code spans and placeholders).
+ENGLISH_UNIT = re.compile(
+    r"(?<![A-Za-zА-Яа-яЁё0-9_-])(ms|s|sec|min|h|B|KB|MB|GB|KiB|MiB|GiB|TiB|mCPU|bytes?)"
+    r"(?![A-Za-zА-Яа-яЁё0-9_-])"
+)
 
 
 @dataclass(frozen=True)
@@ -130,6 +141,15 @@ def _literal_text(node: ast.AST) -> str | None:
     return None
 
 
+def _unit_text(node: ast.AST) -> str:
+    """A literal with each formatted value as ``{}`` (no padding: ``f"{n}s"`` is not a unit)."""
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            part.value if isinstance(part, ast.Constant) else "{}" for part in node.values
+        )
+    return str(node.value) if isinstance(node, ast.Constant) else ""
+
+
 def lint_source(source: str, path: str = "<source>") -> list[Finding]:
     """Findings for one module's source (used on the client and on synthetic snippets)."""
     tree = ast.parse(source)
@@ -183,7 +203,9 @@ def lint_source(source: str, path: str = "<source>") -> list[Finding]:
             continue
         if isinstance(node, ast.JoinedStr):
             text = _literal_text(node) or ""
-            if CYRILLIC.search(text):
+            if UNIT_SYMBOL.search(_unit_text(node)):
+                report(node, "unit symbol in a literal (use polmon.client.formatting)", text)
+            elif CYRILLIC.search(text):
                 report(node, "Cyrillic outside the catalogs", text)
             elif _is_prose(text):
                 report(node, "composed prose (use a catalog template)", text)
@@ -192,7 +214,9 @@ def lint_source(source: str, path: str = "<source>") -> list[Finding]:
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if id(node) in reported:
                 continue
-            if CYRILLIC.search(node.value):
+            if UNIT_SYMBOL.search(node.value):
+                report(node, "unit symbol in a literal (use polmon.client.formatting)", node.value)
+            elif CYRILLIC.search(node.value):
                 report(node, "Cyrillic outside the catalogs", node.value)
             elif _is_prose(node.value):
                 report(node, "prose literal (use a catalog key)", node.value)
@@ -312,6 +336,7 @@ def backend_message_codes() -> set[str]:
 def required_families() -> dict[str, set[str]]:
     """Keys the code builds dynamically (``f"status.{value}"``…) and must all exist."""
     from polmon.client import theme
+    from polmon.client.formatting import UNITS
     from polmon.client.mainwindow import FEATURE_EXPERIMENTS, FEATURE_TOPOLOGIES, PAGES
     from polmon.client.models import CATEGORIES
     from polmon.client.pages import FILE_PATTERNS
@@ -358,6 +383,7 @@ def required_families() -> dict[str, set[str]]:
         "conditions": {f"condition.role.{r}" for r in ("success_requirement", "failure_trigger")},
         "fits": {f"topologies.fit.{v}" for v in ("fits", "exceeds", "memory_fits",
                                                  "memory_exceeds", "unsupported")},
+        "units": {f"unit.{name}" for name in UNITS} | {"unit.decimal_separator"},
         "targets": {f"deployment.target.{v}" for v in ("editor", "loaded", "deployed")},
         "problems": {f"{key}.title" for key in problem_keys()},
         "limits": {f"limit.{name}" for name in (
@@ -399,6 +425,9 @@ GLOSSARY: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("timeout", "тайм-аут", (r"таймаут",)),
     ("activity log", "журнал действий", (r"\bлог\b", r"\bлоги\b")),
     ("CPU", "ЦП", (r"\bCPU\b",)),
+    ("ms / s / min / h", "миллисекунда / секунда / минута / час", (r"\bсек\b", r"\bмсек")),
+    ("KiB / MiB / GiB", "КиБ / МиБ / ГиБ", (r"\bKiB\b", r"\bMiB\b", r"\bGiB\b")),
+    ("mCPU (thousandths of a core)", "миллиядро", (r"милликор", r"\bmCPU\b")),
     ("emulation level (fidelity)", "уровень эмуляции", ()),
     ("token", "токен", ()),
 )
@@ -407,12 +436,22 @@ GLOSSARY: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 OPTIONAL_PREFIXES = ("measure.", "backend.pydantic.", "backend.generic.")
 
 
+def _clean_russian(text: str) -> str:
+    """A Russian text without placeholders, code spans, quoted identifiers, URLs and paths."""
+    cleaned = re.sub(r"\{[a-z_]+\}", " ", text)
+    cleaned = re.sub(r"`[^`]*`|«[a-z_]+»|“[^”]*”", " ", cleaned)
+    return re.sub(r"[a-z]+://\S*|--[a-z-]+|\S*[/_\\.]\S*[A-Za-z]\S*", " ", cleaned)
+
+
+def english_units(text: str) -> list[str]:
+    """English unit symbols (``s``, ``min``, ``MiB``…) left in a Russian text."""
+    return ENGLISH_UNIT.findall(_clean_russian(text))
+
+
 def _latin_prose(text: str) -> list[str]:
     """Purely Latin words of a Russian text that are not kept terms (``IPv4``, ``MAC-адрес``
     and other mixed tokens are deliberate)."""
-    cleaned = re.sub(r"\{[a-z_]+\}", " ", text)
-    cleaned = re.sub(r"`[^`]*`|«[a-z_]+»|“[^”]*”", " ", cleaned)
-    cleaned = re.sub(r"[a-z]+://\S*|--[a-z-]+|\S*[/_\\.]\S*[A-Za-z]\S*", " ", cleaned)
+    cleaned = _clean_russian(text)
     tokens = re.findall(r"[0-9A-Za-zА-Яа-яЁё'’-]+", cleaned)
     return [
         token
@@ -445,6 +484,9 @@ def completeness() -> list[str]:
             prose = _latin_prose(text)
             if prose:
                 errors.append(f"ru: {key}: untranslated words {prose}: {text!r}")
+            units = english_units(text)
+            if units:
+                errors.append(f"ru: {key}: English unit symbols {units}: {text!r}")
         for text in _texts(en[key]):
             if CYRILLIC.search(text):
                 errors.append(f"en: {key}: Cyrillic in the English catalog: {text!r}")

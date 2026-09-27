@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 from polmon.client import i18n, theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
+from polmon.client.formatting import duration
 from polmon.client.i18n import Msg, bind, bind_fn, bind_text, bind_tip, tr
 from polmon.client.icon import app_icon
 from polmon.client.language import apply_language
@@ -66,6 +67,7 @@ from polmon.client.widgets import (
     label,
     primary_button,
     retint_items,
+    unit_suffix,
 )
 from polmon.version import __version__
 
@@ -181,8 +183,8 @@ class ConnectionBar(QFrame):
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
         bind(self.token, "setPlaceholderText", "connection.token.placeholder")
         bind_tip(self.token, "connection.token.tip")
-        self.token.setMinimumWidth(80)
-        self.token.setMaximumWidth(104)
+        self.token.setMinimumWidth(64)
+        self.token.setMaximumWidth(88)
         # A long token filled in without focus (restored, pasted by a script) shows its start
         # instead of a clipped tail.
         self.token.textChanged.connect(
@@ -195,9 +197,11 @@ class ConnectionBar(QFrame):
         self.timeout.setObjectName("requestTimeout")
         self.timeout.setRange(1.0, 120.0)
         self.timeout.setDecimals(0)
-        self.timeout.setSuffix(" s")  # unit symbols are not translated
         self.timeout.setValue(DEFAULT_TIMEOUT)
-        self.timeout.setFixedWidth(84)  # "120 s" and the arrows
+        # No step buttons in the slim header (arrow keys, the wheel and typing still work): the
+        # room goes to the URL. As wide as its longest text ("120 секунд").
+        self.timeout.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        unit_suffix(self.timeout, "second", fixed=True)
         bind_tip(self.timeout, "connection.timeout.tip")
         self.addWidget(self.timeout)
         self.connect_button = primary_button(
@@ -979,7 +983,7 @@ class MainWindow(QMainWindow):
                     Msg(
                         "problem.lost.detail",
                         detail=problem.detail,
-                        seconds=LOST_POLL_INTERVAL_MS // 1000,
+                        interval=duration(LOST_POLL_INTERVAL_MS / 1000),
                     ),
                     problem.hint,
                 )

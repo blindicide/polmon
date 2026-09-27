@@ -32,12 +32,13 @@ stylesheet), `widgets.py` (components), `i18n.py` and `locales/` (catalogs).
 
 | Gate | What fails it | Where |
 |------|---------------|-------|
-| `scripts/i18n-lint.py` | a literal handed to a Qt text API, English prose or a composed English f-string in client code, Cyrillic outside the catalogs | CI (both OS), `tests/unit/test_i18n_gates.py` |
-| `scripts/i18n-completeness.py` | different key sets or placeholders, wrong plural forms, empty values, English words left in Russian, Cyrillic in English, a glossary variant, a key the code uses but no catalog has (including dynamic families and every backend message code), an unused key | CI (both OS), unit suite |
-| Screen walk (`tests/gui/test_language.py`) | English prose on any Russian screen, Cyrillic on any English screen, lost state across a switch, a missing key looked up at run time | GUI suite, run in Russian and in English |
+| `scripts/i18n-lint.py` | a literal handed to a Qt text API, English prose or a composed English f-string in client code, Cyrillic outside the catalogs, a unit symbol spelled in code (`" s"`, `f"{v} MiB"`, `f"{m} min {s} s"`) | CI (both OS), `tests/unit/test_i18n_gates.py` |
+| `scripts/i18n-completeness.py` | different key sets or placeholders, wrong plural forms, empty values, English words or English unit symbols (`s`, `min`, `MiB`…) left in Russian, Cyrillic in English, a glossary variant, a key the code uses but no catalog has (including dynamic families and every backend message code), an unused key | CI (both OS), unit suite |
+| Screen walk (`tests/gui/test_language.py`) | English prose on any Russian screen, an English unit after a number anywhere in the Russian UI (labels, tiles, cells, tooltips, spin boxes, the report, the log), Cyrillic on any English screen, lost state across a switch, a missing key looked up at run time | GUI suite, run in Russian and in English |
 
 Evidence of both gates passing and failing on injected violations:
-[evidence/i18n/](evidence/i18n/). Deliberate exceptions carry an `# i18n: allow` comment;
+[evidence/i18n/](evidence/i18n/); the unit guards fail on v0.4.1 and pass now
+([unit-leak-guard.txt](evidence/i18n/unit-leak-guard.txt)). Deliberate exceptions carry an `# i18n: allow` comment;
 CLI output, the self-test and the packaged-client probe stay English (they are parsed by CI).
 
 ### Glossary
@@ -71,21 +72,42 @@ the Russian catalog.
 | timeout | тайм-аут | how long the client waits for one HTTP response | `таймаут` |
 | activity log | журнал действий | the dockable history of what the client did | `\bлог\b`, `\bлоги\b` |
 | CPU | ЦП | processor time and load | `\bCPU\b` |
+| ms / s / min / h | миллисекунда / секунда / минута / час | units of a duration, written as words that agree with the number | `\bсек\b`, `\bмсек` |
+| KiB / MiB / GiB | КиБ / МиБ / ГиБ | binary size units (symbols; bytes below 1 KiB as the word *байт*) | `\bKiB\b`, `\bMiB\b`, `\bGiB\b` |
+| mCPU (thousandths of a core) | миллиядро | the CPU share of a node in a topology estimate | `милликор`, `\bmCPU\b` |
 | emulation level (fidelity) | уровень эмуляции | what the backend can emulate: L0 only, or L0 + L1 + hybrid | — |
 | token | токен | the API token the backend requires | — |
 
-**Kept as is** in both languages (names, protocols, formats, units): polmon, L0, L1, L2, TAP,
+**Kept as is** in both languages (names, protocols, formats): polmon, L0, L1, L2, TAP,
 YAML, JSON, PCAP, CSV, Markdown, HTTP(S), API, URL, IP, IPv4, MAC, ICMP, TCP, ARP, TTL,
 Ethernet, EtherType, RSS, ID, SHA-256, Linux, Windows, systemd, sudo, iproute2, ping, veth,
-Qt, PySide6, and the unit symbols B, KiB, MiB, GiB, ms, s, min, h (`scripts/i18n_audit.py`,
-`KEPT_TERMS`).
+Qt, PySide6 (`scripts/i18n_audit.py`, `KEPT_TERMS`). Units are not on this list: they are
+localized (below).
 Mixed forms are fine where Russian usage has them: *MAC-адрес*, *IP-адрес*,
 *loopback-интерфейс*.
 
-**Numbers and units.** Unit symbols are machine notation and are not translated: `B`, `KiB`,
-`MiB`, `GiB`, `ms`, `s`, `min`, `h` (`250 ms`, `4.2 s`, `1 min 15 s`, `1 h 05 min`, spin-box
-suffixes ` s` and ` MiB`). Decimal point in both languages (values are copied into YAML and
-tickets). Timestamps are ISO-like `YYYY-MM-DD HH:MM:SS`.
+**Numbers and units.** Every displayed quantity goes through `polmon.client.formatting`
+(`format_duration`, `format_bytes`, `format_mebibytes`, `format_millicores`, `format_percent`;
+the lazy `duration()`, `size()`, `mebibytes()` inside messages; `widgets.unit_suffix()` for
+spin boxes). The unit comes from the catalogs (`unit.*`) and the number from the language:
+
+| Quantity | Russian | English |
+|----------|---------|---------|
+| duration | `250 миллисекунд`, `1 секунда`, `4,2 секунды`, `5 минут`, `1 минута 15 секунд`, `2 часа 5 минут` | `250 ms`, `1 s`, `4.2 s`, `5 min`, `1 min 15 s`, `2 h 5 min` |
+| size | `512 байт`, `1,5 КиБ`, `3,0 МиБ`, `2,0 ГиБ` | `512 B`, `1.5 KiB`, `3.0 MiB`, `2.0 GiB` |
+| configured MiB | `512 МиБ`, `12,5 МиБ` | `512 MiB`, `12.5 MiB` |
+| CPU share | `1 миллиядро`, `2 миллиядра`, `250 миллиядер` | `250 mCPU` |
+| percent | `12,5 %` | `12.5 %` |
+
+Russian duration words take the CLDR plural form of the number (*one* 1, 21 → *минута*;
+*few* 2–4 → *минуты*; *many* 0, 5–20 → *минут*; a fraction → *минуты*), spin boxes included
+(the suffix changes with the value: *1 секунда*, *30 секунд*). Size units are the Russian
+symbols КиБ/МиБ/ГиБ, which do not decline. A number and its unit are joined by a no-break
+space; Russian uses the decimal comma, as do Russian spin boxes. A zero minor part is dropped
+(*5 минут*, not *5 минут 00 секунд*). Russian sentences put a quantity where the nominative is
+correct — after a colon or in parentheses (*прошло: 1 минута*, *тайм-аут (30 секунд)*) — so
+agreement holds for every number. Values inside YAML documents, JSON and file names stay
+machine notation. Timestamps are ISO-like `YYYY-MM-DD HH:MM:SS`.
 
 **Style.** Sentence case for titles, buttons and menu items; buttons are verbs in the
 infinitive (*Развернуть*, *Разобрать*, *Сбросить окружение*); Russian quotes «…» around names;
@@ -151,8 +173,8 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
 ## 3. Layout and components
 
 - **Window:** dark sidebar (brand, *Рабочее пространство* navigation, connection footer), a
-  connection header (mode, URL, token, timeout, connect/disconnect, emulation-level pill,
-  state), the page, the dockable activity log and the status bar (connection summary, busy
+  connection header (mode, URL, token, timeout — a field without step buttons, as wide as
+  *120 секунд* — connect/disconnect, emulation-level pill, state), the page, the dockable activity log and the status bar (connection summary, busy
   indicator or operation progress with *Отменить*, client version).
 - **Page:** title and one-line subtitle, header actions on the right, one problem banner, then
   cards. Every page fits 1440×900 in both languages with a banner shown and nothing scrolls

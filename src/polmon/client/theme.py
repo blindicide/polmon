@@ -21,6 +21,7 @@ THEMES = ("system", "light", "dark")
 SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
 TYPE = {"caption": 11, "body": 13, "strong": 13, "subtitle": 15, "title": 20, "metric": 22}
 CONTROL_HEIGHT = 28
+SPIN_BUTTON_WIDTH = 20  # the up/down buttons of spin boxes, inside their right padding
 RADIUS = {"control": 6, "card": 8, "pill": 10}
 
 TOKENS: dict[str, dict[str, str]] = {
@@ -342,9 +343,11 @@ QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center 
                         border: none; width: 24px; }}
 QComboBox::down-arrow {{ image: url({arrows.get("down", "")}); width: 10px; height: 8px; }}
 QComboBox::down-arrow:disabled {{ image: url({arrows.get("down_disabled", "")}); }}
-QSpinBox, QDoubleSpinBox {{ padding-right: 20px; }}
+QSpinBox, QDoubleSpinBox {{ padding-right: {SPIN_BUTTON_WIDTH}px; }}
+QAbstractSpinBox[buttonSymbols="2"] {{ padding-right: {s["sm"]}px; }}
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
-    subcontrol-origin: border; width: 20px; border: none; background: transparent; }}
+    subcontrol-origin: border; width: {SPIN_BUTTON_WIDTH}px; border: none;
+    background: transparent; }}
 QAbstractSpinBox::up-button {{ subcontrol-position: top right; }}
 QAbstractSpinBox::down-button {{ subcontrol-position: bottom right; }}
 QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{

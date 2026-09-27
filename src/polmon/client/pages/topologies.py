@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from polmon.client import i18n, theme
 from polmon.client.api import ApiClientError
 from polmon.client.errors import error_message, yaml_problem
+from polmon.client.formatting import format_mebibytes, format_millicores
 from polmon.client.i18n import Msg, bind_fn, bind_tip, tr
 from polmon.client.pages import Context, Page, default_folder, write_document
 from polmon.client.widgets import (
@@ -70,6 +71,14 @@ def problem_rows(source: str, error: ApiClientError) -> list[tuple[object, objec
         )
     return rows
 
+
+
+def _resource_notes(resources: object) -> str:
+    """``48 МиБ, 75 миллиядер``: the resources of a node without services."""
+    if not isinstance(resources, dict):
+        return ""
+    memory = format_mebibytes(resources.get("memory_mb"))
+    return f"{memory}, {format_millicores(resources.get('cpu_millicores'))}"
 
 class DocumentLibrary(Card):
     """YAML files of one folder; double-click (or Enter) opens one."""
@@ -258,6 +267,11 @@ class TopologiesPage(Page):
         for index, title in enumerate(titles):
             self.tabs.setTabText(index, title)
         self._update_label()
+        for index in range(self.nodes.topLevelItemCount()):
+            item = self.nodes.topLevelItem(index)
+            resources = item.data(5, Qt.ItemDataRole.UserRole)
+            if isinstance(resources, dict):
+                item.setText(5, _resource_notes(resources))
         self._refresh_summary()
         self._refresh_loaded()
         if self.problem_rows:
@@ -486,14 +500,12 @@ class TopologiesPage(Page):
                 for item in node.get("services") or []
             )
             resources = node.get("resources")
-            notes = services or (
-                f"{resources['memory_mb']} MiB, {resources['cpu_millicores']} mCPU"
-                if isinstance(resources, dict)
-                else ""
-            )
+            notes = services or _resource_notes(resources)
             parent = QTreeWidgetItem(
                 self.nodes, [node["id"], node["class"].upper(), "", "", "", notes]
             )
+            if not services and isinstance(resources, dict):  # re-rendered on a language switch
+                parent.setData(5, Qt.ItemDataRole.UserRole, resources)
             parent.setFont(0, mono)
             tint(parent, "info" if node["class"] == "l0" else "success", 1)
             for interface in node.get("interfaces") or []:
@@ -556,7 +568,8 @@ class TopologiesPage(Page):
         if isinstance(available, int) and limits:
             spare = available // 1_048_576 - reserve
             verdict = "fits" if memory <= spare else "exceeds"
-            memory_fit = (tr(f"topologies.fit.memory_{verdict}", spare=spare), verdict)
+            fit_text = tr(f"topologies.fit.memory_{verdict}", spare=format_mebibytes(spare))
+            memory_fit = (fit_text, verdict)
         l2 = estimate.get("l2_virtual_machines")
         rows = [
             ("summary.topology", result.get("topology_id"), ("", "")),
@@ -579,9 +592,9 @@ class TopologiesPage(Page):
                 l2,
                 (tr("topologies.fit.unsupported"), "exceeds") if l2 else ("", ""),
             ),
-            ("summary.memory", f"{memory} MiB", memory_fit),
-            ("summary.cpu", f"{estimate.get('cpu_millicores')} mCPU", ("", "")),
-            ("summary.disk", f"{estimate.get('disk_mb')} MiB", ("", "")),
+            ("summary.memory", format_mebibytes(memory), memory_fit),
+            ("summary.cpu", format_millicores(estimate.get("cpu_millicores")), ("", "")),
+            ("summary.disk", format_mebibytes(estimate.get("disk_mb")), ("", "")),
             (
                 "summary.deployed",
                 tr("common.yes") if deployed_here else tr("common.no"),

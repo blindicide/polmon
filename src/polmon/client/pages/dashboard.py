@@ -8,7 +8,13 @@ import time
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QWidget
 
 from polmon.client import theme
-from polmon.client.formatting import format_bytes, format_datetime, format_percent, format_seconds
+from polmon.client.formatting import (
+    format_bytes,
+    format_datetime,
+    format_duration,
+    format_mebibytes,
+    format_percent,
+)
 from polmon.client.i18n import Msg, tr
 from polmon.client.pages import Context, Page
 from polmon.client.state import ConnectionState
@@ -31,22 +37,23 @@ LIMIT_ROWS = (
     ("max_active_namespaces", "limit.max_active_namespaces", str),
     ("max_concurrent_experiments", "limit.max_concurrent_experiments", str),
     ("max_capture_bytes", "limit.max_capture_bytes", format_bytes),
-    ("max_experiment_duration_seconds", "limit.max_experiment_duration_seconds", format_seconds),
-    ("memory_safety_threshold_mb", "limit.memory_safety_threshold_mb", lambda v: f"{v} MiB"),
-    ("max_data_directory_mb", "limit.max_data_directory_mb", lambda v: f"{v} MiB"),
-    ("disk_free_reserve_mb", "limit.disk_free_reserve_mb", lambda v: f"{v} MiB"),
+    ("max_experiment_duration_seconds", "limit.max_experiment_duration_seconds", format_duration),
+    ("memory_safety_threshold_mb", "limit.memory_safety_threshold_mb", format_mebibytes),
+    ("max_data_directory_mb", "limit.max_data_directory_mb", format_mebibytes),
+    ("disk_free_reserve_mb", "limit.disk_free_reserve_mb", format_mebibytes),
 )
-# Column-major: the first column holds the long values (URL, emulation level), the second the
-# short ones (versions, authentication, latency).
+# Column-major: the first column holds the values that cannot wrap (URL, capabilities,
+# latency in words), the second the short or wrapping ones (emulation level, versions,
+# authentication).
 IDENTITY_ROWS = (
     "dashboard.identity.url",
-    "dashboard.identity.fidelity",
     "dashboard.identity.l1",
     "dashboard.identity.hybrid",
+    "dashboard.identity.latency",
+    "dashboard.identity.fidelity",
     "dashboard.identity.backend",
     "dashboard.identity.client",
     "dashboard.identity.auth",
-    "dashboard.identity.latency",
 )
 RECENT_EXPERIMENTS = 6
 
@@ -145,7 +152,7 @@ class ResourceTiles(QWidget):
             tr(
                 "tile.cpu.detail",
                 lifetime=format_percent(lifetime),
-                time=format_seconds(seconds),
+                time=format_duration(seconds, milliseconds=False),
             ),
             current,
         )
@@ -182,7 +189,11 @@ class ResourceTiles(QWidget):
         tone = "danger" if share >= 0.95 else "warning" if share >= 0.8 else ""
         self.data.set(
             format_bytes(used),
-            tr("tile.data.detail", limit=limit_mb, share=f"{share:.0%}") if limit_mb else "",
+            tr(
+                "tile.data.detail",
+                limit=format_mebibytes(limit_mb),
+                share=format_percent(100 * share, 0),
+            ) if limit_mb else "",
             tone=tone,
         )
 
@@ -259,7 +270,7 @@ class DashboardPage(Page):
             "dashboard.identity.auth",
             tr("dashboard.auth.token") if session.token else tr("dashboard.auth.none"),
         )
-        latency = format_seconds(session.latency) if session.latency is not None else "—"
+        latency = format_duration(session.latency) if session.latency is not None else "—"
         grid.set("dashboard.identity.latency", latency)
         capabilities = session.capabilities
         fidelity = capabilities.get("fidelity")

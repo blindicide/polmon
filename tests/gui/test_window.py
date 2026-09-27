@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence, QPalette
 from PySide6.QtWidgets import QApplication
 
+from polmon.client.formatting import duration
 from polmon.client.i18n import tr
 from polmon.client.state import ConnectionState
 from polmon.version import __version__
@@ -158,7 +159,7 @@ def test_slow_backend_times_out_without_blocking(window, qtbot) -> None:
         timer.stop()
         problem = window.pages["dashboard"].banner.problem
         assert problem.key == "problem.timeout"
-        assert problem.detail_message.params["seconds"] == "2"
+        assert problem.detail_message.params["timeout"] == duration(2)
     finally:
         listener.close()
 

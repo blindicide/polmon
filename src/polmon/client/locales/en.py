@@ -220,7 +220,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "progress.step": "step {completed}/{total}",
     "progress.elapsed": "{duration} elapsed",
     "progress.eta": "ETA {duration}",
-    "progress.elapsed_only": "{seconds} s elapsed",
+    "progress.elapsed_only": "{duration} elapsed",
     "progress.cancel_tip": "Cancel the running operation (Esc)",
     "activity.working": "Working: {name}",
     # -- statuses (machine values shown as words) -----------------------------------------------
@@ -278,6 +278,18 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "json.items": {"one": "{count} item", "other": "{count} items"},
     "json.key": "Key",
     "json.value": "Value",
+    # -- units (symbols; plural forms where a language needs them) ------------------------------
+    "unit.decimal_separator": ".",
+    "unit.millisecond": {"one": "ms", "other": "ms"},
+    "unit.second": {"one": "s", "other": "s"},
+    "unit.minute": {"one": "min", "other": "min"},
+    "unit.hour": {"one": "h", "other": "h"},
+    "unit.byte": {"one": "B", "other": "B"},
+    "unit.kib": "KiB",
+    "unit.mib": "MiB",
+    "unit.gib": "GiB",
+    "unit.tib": "TiB",
+    "unit.millicore": {"one": "mCPU", "other": "mCPU"},
     # -- table columns ------------------------------------------------------------------------
     "column.number": "#",
     "column.topology": "Topology",
@@ -380,7 +392,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "tile.cpu.detail": "lifetime average {lifetime} · {time} CPU time",
     "tile.headroom.detail": "{available} available − {reserve} reserve",
     "tile.swap.detail": "host swap in use",
-    "tile.data.detail": "limit {limit} MiB ({share} used)",
+    "tile.data.detail": "limit {limit} ({share} used)",
     # -- deployment ---------------------------------------------------------------------------
     "deployment.target": "Deploy a topology",
     "deployment.topology": "Topology",
@@ -396,7 +408,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "deployment.reset.tip": "Tear down every deployment; definitions and reports are kept "
     "(Ctrl+Shift+R)",
     "deployment.estimate": "Estimate: {endpoints} endpoints ({l0} L0, {namespaces} L1 "
-    "namespaces), about {memory} MiB of memory.",
+    "namespaces), about {memory} of memory.",
     "deployment.hint_offline": "Connect to a backend to deploy topologies.",
     "deployment.hint_choose": "Choose a loaded topology, or open one on the Topologies page.",
     "deployment.list": "Deployments",
@@ -469,8 +481,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "topologies.save.dialog": "Save topology",
     "topologies.fit.fits": "fits ({free} free)",
     "topologies.fit.exceeds": "exceeds ({free} free)",
-    "topologies.fit.memory_fits": "fits ({spare} MiB spare)",
-    "topologies.fit.memory_exceeds": "exceeds ({spare} MiB spare)",
+    "topologies.fit.memory_fits": "fits ({spare} spare)",
+    "topologies.fit.memory_exceeds": "exceeds ({spare} spare)",
     "topologies.fit.unsupported": "not supported",
     "summary.topology": "Topology",
     "summary.networks": "Networks",
@@ -648,7 +660,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "benchmarks.limits.hint": "checked against the backend's own limits",
     "benchmarks.max_endpoints": "Endpoints",
     "benchmarks.max_namespaces": "Namespaces",
-    "benchmarks.max_run": "Seconds per run",
+    "benchmarks.max_run": "Time per run",
     "benchmarks.max_incremental": "Memory increase",
     "benchmarks.reserve": "Memory reserve",
     "benchmarks.job": "Job",
@@ -700,7 +712,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- problems (client-side messages) --------------------------------------------------------
     "problem.message.title": "Notice",
     "problem.timeout.title": "Backend did not respond",
-    "problem.timeout.detail": "The request to {url} exceeded the {seconds} s timeout.",
+    "problem.timeout.detail": "The request to {url} exceeded the timeout ({timeout}).",
     "problem.timeout.hint": "Check that the backend is not overloaded, or raise the timeout in the "
     "connection bar.",
     "problem.refused.title": "Backend unreachable",
@@ -722,7 +734,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.malformed.hint": "Check that the URL points at a polmon backend of a compatible "
     "version.",
     "problem.download.title": "Download too large",
-    "problem.download.detail": "The file exceeds the client's {limit}-byte download limit.",
+    "problem.download.detail": "The file exceeds the client's download limit ({limit}).",
     "problem.unauthorized.title": "API token required",
     "problem.unauthorized.detail": "The backend rejected the request: a valid API token is "
     "required.",
@@ -767,7 +779,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.local_stopped.detail": "The owned backend exited unexpectedly with code {code}.",
     "problem.local_stopped.hint": "Open the backend log for details: {log}",
     "problem.lost.title": "Backend unreachable",
-    "problem.lost.detail": "{detail} Retrying every {seconds} s; actions are disabled until it "
+    "problem.lost.detail": "{detail} Retry interval: {interval}; actions are disabled until it "
     "answers again.",
     "problem.older_backend.title": "Older backend",
     "problem.older_backend.detail": "Backend {version} does not provide: {features}. Deployments "
@@ -788,21 +800,21 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "local.not_l0_only": "The owned backend did not advertise its L0-only boundary.",
     "local.exited": "The backend exited with code {exit_code} on start attempt {attempt}. Last "
     "output: {output}",
-    "local.not_ready": "The backend was not ready within {seconds} s on attempt {attempt}. Last "
-    "output: {output}",
+    "local.not_ready": "The backend was not ready within the allowed time ({timeout}), attempt "
+    "{attempt}. Last output: {output}",
     "local.not_started": "The backend did not start. Last output: {output}",
     # -- admission violations (limit names and their fields) -----------------------------------
     "limit.endpoint_count": "Endpoints",
     "limit.active_namespaces": "Active namespaces",
     "limit.available_memory": "Available memory",
     "limit.concurrent_experiments": "Concurrent experiments",
-    "limit.duration_seconds": "Experiment duration (s)",
+    "limit.duration_seconds": "Experiment duration",
     "limit.data_directory": "Data directory",
     "limit.disk_free": "Free disk",
     "limit.max_endpoints": "Benchmark max endpoints",
     "limit.max_namespaces": "Benchmark max namespaces",
-    "limit.memory_reserve_mb": "Benchmark memory reserve (MiB)",
-    "limit.max_run_seconds": "Benchmark run time (s)",
+    "limit.memory_reserve_mb": "Benchmark memory reserve",
+    "limit.max_run_seconds": "Benchmark run time",
     "limit.concurrent_benchmarks": "Concurrent benchmarks",
     "limit.active_experiments": "Active experiments",
     "limit.benchmark_jobs": "Running benchmark jobs",
@@ -811,14 +823,14 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "limit.field.active": "active",
     "limit.field.requested": "requested",
     "limit.field.minimum": "minimum",
-    "limit.field.required_mb_including_reserve": "required (MiB, reserve included)",
-    "limit.field.available_mb": "available (MiB)",
-    "limit.field.used_mb": "used (MiB)",
-    "limit.field.free_mb": "free (MiB)",
-    "limit.field.limit_mb": "limit (MiB)",
-    "limit.field.reserve_mb": "reserve (MiB)",
-    "limit.field.next_experiment_capture_limit_mb": "capture of the next experiment (MiB)",
-    "limit.field.size_bytes": "size (bytes)",
+    "limit.field.required_mb_including_reserve": "required, reserve included",
+    "limit.field.available_mb": "available",
+    "limit.field.used_mb": "used",
+    "limit.field.free_mb": "free",
+    "limit.field.limit_mb": "limit",
+    "limit.field.reserve_mb": "reserve",
+    "limit.field.next_experiment_capture_limit_mb": "capture of the next experiment",
+    "limit.field.size_bytes": "size",
     # -- backend messages (rendered from message_code + params) ----------------------------------
     "backend.uncoded": "The backend answered: “{message}”",
     "backend.unknown": "The backend reported an error (code {code}).",
@@ -830,8 +842,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "group or others (chmod 600).",
     "backend.auth.token_too_short": "The API token must be at least {minimum} characters long.",
     "backend.auth.unsafe_binding": "Refusing to listen on {host} without an API token.",
-    "backend.request.too_large": "The request body exceeds the backend's limit of {limit_bytes} "
-    "bytes.",
+    "backend.request.too_large": "The request body exceeds the backend's limit ({limit_bytes}).",
     "backend.fidelity.l0_only": "Local backend supports L0 synthetic nodes only; L1/L2 requires "
     "a polmon backend on a Linux host with network namespace privileges.",
     "backend.fidelity.l0_benchmarks_only": "The local backend runs L0 benchmarks only; L1 and "
@@ -932,8 +943,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "“{state}”.",
     "backend.orchestration.ownership_conflict": "Another deployment already owns some of these "
     "laboratory resources.",
-    "backend.hybrid.bridge_not_forwarding": "Bridge {bridge} did not start forwarding within "
-    "{seconds} s.",
+    "backend.hybrid.bridge_not_forwarding": "Bridge {bridge} did not start forwarding "
+    "within the allowed time ({seconds}).",
     "backend.hybrid.no_tap_boundary": "The source endpoint has no TAP boundary.",
     "backend.hybrid.response_timeout": "Timed out waiting for a hybrid network response.",
     "backend.synthetic.event_limit": "The synthetic event limit was reached.",

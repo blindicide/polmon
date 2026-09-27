@@ -12,6 +12,7 @@ import re
 from collections.abc import Sequence
 
 from polmon.client.api import ApiClientError
+from polmon.client.formatting import duration, format_duration, format_mebibytes, quantity_for, size
 from polmon.client.i18n import Msg, has, tr
 
 # Parameters of admission-control violations (``details`` of HTTP 429 responses).
@@ -26,6 +27,9 @@ LIMIT_FIELDS = (
     "used_mb",
     "free_mb",
 )
+# Fields whose unit is that of the limit they belong to (``max_run_seconds``: a duration).
+AMOUNT_FIELDS = {"projected", "limit", "requested", "minimum"}
+MIB_FIELD = re.compile(r"_mb(?:_|$)")  # available_mb, required_mb_including_reserve
 
 Text = Msg | str
 
@@ -116,7 +120,10 @@ def backend_message(message_code: object, params: object, fallback: str = "") ->
     English text is quoted inside a localized sentence rather than shown bare."""
     if isinstance(message_code, str) and has(f"backend.{message_code}"):
         values = params if isinstance(params, dict) else {}
-        return Msg(f"backend.{message_code}", **{str(k): v for k, v in values.items()})
+        return Msg(
+            f"backend.{message_code}",
+            **{str(k): quantity_for(str(k), v) for k, v in values.items()},
+        )
     if isinstance(message_code, str) and message_code.startswith("pydantic."):
         return Msg("backend.pydantic.other", check=message_code.removeprefix("pydantic."))
     if fallback:
@@ -142,9 +149,23 @@ class _LimitItem:
     def __init__(self, name: str, value: object) -> None:
         self.name, self.value = name, value
 
+    def _value(self, field: str, value: object) -> str:
+        """Values carry the unit of their field (``*_mb``) or of the limit (``*_seconds``,
+        ``*_mb``); counts stay plain numbers."""
+        amount = field in AMOUNT_FIELDS
+        if MIB_FIELD.search(field) or (amount and self.name.endswith("_mb")):
+            return format_mebibytes(value)
+        if amount and self.name.endswith("_seconds"):
+            return format_duration(value)
+        if field.endswith("_bytes"):
+            return str(size(value))
+        return str(value)
+
     def __str__(self) -> str:
         if isinstance(self.value, dict):
-            pairs = ", ".join(f"{_limit_field(k)} {v}" for k, v in self.value.items())
+            pairs = ", ".join(
+                f"{_limit_field(k)} {self._value(k, v)}" for k, v in self.value.items()
+            )
         else:
             pairs = str(self.value)
         return f"{_limit_label(self.name)}: {pairs}"
@@ -214,7 +235,7 @@ def _transport(error: ApiClientError, url: str | None, timeout: float | None) ->
     for needles, key in TRANSPORT_PATTERNS:
         if any(needle in lowered for needle in needles):
             if key == "problem.timeout":
-                return Problem(key, Msg(f"{key}.detail", url=where, seconds=f"{timeout or 0:g}"))
+                return Problem(key, Msg(f"{key}.detail", url=where, timeout=duration(timeout or 0)))
             return Problem(key, Msg(f"{key}.detail", url=where))
     reason = str(error).removeprefix("unable to reach backend: ").strip()
     return Problem(
@@ -240,7 +261,8 @@ def describe(
     if isinstance(error, ApiClientError):
         status, code, details = error.status, error.code, error.details
         if code == "download_too_large":
-            return Problem("problem.download", Msg("problem.download.detail", **error.params))
+            limit = size(error.params.get("limit"))
+            return Problem("problem.download", Msg("problem.download.detail", limit=limit))
         if code == "malformed_response":
             return Problem("problem.malformed", Msg("problem.malformed.detail"), code=code)
         if status is None:

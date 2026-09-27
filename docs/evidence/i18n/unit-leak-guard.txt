@@ -1,0 +1,127 @@
+# English unit symbols in the Russian UI: the guards fail on v0.4.1 and pass after the fix
+#
+# Before: a worktree of 7fb441a (v0.4.1 + its verification record), unchanged, checked with
+# this commit's test and gate code. After: this commit. Linux, Xvfb (platform xcb),
+# POLMON_LANGUAGE=ru, a live backend started by the test fixture.
+
+## 1. GUI walk: tests/gui/test_language.py::test_russian_ui_shows_no_english_units
+
+$ (7fb441a) pytest tests/gui/test_language.py -k no_english_units
+    AssertionError: ('kvValue', '2 ms')
+      ('kvValue', '1.0 MiB')
+      ('kvValue', '5 min')
+      ('kvValue', '00 s')
+      ('kvValue', '256 MiB')
+      ('kvValue', '1024 MiB')
+      ('kvValue', '512 MiB')
+      ('cardHint', '3 s')
+      ('tileValue', '156.8 MiB')
+      ('tileSecondary', '1.7 s')
+      ('tileValue', '2.2 GiB')
+      ('tileSecondary', '2.5 GiB')
+      ('tileSecondary', '256.0 MiB')
+      ('tileValue', '3.6 GiB')
+      ('tileValue', '80.3 KiB')
+      ('tileSecondary', '1024 MiB')
+      ('muted', '49 MiB')
+      ('tileValue', '156.8 MiB')
+      ('tileSecondary', '1.7 s')
+      ('tileValue', '2.2 GiB')
+      ('tileSecondary', '2.5 GiB')
+      ('tileSecondary', '256.0 MiB')
+      ('tileValue', '3.6 GiB')
+      ('tileValue', '80.3 KiB')
+      ('tileSecondary', '1024 MiB')
+      ('requestTimeout', '5 s')
+      ('requestTimeout', '30 s')
+      ('idle', '0.5 s')
+      ('settle', '0.0 s')
+      ('maxRun', '120.0 s')
+      ('maxIncremental', '512 MiB')
+      ('reserve', '256 MiB')
+      ('topologyNodes', '48 MiB')
+      ('topologyNodes', '75 mCPU')
+      ('topologySummary', '49 MiB')
+      ('topologySummary', '2297 MiB')
+      ('topologySummary', '80 mCPU')
+      ('topologySummary', '8 MiB')
+      ('deploymentsTable', '0 ms')
+      ('activity log', '0 ms')
+    assert [('kvValue', ...24 MiB'), ...] == []
+      
+      Left contains 40 more items, first extra item: ('kvValue', '2 ms')
+      Use -v to get more diff
+1 failed, 4 deselected in 1.96s
+
+(runtime-switch walk on 7fb441a with the same check: FAILED, 46 leaks, first ('kvValue', '5 ms'))
+
+$ (this commit) pytest tests/gui/test_language.py -k 'runtime or no_english_units'
+2 passed, 3 deselected in 3.91s
+
+## 2. Literal guard: scripts/i18n-lint.py (new rule: unit symbol in a literal)
+
+$ (7fb441a sources) python scripts/i18n-lint.py formatting.py mainwindow.py reportview.py widgets.py errors.py pages/*.py
+src/polmon/client/formatting.py:20: unit symbol in a literal (use polmon.client.formatting): 'B'
+src/polmon/client/formatting.py:20: unit symbol in a literal (use polmon.client.formatting): 'KiB'
+src/polmon/client/formatting.py:20: unit symbol in a literal (use polmon.client.formatting): 'MiB'
+src/polmon/client/formatting.py:20: unit symbol in a literal (use polmon.client.formatting): 'GiB'
+src/polmon/client/formatting.py:20: unit symbol in a literal (use polmon.client.formatting): 'TiB'
+src/polmon/client/formatting.py:21: unit symbol in a literal (use polmon.client.formatting): 'TiB'
+src/polmon/client/formatting.py:22: unit symbol in a literal (use polmon.client.formatting): 'B'
+src/polmon/client/formatting.py:24: unit symbol in a literal (use polmon.client.formatting): ' {}  TiB'
+src/polmon/client/formatting.py:32: unit symbol in a literal (use polmon.client.formatting): ' {}  ms'
+src/polmon/client/formatting.py:34: unit symbol in a literal (use polmon.client.formatting): ' {}  s'
+src/polmon/client/formatting.py:37: unit symbol in a literal (use polmon.client.formatting): ' {}  min  {}  s'
+src/polmon/client/formatting.py:39: unit symbol in a literal (use polmon.client.formatting): ' {}  h  {}  min'
+src/polmon/client/mainwindow.py:198: unit symbol in a literal (use polmon.client.formatting): ' s'
+src/polmon/client/reportview.py:123: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+src/polmon/client/reportview.py:125: unit symbol in a literal (use polmon.client.formatting): ' {}  s'
+src/polmon/client/pages/benchmarks.py:63: unit symbol in a literal (use polmon.client.formatting): ' s'
+src/polmon/client/pages/benchmarks.py:154: unit symbol in a literal (use polmon.client.formatting): ' MiB'
+src/polmon/client/pages/benchmarks.py:155: unit symbol in a literal (use polmon.client.formatting): ' MiB'
+src/polmon/client/pages/dashboard.py:35: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+src/polmon/client/pages/dashboard.py:36: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+src/polmon/client/pages/dashboard.py:37: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+src/polmon/client/pages/topologies.py:490: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB,  {}  mCPU'
+src/polmon/client/pages/topologies.py:582: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+src/polmon/client/pages/topologies.py:583: unit symbol in a literal (use polmon.client.formatting): ' {}  mCPU'
+src/polmon/client/pages/topologies.py:584: unit symbol in a literal (use polmon.client.formatting): ' {}  MiB'
+i18n-lint: 13 modules checked, 13 exempt, 25 hard-coded user-facing literal(s)
+exit status: 1
+
+$ (this commit) python scripts/i18n-lint.py
+i18n-lint: 19 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+exit status: 0
+
+## 3. Completeness gate: English unit symbols in the Russian catalog
+
+$ (7fb441a locales/ru.py) i18n_audit.english_units() over every entry
+ru: connection.timeout.tip: English unit symbols ['s']: 'Тайм-аут обычных запросов (развёртывание и сброс получают не меньше 30 s)'
+ru: progress.elapsed_only: English unit symbols ['s']: 'прошло {seconds} s'
+ru: dashboard.resources.hint: English unit symbols ['s']: 'опрос каждые 3 s'
+ru: tile.data.detail: English unit symbols ['MiB']: 'лимит {limit} MiB (занято {share})'
+ru: deployment.estimate: English unit symbols ['MiB']: 'Оценка: конечных точек {endpoints} (L0: {l0}, пространств имён L1: {namespaces}), около {memory} MiB памяти.'
+ru: editor.too_large: English unit symbols ['MB']: '{name} превышает лимит размера документа 2 MB.'
+ru: topologies.fit.memory_fits: English unit symbols ['MiB']: 'помещается (запас {spare} MiB)'
+ru: topologies.fit.memory_exceeds: English unit symbols ['MiB']: 'превышает (запас {spare} MiB)'
+ru: problem.timeout.detail: English unit symbols ['s']: 'Запрос к {url} превысил тайм-аут {seconds} s.'
+ru: problem.too_large.hint: English unit symbols ['MB']: 'Документы топологий и сценариев ограничены 2 MB.'
+ru: problem.settings.detail: English unit symbols ['s']: 'URL бэкенда должен быть абсолютным адресом http:// или https://, а тайм-аут — от 1 до 120 s.'
+ru: problem.lost.detail: English unit symbols ['s']: '{detail} Повтор каждые {seconds} s; действия недоступны, пока бэкенд не ответит.'
+ru: local.not_ready: English unit symbols ['s']: 'Бэкенд не стал готов за {seconds} s при попытке {attempt}. Последний вывод: {output}'
+ru: limit.duration_seconds: English unit symbols ['s']: 'Длительность эксперимента (s)'
+ru: limit.memory_reserve_mb: English unit symbols ['MiB']: 'Бенчмарк: резерв памяти (MiB)'
+ru: limit.max_run_seconds: English unit symbols ['s']: 'Бенчмарк: время прогона (s)'
+ru: limit.field.required_mb_including_reserve: English unit symbols ['MiB']: 'требуется (MiB, с резервом)'
+ru: limit.field.available_mb: English unit symbols ['MiB']: 'доступно (MiB)'
+ru: limit.field.used_mb: English unit symbols ['MiB']: 'занято (MiB)'
+ru: limit.field.free_mb: English unit symbols ['MiB']: 'свободно (MiB)'
+ru: limit.field.limit_mb: English unit symbols ['MiB']: 'лимит (MiB)'
+ru: limit.field.reserve_mb: English unit symbols ['MiB']: 'резерв (MiB)'
+ru: limit.field.next_experiment_capture_limit_mb: English unit symbols ['MiB']: 'захват следующего эксперимента (MiB)'
+ru: backend.hybrid.bridge_not_forwarding: English unit symbols ['s']: 'Мост {bridge} не перешёл в режим пересылки за {seconds} s.'
+24 Russian catalog entries with English unit symbols
+
+$ (this commit) python scripts/i18n-completeness.py
+i18n-completeness: PASS: 918 keys, 16 plural keys, 130 backend message codes, 591 literal keys in code; 0 problem(s)
+exit status: 0

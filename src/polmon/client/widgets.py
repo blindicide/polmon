@@ -13,7 +13,7 @@ import re
 from collections import deque
 from collections.abc import Iterable, Sequence
 
-from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QLocale, QObject, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -28,6 +28,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -38,6 +40,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -52,7 +55,7 @@ from PySide6.QtWidgets import (
 
 from polmon.client import i18n, theme
 from polmon.client.errors import Problem
-from polmon.client.formatting import progress_text
+from polmon.client.formatting import NBSP, format_duration, progress_text, unit_word
 from polmon.client.i18n import Msg, bind, bind_fn, bind_text, bind_tip, status_label, tr
 from polmon.client.tasks import ProgressUpdate, TaskHandle
 
@@ -93,6 +96,50 @@ def monospace_font() -> QFont:
 
 
 # -- labels and buttons -----------------------------------------------------------------------
+
+
+# Qt locales of the UI languages: spin boxes show ``2,5`` in Russian, as the formatted values do.
+QT_LOCALES = {"ru": QLocale.Language.Russian, "en": QLocale.Language.English}
+# One count per plural form (``one``, ``few``, ``many``, fraction) for sizing a unit field.
+PLURAL_SAMPLES = (1, 2, 5, 1.5)
+
+
+def unit_suffix(box: QAbstractSpinBox, unit: str, *, fixed: bool = False) -> QAbstractSpinBox:
+    """Show the ``unit.<unit>`` word after the value, agreeing with it (``1 секунда``,
+    ``5 секунд``, ``2,5 секунды``) and following language switches. The field is at least as
+    wide as its longest text (exactly that wide when ``fixed``), so the layout does not move
+    while the value changes."""
+
+    def render(target: QAbstractSpinBox, count: float) -> str:
+        fraction = isinstance(target, QDoubleSpinBox) and target.decimals() > 0
+        return NBSP + unit_word(unit, count, fraction=fraction)
+
+    def apply(target: QAbstractSpinBox) -> None:
+        target.setLocale(QLocale(QT_LOCALES.get(i18n.language(), QLocale.Language.English)))
+        assert isinstance(target, QSpinBox | QDoubleSpinBox)
+        # Qt's size hint adds the buttons to the stylesheet padding that already holds them;
+        # measure the widest text instead: the longest number with each form of the unit.
+        metrics = target.fontMetrics()
+        number = max(
+            (target.textFromValue(value) for value in (target.minimum(), target.maximum())),
+            key=metrics.horizontalAdvance,
+        )
+        text = max(
+            metrics.horizontalAdvance(number + render(target, sample))
+            for sample in PLURAL_SAMPLES
+        )
+        buttons = target.buttonSymbols() != QAbstractSpinBox.ButtonSymbols.NoButtons
+        right = theme.SPIN_BUTTON_WIDTH if buttons else theme.SPACE["sm"]
+        chrome = theme.SPACE["sm"] + right + 2 + 6  # padding, border, cursor
+        if fixed:
+            target.setFixedWidth(text + chrome)
+        else:
+            target.setMinimumWidth(text + chrome)
+        target.setSuffix(render(target, target.value()))
+
+    assert isinstance(box, QSpinBox | QDoubleSpinBox)
+    box.valueChanged.connect(lambda value: box.setSuffix(render(box, value)))
+    return bind_fn(box, apply, tag="unit_suffix")
 
 
 def label(
@@ -863,7 +910,7 @@ class OperationProgress(QWidget):
         elapsed = self.handle.elapsed
         if update is None or not update.total:
             self.bar.setRange(0, 0)
-            self.detail.setText(tr("progress.elapsed_only", seconds=f"{elapsed:.1f}"))
+            self.detail.setText(tr("progress.elapsed_only", duration=format_duration(elapsed)))
             return
         self.bar.setRange(0, update.total)
         self.bar.setValue(update.completed)

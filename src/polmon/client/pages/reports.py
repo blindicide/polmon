@@ -12,7 +12,7 @@ from polmon.client.formatting import (
     duration_between,
     format_bytes,
     format_datetime,
-    format_seconds,
+    format_duration,
 )
 from polmon.client.i18n import Msg, bind, tr
 from polmon.client.pages import Context, Page
@@ -280,7 +280,7 @@ class ReportsPage(Page):
                 scenario=scenario.get("id"),
                 topology=topology.get("id"),
                 started=format_datetime(execution.get("started_at")),
-                duration=format_seconds(duration),
+                duration=format_duration(duration),
                 cleanup=tr("reports.cleanup.done")
                 if execution.get("cleanup_performed")
                 else tr("reports.cleanup.not_done"),

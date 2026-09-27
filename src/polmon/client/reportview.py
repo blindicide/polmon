@@ -10,7 +10,12 @@ from __future__ import annotations
 import json
 
 from polmon.client.errors import backend_message
-from polmon.client.formatting import format_bytes, format_datetime
+from polmon.client.formatting import (
+    format_bytes,
+    format_datetime,
+    format_duration,
+    format_mebibytes,
+)
 from polmon.client.i18n import has, status_label, tr, tr_n
 
 
@@ -120,9 +125,9 @@ def _field(key: str, value: object) -> str:
     shown = _code(value)
     if isinstance(value, int | float) and not isinstance(value, bool):
         if key.endswith("_mb"):
-            shown = _code(f"{value} MiB")
+            shown = _code(format_mebibytes(value))
         elif "seconds" in key:
-            shown = _code(f"{value:g} s")
+            shown = _code(format_duration(value))
     return f"- {tr(label) if label else _code(key)}: {shown}"
 
 
