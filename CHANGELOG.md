@@ -4,6 +4,38 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-27
+
+### Added
+
+- **Russian user interface.** The desktop client is Russian by default; English is selectable at
+  run time (*View → Language*, Ctrl+Shift+U, `--language`, `POLMON_LANGUAGE`) without a restart
+  or lost state. Every user-visible string comes from a catalog (`polmon/client/locales/`); Qt's
+  standard dialogs follow via `qtbase_ru.qm`, which the packaged clients now ship. The self-test
+  checks both languages. Terms follow one glossary ([docs/UI-GUIDE.md](docs/UI-GUIDE.md)).
+- **Stable message codes on backend errors** (approach (a), [ARCHITECTURE.md](ARCHITECTURE.md)):
+  every error document adds `message_code` and `params` beside the unchanged English `message`;
+  validation items, experiment errors, benchmark jobs and YAML errors carry codes as well
+  ([docs/API.md](docs/API.md)). The client renders refusals — including the L0-only refusal of
+  the local backend — in the UI language, never as raw backend text or a traceback.
+- Translation gates on both CI platforms: `scripts/i18n-lint.py` rejects hard-coded
+  user-facing literals in client code, `scripts/i18n-completeness.py` rejects incomplete or
+  inconsistent catalogs, glossary variants and unused or missing keys. The GUI suite runs in
+  Russian and in English and walks every screen across a runtime switch.
+- [docs/UI-GUIDE.md](docs/UI-GUIDE.md): design tokens, spacing and type scales, components,
+  glossary, usability floor and the screenshot inventory with before/after pairs.
+
+### Changed
+
+- **Interface redesign.** Design tokens for light and dark themes (one teal accent on slate
+  neutrals, semantic status colours with soft surfaces, every text pair ≥ 4.5:1 and tested), a
+  4-px spacing scale, a type scale and 28-px controls in a rewritten stylesheet; a dark
+  navigation sidebar and a slim connection header; cards, aligned key/value grids and metric
+  tiles; sortable tables with monospaced identifiers and status glyphs; empty, loading and error
+  states for every view; a status-bar busy indicator; confirmed, visibly destructive actions;
+  accessible names for every input; every page fits 1440×900 in both languages.
+- Durations are shown with localized units (мс, с, мин, ч / ms, s, min, h).
+
 ## [0.3.2] - 2026-09-27
 
 ### Added
