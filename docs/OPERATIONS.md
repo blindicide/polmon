@@ -59,7 +59,11 @@ systemctl --user daemon-reload && systemctl --user enable --now polmon-backend
 The backend refuses to listen on a non-loopback address without a token. Resource limits are
 backend flags (`--max-endpoints`, `--max-namespaces`, `--memory-reserve-mb`, ...; see
 [RESOURCE-MANAGEMENT.md](RESOURCE-MANAGEMENT.md)). Data (telemetry SQLite, captures, reports)
-is written under `var/` in the working directory.
+is written under `var/` in the working directory, or wherever `--data-dir PATH` points; a
+directory that cannot be created or written is reported as
+`polmon-backend: cannot use data directory …` instead of a traceback. The standalone Windows
+`polmon-backend.exe` follows the same rule, so start it with `--data-dir` (for example
+`--data-dir %LOCALAPPDATA%\polmon\backend-data`) when its own folder is not writable.
 
 ## 3. Connect the desktop client
 

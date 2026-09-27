@@ -4,6 +4,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `polmon-backend --data-dir PATH` chooses where telemetry, captures, reports and benchmark
+  results go (default unchanged: `./var`). An unusable directory is a one-line error naming the
+  path instead of a `PermissionError` traceback — e.g. the standalone Windows backend started
+  from a read-only folder. The client passes its local data directory explicitly.
+
 ## [0.3.1] - 2026-09-27
 
 ### Changed

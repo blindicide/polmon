@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sqlite3
 import sys
 import tempfile
 from collections.abc import AsyncIterator
@@ -123,6 +124,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("var"),
+        help="telemetry, captures, reports and benchmark results (default: ./var in the working "
+        "directory)",
+    )
     parser.add_argument(
         "--api-token-file",
         "--token-file",
@@ -262,7 +270,13 @@ def main(argv: list[str] | None = None) -> int:
         extra={"event": "api_auth"},
     )
     l0_only = args.local_l0_only or sys.platform == "win32"
-    control = ControlPlane(limits=limits, l0_only=l0_only)
+    try:
+        control = ControlPlane(args.data_dir, limits=limits, l0_only=l0_only)
+    except (OSError, sqlite3.Error) as error:
+        raise SystemExit(
+            f"polmon-backend: cannot use data directory {args.data_dir.absolute()}: {error}; "
+            "pass --data-dir with a writable directory"
+        ) from None
     server = uvicorn.Server(
         uvicorn.Config(create_app(control, api_token=token), host=args.host, port=args.port)
     )

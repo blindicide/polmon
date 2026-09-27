@@ -385,6 +385,8 @@ class LocalBackendManager:
                         "--port",
                         str(self.port),
                         "--local-l0-only",
+                        "--data-dir",  # explicit; "var" keeps the v0.3.1 layout readable
+                        str(self.data_directory / "var"),
                         # Lifeline: the backend leaves at EOF on this pipe, i.e. when we close
                         # it in stop() or when this client dies (the OS closes it for us).
                         "--exit-with-stdin",

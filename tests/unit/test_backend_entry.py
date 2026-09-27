@@ -64,3 +64,21 @@ def test_default_app_is_built_once_on_first_access() -> None:
     assert backend.app is backend.app
     with pytest.raises(AttributeError):
         backend.not_an_attribute  # noqa: B018
+
+
+def test_data_dir_is_used_and_an_unwritable_one_is_a_clean_error(monkeypatch, tmp_path) -> None:
+    import os
+
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self, *args, **kwargs: None)
+    assert backend.main(["--port", "0", "--data-dir", str(tmp_path / "data")]) == 0
+    assert (tmp_path / "data" / "telemetry.sqlite3").is_file()
+
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(SystemExit) as raised:
+        backend.main(["--port", "0", "--data-dir", str(blocker / "data")])
+    message = str(raised.value)
+    assert message.startswith("polmon-backend: cannot use data directory")
+    assert "--data-dir" in message and os.fspath(blocker) in message
