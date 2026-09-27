@@ -52,6 +52,8 @@ class ScenarioResult:
     observations: tuple[Observation, ...]
     errors: tuple[str, ...]
     cleanup_performed: bool
+    # One {"message_code", "params", "message"} entry per ``errors`` item, for localized clients.
+    error_details: tuple[dict[str, object], ...] = ()
 
 
 class ActionExecutor(Protocol):
@@ -76,23 +78,31 @@ class ScenarioEngine:
             raise ScenarioError(
                 "scenario requires a different topology",
                 details={"required": scenario.required_topology, "actual": topology.id},
+                message_code="scenario.topology_mismatch",
+                params={"required": scenario.required_topology, "actual": topology.id},
             )
         nodes = {node.id: node for node in topology.nodes}
         for action in scenario.sequence:
             if action.source not in nodes or action.target not in nodes:
                 raise ScenarioError(
-                    f"action '{action.id}' references a node outside the designated topology"
+                    f"action '{action.id}' references a node outside the designated topology",
+                    message_code="scenario.node_outside_topology",
+                    params={"action": action.id},
                 )
             if action.source == action.target:
                 raise ScenarioError(
-                    f"action '{action.id}' must use distinct source and target nodes"
+                    f"action '{action.id}' must use distinct source and target nodes",
+                    message_code="scenario.same_source_target",
+                    params={"action": action.id},
                 )
             if action.kind is ActionKind.TCP_PROBE:
                 services = {service.id for service in nodes[action.target].services}
                 if action.service not in services:
                     raise ScenarioError(
                         f"action '{action.id}' references undeclared target service "
-                        f"'{action.service}'"
+                        f"'{action.service}'",
+                        message_code="scenario.undeclared_service",
+                        params={"action": action.id, "service": action.service},
                     )
 
     def run(
@@ -121,6 +131,12 @@ class ScenarioEngine:
         start = self.clock()
         observations: list[Observation] = []
         errors: list[str] = []
+        details: list[dict[str, object]] = []
+
+        def failed(message: str, code: str, **params: object) -> None:
+            errors.append(message)
+            details.append({"message_code": code, "params": params, "message": message})
+
         status = ExecutionStatus.FAILED
         cleaned = False
         try:
@@ -130,7 +146,11 @@ class ScenarioEngine:
                 if precondition is None or not precondition(condition)
             ]
             if unmet:
-                errors.append(f"initial conditions not satisfied: {', '.join(unmet)}")
+                failed(
+                    f"initial conditions not satisfied: {', '.join(unmet)}",
+                    "experiment.initial_conditions_unmet",
+                    conditions=", ".join(unmet),
+                )
             else:
                 for index, action in enumerate(scenario.sequence):
                     if self._cancelled.is_set():
@@ -146,10 +166,19 @@ class ScenarioEngine:
                         observation = executor.execute(action, topology, remaining)
                     except TimeoutError:
                         status = ExecutionStatus.TIMED_OUT
-                        errors.append(f"action '{action.id}' timed out")
+                        failed(
+                            f"action '{action.id}' timed out",
+                            "experiment.action_timed_out",
+                            action=action.id,
+                        )
                         break
                     except Exception as error:
-                        errors.append(f"action '{action.id}' failed: {type(error).__name__}")
+                        failed(
+                            f"action '{action.id}' failed: {type(error).__name__}",
+                            "experiment.action_failed",
+                            action=action.id,
+                            cause=type(error).__name__,
+                        )
                         status = ExecutionStatus.FAILED
                         break
                     observations.append(observation)
@@ -180,7 +209,11 @@ class ScenarioEngine:
                     cleanup()
                     cleaned = True
                 except Exception as error:
-                    errors.append(f"cleanup failed: {type(error).__name__}")
+                    failed(
+                        f"cleanup failed: {type(error).__name__}",
+                        "experiment.cleanup_failed",
+                        cause=type(error).__name__,
+                    )
                     status = ExecutionStatus.FAILED
         return ScenarioResult(
             scenario.id,
@@ -191,6 +224,7 @@ class ScenarioEngine:
             tuple(observations),
             tuple(errors),
             cleaned,
+            tuple(details),
         )
 
     @staticmethod

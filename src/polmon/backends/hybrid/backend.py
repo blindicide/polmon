@@ -176,7 +176,9 @@ class HybridBackend:
             if time.monotonic() >= deadline:
                 raise SyntheticEngineError(
                     f"bridge {bridge} ports did not reach forwarding state within "
-                    f"{self.port_ready_timeout:g}s: {states}"
+                    f"{self.port_ready_timeout:g}s: {states}",
+                    message_code="hybrid.bridge_not_forwarding",
+                    params={"bridge": bridge, "seconds": self.port_ready_timeout},
                 )
             time.sleep(0.01)
 
@@ -255,10 +257,16 @@ class HybridBackend:
     ) -> bool:
         source = self.synthetic.engine._get(source_id)
         if source.ipv4 is None:
-            raise SyntheticEngineError("source endpoint has no IPv4 address")
+            raise SyntheticEngineError(
+                "source endpoint has no IPv4 address",
+                message_code="synthetic.no_ipv4",
+            )
         tap = self.taps.get(source.network)
         if tap is None:
-            raise SyntheticEngineError("source endpoint has no TAP boundary")
+            raise SyntheticEngineError(
+                "source endpoint has no TAP boundary",
+                message_code="hybrid.no_tap_boundary",
+            )
         destination_ip = IPv4Address(destination)
         arp = ArpPacket.request(source.mac, source.ipv4, destination_ip)
         request = EthernetFrame(BROADCAST_MAC, source.mac, ETHERTYPE_ARP, arp.to_bytes()).to_bytes()
@@ -300,7 +308,10 @@ class HybridBackend:
                     return frame
             except Exception:
                 continue
-        raise SyntheticEngineError("timed out waiting for hybrid network response")
+        raise SyntheticEngineError(
+            "timed out waiting for hybrid network response",
+            message_code="hybrid.response_timeout",
+        )
 
     def _receive_arp(
         self, tap: TapLike | TapResponder, destination: IPv4Address, timeout: float

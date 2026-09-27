@@ -121,6 +121,8 @@ class BenchmarkJob:
         self.stderr_tail: list[str] = []
         self.result_name: str | None = None
         self.message: str | None = None
+        self.message_code: str | None = None
+        self.message_params: dict[str, object] = {}
         self.exit_code: int | None = None
         self.process: subprocess.Popen[bytes] | None = None
         self.cancel_requested = False
@@ -147,6 +149,8 @@ class BenchmarkJob:
             "request": self.request.model_dump(mode="json"),
             "result_name": self.result_name,
             "message": self.message,
+            "message_code": self.message_code,
+            "message_params": dict(self.message_params),
             "exit_code": self.exit_code,
             "stderr_tail": list(self.stderr_tail[-20:]),
         }
@@ -215,13 +219,16 @@ class BenchmarkJobs:
         violations.update(self._busy())
         if violations:
             raise ResourceLimitError(
-                "benchmark request exceeds configured resource limits", details=violations
+                "benchmark request exceeds configured resource limits", details=violations,
+                message_code="benchmark.limits_exceeded",
             )
         oversized = any(count > 50 for count in request.counts)
         if request.kind == "l0" and oversized and not request.large:
             raise ConfigurationError(
                 "L0 endpoint counts above 50 require an explicit large benchmark",
                 details={"counts": request.counts},
+                message_code="benchmark.large_required",
+                params={"maximum": 50},
             )
 
     # -- lifecycle -------------------------------------------------------------------------
@@ -242,7 +249,8 @@ class BenchmarkJobs:
             except OSError as error:
                 stdout.close()
                 raise ConfigurationError(
-                    "benchmark process could not be started", details={"reason": str(error)}
+                    "benchmark process could not be started", details={"reason": str(error)},
+                    message_code="benchmark.start_failed",
                 ) from error
             self._jobs[job.job_id] = job
             self._trim()
@@ -297,13 +305,19 @@ class BenchmarkJobs:
             if job.cancel_requested:
                 job.state = "cancelled"
                 job.message = "cancelled by the operator"
+                job.message_code = "benchmark.cancelled"
             else:
                 job.state = EXIT_STATES.get(exit_code, "failed")
                 error = document.get("error") if document else None
                 if isinstance(error, dict):
                     job.message = str(error.get("message") or "")
+                    job.message_code = str(error.get("message_code") or "benchmark.aborted")
+                    params = error.get("params")
+                    job.message_params = dict(params) if isinstance(params, dict) else {}
                 elif job.state == "failed":
                     job.message = f"benchmark process exited with status {exit_code}"
+                    job.message_code = "benchmark.process_exit"
+                    job.message_params = {"exit_code": exit_code}
             if document is not None:
                 job.result_name = self._result_name_for(document)
 
@@ -321,7 +335,11 @@ class BenchmarkJobs:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
-                raise ConfigurationError(f"unknown benchmark job '{job_id}'")
+                raise ConfigurationError(
+                    f"unknown benchmark job '{job_id}'",
+                    message_code="benchmark.unknown_job",
+                    params={"job_id": job_id},
+                )
             return job.view()
 
     def jobs(self) -> list[dict[str, object]]:
@@ -332,9 +350,17 @@ class BenchmarkJobs:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
-                raise ConfigurationError(f"unknown benchmark job '{job_id}'")
+                raise ConfigurationError(
+                    f"unknown benchmark job '{job_id}'",
+                    message_code="benchmark.unknown_job",
+                    params={"job_id": job_id},
+                )
             if job.state != "running" or job.process is None:
-                raise ConfigurationError(f"benchmark job '{job_id}' is not running")
+                raise ConfigurationError(
+                    f"benchmark job '{job_id}' is not running",
+                    message_code="benchmark.job_not_running",
+                    params={"job_id": job_id},
+                )
             job.cancel_requested = True
             job.detail = "cancelling"
             self._terminate(job.process)
@@ -407,10 +433,17 @@ class BenchmarkJobs:
 
     def _result_path(self, name: str) -> Path:
         if not RESULT_NAME.fullmatch(name):
-            raise ConfigurationError("invalid benchmark result name")
+            raise ConfigurationError(
+                "invalid benchmark result name",
+                message_code="benchmark.invalid_result_name",
+            )
         path = self.output_dir / name
         if not path.is_file():
-            raise ConfigurationError(f"benchmark result '{name}' does not exist")
+            raise ConfigurationError(
+                f"benchmark result '{name}' does not exist",
+                message_code="benchmark.result_missing",
+                params={"name": name},
+            )
         return path
 
     def result(self, name: str) -> dict[str, object]:
@@ -418,9 +451,17 @@ class BenchmarkJobs:
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ConfigurationError(f"benchmark result '{name}' is unreadable") from error
+            raise ConfigurationError(
+                f"benchmark result '{name}' is unreadable",
+                message_code="benchmark.result_unreadable",
+                params={"name": name},
+            ) from error
         if not isinstance(document, dict):
-            raise ConfigurationError(f"benchmark result '{name}' is invalid")
+            raise ConfigurationError(
+                f"benchmark result '{name}' is invalid",
+                message_code="benchmark.result_invalid",
+                params={"name": name},
+            )
         summary = subprocess.run(  # noqa: S603 - fixed module invocation on a validated path
             [sys.executable, "-m", "polmon.benchmarks.cli", "summarize", str(path)],
             capture_output=True,

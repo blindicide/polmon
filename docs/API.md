@@ -18,7 +18,19 @@ Run an experiment with `POST /v1/experiments` and fields `experiment_id`, `topol
 `GET /v1/experiments/{experiment_id}/report`; the backend also writes atomic JSON and Markdown
 artifacts beneath its data directory. `POST /v1/reset` tears down every owned deployment while
 preserving loaded topology definitions so they can be redeployed. Application errors use
-`{"error":{"code":"...","message":"...","details":{...}}}` and an appropriate HTTP status.
+`{"error":{"code":"...","message":"...","message_code":"...","params":{...},"details":{...}}}`
+and an appropriate HTTP status. `code` is the error class (`configuration_error`,
+`resource_limit`, …); `message` is safe English text for logs and API consumers;
+`message_code` is a stable identifier of the specific message (for example `fidelity.l0_only`,
+`topology.not_deployed`, `admission.topology_limits`) and `params` holds its JSON-scalar
+parameters, so clients can render the message in their own language (the desktop client renders
+`backend.<message_code>` from its catalogs). Validation failures list one item per problem in
+`details.errors[]`, each with `location`, `message`, `message_code` and `params` (Pydantic's own
+checks appear as `pydantic.<type>`, e.g. `pydantic.missing`). Invalid YAML is
+`<document>.yaml_invalid` with `params.line`/`params.column` and `details.problem_code`
+(`mapping_values_not_allowed`, `bad_indentation`, `duplicate_key`, …). Experiment records and
+reports add `error_details[]` (`message_code`, `params`, `message`) beside the English `errors[]`,
+and benchmark jobs report `message_code`/`message_params` beside `message`.
 Request documents are capped at 2 MB, and any request body above 5 MiB (declared or chunked)
 is refused with HTTP 413 `request_too_large` before it is parsed; client connection/ordinary calls default to 5 seconds,
 deployment/reset to 30 seconds, and experiment execution to 120 seconds.

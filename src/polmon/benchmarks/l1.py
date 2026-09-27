@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import time
@@ -33,6 +34,18 @@ LIMITATIONS = [
     "host, measured by iputils ping; it is not comparable to L0 in-process latency.",
     "Requires passwordless sudo restricted to laboratory networking; otherwise NOT RUN.",
 ]
+
+
+def unavailable_code(reason: str) -> tuple[str, dict[str, object]]:
+    """Message code and parameters for a reason returned by namespace_environment_available."""
+    tool = re.match(r"required tool '([^']+)' is not installed", reason)
+    if tool:
+        return "benchmark.not_run_tool", {"tool": tool.group(1)}
+    if reason.startswith("sudo probe failed"):
+        return "benchmark.not_run_probe", {}
+    if reason.startswith("passwordless sudo"):
+        return "benchmark.not_run_sudo", {}
+    return "benchmark.not_run", {}
 
 
 def namespace_environment_available() -> tuple[bool, str]:

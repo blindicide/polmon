@@ -24,9 +24,12 @@ class IPv4Packet:
 
     def to_bytes(self) -> bytes:
         if len(self.payload) > 65515:
-            raise PacketError("IPv4 payload is too large")
+            raise PacketError(
+                "IPv4 payload is too large",
+                message_code="packet.ipv4_payload_too_large",
+            )
         if not 1 <= self.ttl <= 255:
-            raise PacketError("IPv4 TTL must be between 1 and 255")
+            raise PacketError("IPv4 TTL must be between 1 and 255", message_code="packet.ipv4_ttl")
         total_length = 20 + len(self.payload)
         initial = struct.pack(
             "!BBHHHBBH4s4s",
@@ -48,18 +51,27 @@ class IPv4Packet:
     @classmethod
     def from_bytes(cls, data: bytes) -> IPv4Packet:
         if len(data) < 20:
-            raise PacketError("truncated IPv4 packet")
+            raise PacketError("truncated IPv4 packet", message_code="packet.ipv4_truncated")
         version_ihl, _, total, identification, flags_fragment, ttl, protocol, _, src, dst = (
             struct.unpack("!BBHHHBBH4s4s", data[:20])
         )
         if version_ihl != 0x45:
-            raise PacketError("only IPv4 without options is supported")
+            raise PacketError(
+                "only IPv4 without options is supported",
+                message_code="packet.ipv4_options",
+            )
         if total != len(data):
-            raise PacketError("IPv4 total length does not match packet")
+            raise PacketError(
+                "IPv4 total length does not match packet",
+                message_code="packet.ipv4_length",
+            )
         if flags_fragment & 0xBFFF:
-            raise PacketError("IPv4 fragmentation or reserved flags are unsupported")
+            raise PacketError(
+                "IPv4 fragmentation or reserved flags are unsupported",
+                message_code="packet.ipv4_flags",
+            )
         if internet_checksum(data[:20]) != 0:
-            raise PacketError("invalid IPv4 header checksum")
+            raise PacketError("invalid IPv4 header checksum", message_code="packet.ipv4_checksum")
         return cls(
             IPv4Address(src),
             IPv4Address(dst),

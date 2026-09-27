@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from polmon.core.errors import ConfigurationError
+from polmon.core.errors import CodedValueError, ConfigurationError
 from polmon.topology.models import Topology
 
 
@@ -33,23 +33,90 @@ def _construct_mapping(
 UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
 
 
+# PyYAML problem phrases (the parser's English) mapped to stable codes a client can localize.
+YAML_PROBLEMS = (
+    ("duplicate YAML key", "duplicate_key"),
+    ("mapping values are not allowed", "mapping_values_not_allowed"),
+    ("could not find expected ':'", "expected_colon"),
+    ("cannot start any token", "invalid_character"),
+    ("expected <block end>", "bad_indentation"),
+    ("did not find expected key", "bad_indentation"),
+    ("did not find expected '-' indicator", "bad_indentation"),
+    ("found unexpected end of stream", "unexpected_end"),
+    ("found undefined alias", "undefined_alias"),
+    ("did not find expected node content", "missing_value"),
+    ("found unknown escape character", "invalid_escape"),
+    ("found unexpected ':'", "unexpected_colon"),
+)
+# Pydantic error context values that are useful, JSON-safe parameters for a message.
+CONTEXT_PARAMETERS = ("expected", "ge", "gt", "le", "lt", "min_length", "max_length", "pattern")
+
+
+def yaml_error(document: str, error: yaml.YAMLError) -> ConfigurationError:
+    """A coded refusal for invalid YAML with the line/column and a stable problem code."""
+    problem = str(getattr(error, "problem", "") or error)
+    mark = getattr(error, "problem_mark", None)
+    line = mark.line + 1 if mark is not None else None
+    column = mark.column + 1 if mark is not None else None
+    problem_code = next((code for phrase, code in YAML_PROBLEMS if phrase in problem), "syntax")
+    key = problem.split(":", 1)[1].strip().strip("'\"") if problem_code == "duplicate_key" else ""
+    return ConfigurationError(
+        f"invalid {document} YAML",
+        details={
+            "reason": str(error),
+            "line": line,
+            "column": column,
+            "problem": problem,
+            "problem_code": problem_code,
+            "key": key,
+        },
+        message_code=f"{document}.yaml_invalid",
+        params={"line": line if line is not None else "?", "column": column or "?"},
+    )
+
+
+def validation_errors(error: ValidationError) -> list[dict[str, object]]:
+    """Pydantic errors as ``location``/``message`` plus ``message_code``/``params`` items."""
+    items: list[dict[str, object]] = []
+    for item in error.errors(include_url=False, include_input=False):
+        context = item.get("ctx") or {}
+        cause = context.get("error")
+        if isinstance(cause, CodedValueError):
+            code, params = cause.message_code, dict(cause.params)
+        else:
+            code = f"pydantic.{item['type']}"
+            params = {
+                name: str(context[name]) for name in CONTEXT_PARAMETERS if name in context
+            }
+        items.append(
+            {
+                "location": ".".join(str(part) for part in item["loc"]),
+                "message": item["msg"],
+                "message_code": code,
+                "params": params,
+            }
+        )
+    return items
+
+
 def parse_topology(text: str) -> Topology:
     try:
         raw = yaml.load(text, Loader=UniqueKeyLoader)
         if not isinstance(raw, dict):
-            raise ConfigurationError("topology document must be a YAML mapping")
+            raise ConfigurationError(
+                "topology document must be a YAML mapping",
+                message_code="topology.not_mapping",
+            )
         return Topology.model_validate(raw)
     except ConfigurationError:
         raise
     except yaml.YAMLError as error:
-        raise ConfigurationError("invalid topology YAML", details={"reason": str(error)}) from error
+        raise yaml_error("topology", error) from error
     except ValidationError as error:
-        errors = [
-            {"location": ".".join(str(part) for part in item["loc"]), "message": item["msg"]}
-            for item in error.errors(include_url=False, include_context=False, include_input=False)
-        ]
         raise ConfigurationError(
-            "topology validation failed", details={"errors": errors}
+            "topology validation failed",
+            details={"errors": validation_errors(error)},
+            message_code="topology.validation_failed",
         ) from error
 
 
@@ -58,7 +125,8 @@ def load_topology(path: str | Path) -> Topology:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
         raise ConfigurationError(
-            "unable to read topology", details={"reason": str(error)}
+            "unable to read topology", details={"reason": str(error)},
+            message_code="topology.unreadable",
         ) from error
     return parse_topology(text)
 

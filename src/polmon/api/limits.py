@@ -67,6 +67,8 @@ class RequestSizeLimit:
                 "error": {
                     "code": "request_too_large",
                     "message": "request body exceeds the configured limit",
+                    "message_code": "request.too_large",
+                    "params": {"limit_bytes": self.max_bytes},
                     "details": {"limit_bytes": self.max_bytes},
                 }
             }

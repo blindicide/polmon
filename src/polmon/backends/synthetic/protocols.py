@@ -48,7 +48,10 @@ class SyntheticProtocolNetwork:
     ) -> PingResult:
         source = self.engine._get(source_id)
         if source.ipv4 is None:
-            raise SyntheticEngineError("source endpoint has no IPv4 address")
+            raise SyntheticEngineError(
+                "source endpoint has no IPv4 address",
+                message_code="synthetic.no_ipv4",
+            )
         target_ip = IPv4Address(destination)
         target = self._find_peer(source, target_ip)
         cache = self.arp_cache.setdefault(source.id, {})
@@ -83,7 +86,10 @@ class SyntheticProtocolNetwork:
         self._send(target, source, ETHERTYPE_IPV4, reply_ip.to_bytes())
         parsed_reply = IcmpEcho.from_bytes(IPv4Packet.from_bytes(reply_ip.to_bytes()).payload)
         if parsed_reply.payload != payload:
-            raise SyntheticEngineError("ICMP echo payload mismatch")
+            raise SyntheticEngineError(
+                "ICMP echo payload mismatch",
+                message_code="synthetic.icmp_payload_mismatch",
+            )
         return PingResult(
             source.ipv4,
             target.ipv4,
@@ -99,7 +105,9 @@ class SyntheticProtocolNetwork:
             if peer.ipv4 == address:
                 return peer
         raise SyntheticEngineError(
-            f"no endpoint for IPv4 address '{address}' on '{source.network}'"
+            f"no endpoint for IPv4 address '{address}' on '{source.network}'",
+            message_code="synthetic.no_endpoint_for_ipv4",
+            params={"address": address, "network": source.network},
         )
 
     def _arp_exchange(self, source: SyntheticEndpoint, target: SyntheticEndpoint) -> None:
@@ -107,12 +115,18 @@ class SyntheticProtocolNetwork:
         self._send(source, target, ETHERTYPE_ARP, request.to_bytes(), destination_mac=BROADCAST_MAC)
         parsed = ArpPacket.from_bytes(request.to_bytes())
         if parsed.target_ip != target.ipv4:
-            raise SyntheticEngineError("ARP target mismatch")
+            raise SyntheticEngineError(
+                "ARP target mismatch",
+                message_code="synthetic.arp_target_mismatch",
+            )
         reply = ArpPacket.reply(target.mac, target.ipv4, source.mac, source.ipv4)
         self._send(target, source, ETHERTYPE_ARP, reply.to_bytes())
         parsed_reply = ArpPacket.from_bytes(reply.to_bytes())
         if parsed_reply.operation != ARP_REPLY:
-            raise SyntheticEngineError("ARP reply operation mismatch")
+            raise SyntheticEngineError(
+                "ARP reply operation mismatch",
+                message_code="synthetic.arp_operation_mismatch",
+            )
         self.arp_cache.setdefault(source.id, {})[target.ipv4] = target.mac
         self.arp_cache.setdefault(target.id, {})[source.ipv4] = source.mac
 
@@ -132,4 +146,7 @@ class SyntheticProtocolNetwork:
         self.engine.dispatch(source.id, target.id, raw)
         # The receiving stack handles the frame synchronously; consume it from the bounded queue.
         if self.engine.take_delivered(target.id) != raw:
-            raise SyntheticEngineError("delivered frame does not match the transmitted frame")
+            raise SyntheticEngineError(
+                "delivered frame does not match the transmitted frame",
+                message_code="synthetic.frame_mismatch",
+            )

@@ -57,7 +57,10 @@ class EventScheduler:
         self, timestamp: float, endpoint_id: str, kind: str, payload: bytes = b""
     ) -> ScheduledEvent:
         if len(self._events) >= self.max_events:
-            raise SyntheticEngineError("synthetic event limit reached")
+            raise SyntheticEngineError(
+                "synthetic event limit reached",
+                message_code="synthetic.event_limit",
+            )
         self._sequence += 1
         event = ScheduledEvent(timestamp, self._sequence, endpoint_id, kind, bytes(payload))
         heapq.heappush(self._events, event)
@@ -102,15 +105,30 @@ class SyntheticEngine:
         ipv4: str | IPv4Address | None = None,
     ) -> SyntheticEndpoint:
         if len(self.endpoints) >= self.max_endpoints:
-            raise SyntheticEngineError("synthetic endpoint limit reached")
+            raise SyntheticEngineError(
+                "synthetic endpoint limit reached",
+                message_code="synthetic.endpoint_limit",
+            )
         if endpoint_id in self.endpoints:
-            raise SyntheticEngineError(f"endpoint '{endpoint_id}' already exists")
+            raise SyntheticEngineError(
+                f"endpoint '{endpoint_id}' already exists",
+                message_code="synthetic.endpoint_exists",
+                params={"endpoint_id": endpoint_id},
+            )
         normalized_mac = mac.lower().replace("-", ":")
         address = IPv4Address(ipv4) if ipv4 is not None else None
         if normalized_mac in self._macs:
-            raise SyntheticEngineError(f"MAC address '{normalized_mac}' already exists")
+            raise SyntheticEngineError(
+                f"MAC address '{normalized_mac}' already exists",
+                message_code="synthetic.mac_exists",
+                params={"mac": normalized_mac},
+            )
         if address is not None and address in self._addresses:
-            raise SyntheticEngineError(f"IPv4 address '{address}' already exists")
+            raise SyntheticEngineError(
+                f"IPv4 address '{address}' already exists",
+                message_code="synthetic.ipv4_exists",
+                params={"address": address},
+            )
         endpoint = SyntheticEndpoint(
             id=endpoint_id,
             instance_id=uuid.uuid4(),
@@ -144,9 +162,16 @@ class SyntheticEngine:
         source = self._get(source_id)
         destination = self._get(destination_id)
         if source.network != destination.network:
-            raise SyntheticEngineError("endpoints are not on the same virtual network")
+            raise SyntheticEngineError(
+                "endpoints are not on the same virtual network",
+                message_code="synthetic.different_networks",
+            )
         if len(destination.inbox) == destination.inbox.maxlen:
-            raise SyntheticEngineError(f"endpoint '{destination_id}' receive queue is full")
+            raise SyntheticEngineError(
+                f"endpoint '{destination_id}' receive queue is full",
+                message_code="synthetic.queue_full",
+                params={"endpoint_id": destination_id},
+            )
         destination.inbox.append(bytes(payload))
 
     def take_delivered(self, endpoint_id: str) -> bytes:
@@ -157,7 +182,11 @@ class SyntheticEngine:
         """
         endpoint = self._get(endpoint_id)
         if not endpoint.inbox:
-            raise SyntheticEngineError(f"endpoint '{endpoint_id}' has no delivered frame")
+            raise SyntheticEngineError(
+                f"endpoint '{endpoint_id}' has no delivered frame",
+                message_code="synthetic.no_frame",
+                params={"endpoint_id": endpoint_id},
+            )
         return endpoint.inbox.pop()
 
     def destroy_all(self) -> None:
@@ -187,5 +216,9 @@ class SyntheticEngine:
         try:
             return self.endpoints[endpoint_id]
         except KeyError as error:
-            raise SyntheticEngineError(f"unknown endpoint '{endpoint_id}'") from error
+            raise SyntheticEngineError(
+                f"unknown endpoint '{endpoint_id}'",
+                message_code="synthetic.unknown_endpoint",
+                params={"endpoint_id": endpoint_id},
+            ) from error
 

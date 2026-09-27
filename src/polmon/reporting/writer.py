@@ -107,6 +107,7 @@ def build_experiment_report(
         "observed_events": rendered_events,
         "expected_vs_actual": comparisons,
         "errors": list(result.errors),
+        "error_details": [dict(item) for item in result.error_details],
         "resource_statistics": [
             event["payload"]
             for event in rendered_events

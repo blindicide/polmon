@@ -38,7 +38,7 @@ class ArpPacket:
 
     def to_bytes(self) -> bytes:
         if self.operation not in {ARP_REQUEST, ARP_REPLY}:
-            raise PacketError("unsupported ARP operation")
+            raise PacketError("unsupported ARP operation", message_code="packet.arp_operation")
         return struct.pack(
             "!HHBBH6s4s6s4s",
             ARP_ETHERNET,
@@ -55,14 +55,20 @@ class ArpPacket:
     @classmethod
     def from_bytes(cls, data: bytes) -> ArpPacket:
         if len(data) != 28:
-            raise PacketError("ARP packet must be exactly 28 bytes")
+            raise PacketError(
+                "ARP packet must be exactly 28 bytes",
+                message_code="packet.arp_length",
+            )
         hardware, protocol, hlen, plen, operation, sha, spa, tha, tpa = struct.unpack(
             "!HHBBH6s4s6s4s", data
         )
         if (hardware, protocol, hlen, plen) != (ARP_ETHERNET, ARP_IPV4, 6, 4):
-            raise PacketError("unsupported ARP hardware or protocol format")
+            raise PacketError(
+                "unsupported ARP hardware or protocol format",
+                message_code="packet.arp_format",
+            )
         if operation not in {ARP_REQUEST, ARP_REPLY}:
-            raise PacketError("unsupported ARP operation")
+            raise PacketError("unsupported ARP operation", message_code="packet.arp_operation")
         return cls(
             operation,
             bytes_to_mac(sha),

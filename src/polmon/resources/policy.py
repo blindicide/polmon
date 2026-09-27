@@ -75,7 +75,8 @@ class AdmissionController:
             }
         if violations:
             raise ResourceLimitError(
-                "topology exceeds configured resource limits", details=violations
+                "topology exceeds configured resource limits", details=violations,
+                message_code="admission.topology_limits",
             )
 
     def admit_experiment(
@@ -96,7 +97,8 @@ class AdmissionController:
             }
         if violations:
             raise ResourceLimitError(
-                "experiment exceeds configured resource limits", details=violations
+                "experiment exceeds configured resource limits", details=violations,
+                message_code="admission.experiment_limits",
             )
 
 

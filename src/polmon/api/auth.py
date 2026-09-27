@@ -33,7 +33,9 @@ def read_token_file(path: Path) -> str:
         mode = path.stat().st_mode
         if mode & (stat.S_IRWXG | stat.S_IRWXO):
             raise ConfigurationError(
-                f"API token file {path} must not be accessible to group or others (chmod 600)"
+                f"API token file {path} must not be accessible to group or others (chmod 600)",
+                message_code="auth.token_file_permissions",
+                params={"path": path},
             )
     return path.read_text(encoding="utf-8").strip()
 
@@ -43,7 +45,11 @@ def resolve_token(token_file: Path | None, environment: dict[str, str] | None = 
     token = read_token_file(token_file) if token_file is not None else None
     token = token or environment.get(TOKEN_ENVIRONMENT_VARIABLE) or None
     if token is not None and len(token) < MIN_TOKEN_LENGTH:
-        raise ConfigurationError(f"API token must be at least {MIN_TOKEN_LENGTH} characters")
+        raise ConfigurationError(
+            f"API token must be at least {MIN_TOKEN_LENGTH} characters",
+            message_code="auth.token_too_short",
+            params={"minimum": MIN_TOKEN_LENGTH},
+        )
     return token
 
 
@@ -51,7 +57,9 @@ def require_safe_binding(host: str, token: str | None) -> None:
     if token is None and not is_loopback(host):
         raise ConfigurationError(
             f"refusing to listen on {host} without an API token; set "
-            f"{TOKEN_ENVIRONMENT_VARIABLE} or --api-token-file, or bind to 127.0.0.1"
+            f"{TOKEN_ENVIRONMENT_VARIABLE} or --api-token-file, or bind to 127.0.0.1",
+            message_code="auth.unsafe_binding",
+            params={"host": host},
         )
 
 
@@ -86,6 +94,8 @@ class BearerTokenAuth:
                 "error": {
                     "code": "unauthorized",
                     "message": "a valid API token is required",
+                    "message_code": "auth.token_required",
+                    "params": {},
                     "details": {},
                 }
             }

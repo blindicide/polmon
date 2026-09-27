@@ -8,6 +8,8 @@ from ipaddress import IPv4Address, IPv4Network
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from polmon.core.errors import CodedValueError
+
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # Controlled laboratory address space (SECURITY.md): RFC 1918 private ranges and the RFC 2544
 # benchmarking range. Public, shared (100.64.0.0/10), loopback, link-local, and multicast ranges
@@ -40,7 +42,10 @@ class Protocol(StrEnum):
 
 def _identifier(value: str) -> str:
     if not IDENTIFIER.fullmatch(value):
-        raise ValueError("must start with a lowercase letter and contain only a-z, 0-9, or '-'")
+        raise CodedValueError(
+            "must start with a lowercase letter and contain only a-z, 0-9, or '-'",
+            "topology.identifier_format",
+        )
     return value
 
 
@@ -77,9 +82,11 @@ class Network(StrictModel):
     def require_laboratory_range(cls, value: IPv4Network) -> IPv4Network:
         if not any(value.subnet_of(allowed) for allowed in LAB_IPV4_RANGES):
             allowed = ", ".join(str(item) for item in LAB_IPV4_RANGES)
-            raise ValueError(
+            raise CodedValueError(
                 f"{value} is outside the controlled laboratory ranges ({allowed}); external "
-                "addresses are not authorised"
+                "addresses are not authorised",
+                "topology.address_outside_lab",
+                address=value, allowed=allowed,
             )
         return value
 
@@ -97,10 +104,13 @@ class Interface(StrictModel):
     def normalize_mac(cls, value: str) -> str:
         normalized = value.lower().replace("-", ":")
         if not MAC_ADDRESS.fullmatch(normalized):
-            raise ValueError("must be a six-octet unicast MAC address")
+            raise CodedValueError("must be a six-octet unicast MAC address", "topology.mac_format")
         first_octet = int(normalized[:2], 16)
         if first_octet & 1:
-            raise ValueError("multicast MAC addresses are not valid endpoint identities")
+            raise CodedValueError(
+                "multicast MAC addresses are not valid endpoint identities",
+                "topology.mac_multicast",
+            )
         return normalized
 
 
@@ -117,16 +127,29 @@ class Node(StrictModel):
     def validate_node(self) -> Node:
         interface_ids = [interface.id for interface in self.interfaces]
         if len(interface_ids) != len(set(interface_ids)):
-            raise ValueError(f"node '{self.id}' has duplicate interface identifiers")
+            raise CodedValueError(
+                f"node '{self.id}' has duplicate interface identifiers",
+                "topology.duplicate_interface_ids",
+                node=self.id,
+            )
         service_ids = [service.id for service in self.services]
         if len(service_ids) != len(set(service_ids)):
-            raise ValueError(f"node '{self.id}' has duplicate service identifiers")
+            raise CodedValueError(
+                f"node '{self.id}' has duplicate service identifiers",
+                "topology.duplicate_service_ids",
+                node=self.id,
+            )
         bindings = [(service.protocol, service.port) for service in self.services]
         if len(bindings) != len(set(bindings)):
-            raise ValueError(f"node '{self.id}' has conflicting service bindings")
+            raise CodedValueError(
+                f"node '{self.id}' has conflicting service bindings",
+                "topology.conflicting_service_bindings",
+                node=self.id,
+            )
         if self.node_class is NodeClass.L0 and self.services:
-            raise ValueError(
-                "L0 service definitions are unsupported before an application stack exists"
+            raise CodedValueError(
+                "L0 service definitions are unsupported before an application stack exists",
+                "topology.l0_services_unsupported",
             )
         return self
 
@@ -160,15 +183,17 @@ class Topology(StrictModel):
         network_ids = [network.id for network in self.networks]
         node_ids = [node.id for node in self.nodes]
         if len(network_ids) != len(set(network_ids)):
-            raise ValueError("duplicate network identifiers")
+            raise CodedValueError("duplicate network identifiers", "topology.duplicate_network_ids")
         if len(node_ids) != len(set(node_ids)):
-            raise ValueError("duplicate node identifiers")
+            raise CodedValueError("duplicate node identifiers", "topology.duplicate_node_ids")
 
         for index, left in enumerate(self.networks):
             for right in self.networks[index + 1 :]:
                 if left.ipv4_subnet.overlaps(right.ipv4_subnet):
-                    raise ValueError(
-                        f"networks '{left.id}' and '{right.id}' have overlapping IPv4 subnets"
+                    raise CodedValueError(
+                        f"networks '{left.id}' and '{right.id}' have overlapping IPv4 subnets",
+                        "topology.overlapping_subnets",
+                        left=left.id, right=right.id,
                     )
 
         by_network = {network.id: network for network in self.networks}
@@ -180,36 +205,48 @@ class Topology(StrictModel):
                 owner = f"{node.id}/{interface.id}"
                 network = by_network.get(interface.network)
                 if network is None:
-                    raise ValueError(
-                        f"interface '{owner}' references unknown network '{interface.network}'"
+                    raise CodedValueError(
+                        f"interface '{owner}' references unknown network '{interface.network}'",
+                        "topology.unknown_network",
+                        interface=owner, network=interface.network,
                     )
                 if interface.network in attached_networks:
-                    raise ValueError(
-                        f"node '{node.id}' has multiple interfaces on '{interface.network}'"
+                    raise CodedValueError(
+                        f"node '{node.id}' has multiple interfaces on '{interface.network}'",
+                        "topology.multiple_interfaces_on_network",
+                        node=node.id, network=interface.network,
                     )
                 attached_networks.add(interface.network)
                 if interface.ipv4 not in network.ipv4_subnet:
-                    raise ValueError(
+                    raise CodedValueError(
                         f"IPv4 address {interface.ipv4} on '{owner}' is outside "
-                        f"{network.ipv4_subnet}"
+                        f"{network.ipv4_subnet}",
+                        "topology.ipv4_outside_subnet",
+                        address=interface.ipv4, interface=owner, subnet=network.ipv4_subnet,
                     )
                 reserved = {
                     network.ipv4_subnet.network_address,
                     network.ipv4_subnet.broadcast_address,
                 }
                 if interface.ipv4 in reserved:
-                    raise ValueError(
-                        f"IPv4 address {interface.ipv4} on '{owner}' is not a usable host address"
+                    raise CodedValueError(
+                        f"IPv4 address {interface.ipv4} on '{owner}' is not a usable host address",
+                        "topology.ipv4_not_host",
+                        address=interface.ipv4, interface=owner,
                     )
                 if interface.mac in mac_owners:
-                    raise ValueError(
+                    raise CodedValueError(
                         f"MAC address {interface.mac} conflicts with "
-                        f"'{mac_owners[interface.mac]}'"
+                        f"'{mac_owners[interface.mac]}'",
+                        "topology.mac_conflict",
+                        mac=interface.mac, owner=mac_owners[interface.mac],
                     )
                 if interface.ipv4 in ip_owners:
-                    raise ValueError(
+                    raise CodedValueError(
                         f"IPv4 address {interface.ipv4} conflicts with "
-                        f"'{ip_owners[interface.ipv4]}'"
+                        f"'{ip_owners[interface.ipv4]}'",
+                        "topology.ipv4_conflict",
+                        address=interface.ipv4, owner=ip_owners[interface.ipv4],
                     )
                 mac_owners[interface.mac] = owner
                 ip_owners[interface.ipv4] = owner

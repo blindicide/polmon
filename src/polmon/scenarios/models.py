@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from polmon.core.errors import CodedValueError
 from polmon.topology.models import StrictModel, _identifier
 
 
@@ -38,9 +39,15 @@ class ScenarioAction(StrictModel):
     @model_validator(mode="after")
     def validate_kind_fields(self) -> ScenarioAction:
         if self.kind is ActionKind.TCP_PROBE and self.service is None:
-            raise ValueError("tcp_probe requires a declared service identifier")
+            raise CodedValueError(
+                "tcp_probe requires a declared service identifier",
+                "scenario.tcp_probe_needs_service",
+            )
         if self.kind is ActionKind.ICMP_PROBE and self.service is not None:
-            raise ValueError("icmp_probe does not accept a service identifier")
+            raise CodedValueError(
+                "icmp_probe does not accept a service identifier",
+                "scenario.icmp_probe_no_service",
+            )
         if self.service is not None:
             _identifier(self.service)
         return self
@@ -56,9 +63,15 @@ class Condition(StrictModel):
     @model_validator(mode="after")
     def validate_value_type(self) -> Condition:
         if self.field == "success" and not isinstance(self.equals, bool):
-            raise ValueError("success conditions require a boolean value")
+            raise CodedValueError(
+                "success conditions require a boolean value",
+                "scenario.success_needs_boolean",
+            )
         if self.field == "detail" and not isinstance(self.equals, str):
-            raise ValueError("detail conditions require a string value")
+            raise CodedValueError(
+                "detail conditions require a string value",
+                "scenario.detail_needs_string",
+            )
         return self
 
 
@@ -79,13 +92,24 @@ class Scenario(StrictModel):
     def validate_scenario(self) -> Scenario:
         action_ids = [action.id for action in self.sequence]
         if len(action_ids) != len(set(action_ids)):
-            raise ValueError("scenario action identifiers must be unique")
+            raise CodedValueError(
+                "scenario action identifiers must be unique",
+                "scenario.duplicate_action_ids",
+            )
         unpermitted = sorted({action.kind for action in self.sequence} - self.permitted_actions)
         if unpermitted:
-            raise ValueError(f"scenario sequence contains unpermitted actions: {unpermitted}")
+            raise CodedValueError(
+                f"scenario sequence contains unpermitted actions: {unpermitted}",
+                "scenario.unpermitted_actions",
+                actions=unpermitted,
+            )
         known = set(action_ids)
         for condition in [*self.success_conditions, *self.failure_conditions]:
             if condition.action not in known:
-                raise ValueError(f"condition references unknown action '{condition.action}'")
+                raise CodedValueError(
+                    f"condition references unknown action '{condition.action}'",
+                    "scenario.unknown_condition_action",
+                    action=condition.action,
+                )
         return self
 

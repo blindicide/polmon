@@ -161,7 +161,11 @@ def _run_plan(
                 measurements=[],
                 started_at=started,
                 status="not_run",
-                error={"message": f"NOT RUN — environment unavailable: {reason}"},
+                error={
+                    "message": f"NOT RUN — environment unavailable: {reason}",
+                    "message_code": l1.unavailable_code(reason)[0],
+                    "params": l1.unavailable_code(reason)[1],
+                },
             )
             _emit(args, payload, started)
             print(f"NOT RUN — environment unavailable: {reason}", file=sys.stderr)
@@ -187,7 +191,7 @@ def _run_plan(
             measurements=rows,
             started_at=started,
             status="aborted",
-            error={"code": error.code, "message": error.message, "details": error.details},
+            error=error.document(),
         )
         _emit(args, payload, started)
         print(f"aborted: {error.message} {json.dumps(error.details)}", file=sys.stderr)

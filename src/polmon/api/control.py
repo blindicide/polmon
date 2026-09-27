@@ -156,7 +156,9 @@ class ControlPlane:
             self._topology(topology_id)
             if topology_id in self.deployments:
                 raise ConfigurationError(
-                    f"topology '{topology_id}' is deployed; destroy the deployment first"
+                    f"topology '{topology_id}' is deployed; destroy the deployment first",
+                    message_code="topology.deployed_destroy_first",
+                    params={"topology_id": topology_id},
                 )
             self.topologies.pop(topology_id, None)
         return {"topology_id": topology_id, "state": "unloaded"}
@@ -199,7 +201,10 @@ class ControlPlane:
         if classes == {NodeClass.L0}:
             return SyntheticBackend()
         if NodeClass.L2 in classes:
-            raise ConfigurationError("L2 virtual-machine execution is not implemented")
+            raise ConfigurationError(
+                "L2 virtual-machine execution is not implemented",
+                message_code="fidelity.l2_not_implemented",
+            )
         readiness = fidelity_readiness()
         needed = "l1_ready" if classes == {NodeClass.L1} else "hybrid_ready"
         if not readiness[needed]:
@@ -216,12 +221,17 @@ class ControlPlane:
                     "requires": "linux_network_namespaces",
                     "unavailable_checks": unavailable,
                 },
+                message_code="fidelity.linux_lab_unavailable",
+                params={"checks": unavailable},
             )
         if classes == {NodeClass.L1}:
             return NamespaceBackend()
         if classes <= {NodeClass.L0, NodeClass.L1}:
             return HybridBackend()
-        raise ConfigurationError("topology contains an unsupported backend combination")
+        raise ConfigurationError(
+            "topology contains an unsupported backend combination",
+            message_code="topology.unsupported_backend_combination",
+        )
 
     def deploy(self, topology_id: str) -> dict[str, object]:
         with self._lock:
@@ -233,6 +243,7 @@ class ControlPlane:
                     "Local backend supports L0 synthetic nodes only; L1/L2 requires a polmon "
                     "backend on a Linux host with network namespace privileges.",
                     details={"fidelity": "l0_only", "requires": "linux_network_namespaces"},
+                    message_code="fidelity.l0_only",
                 )
             deployed = [self._topology(item) for item in self.deployments]
             self.admission.admit_topology(topology, deployed)
@@ -252,7 +263,11 @@ class ControlPlane:
     def deployment(self, topology_id: str) -> dict[str, object]:
         control = self.deployments.get(topology_id)
         if control is None:
-            raise ConfigurationError(f"topology '{topology_id}' is not deployed")
+            raise ConfigurationError(
+                f"topology '{topology_id}' is not deployed",
+                message_code="topology.not_deployed",
+                params={"topology_id": topology_id},
+            )
         inspection = control.inspect()
         return {
             "topology_id": topology_id,
@@ -286,6 +301,7 @@ class ControlPlane:
             raise ConfigurationError(
                 "environment reset did not clean every deployment",
                 details={"failures": failures},
+                message_code="reset.incomplete",
             )
         return {"state": "reset", "deployments_destroyed": len(topology_ids)}
 
@@ -303,12 +319,19 @@ class ControlPlane:
         rejections reach the caller directly in both modes.
         """
         if not EXPERIMENT_ID.fullmatch(experiment_id):
-            raise ConfigurationError("invalid experiment identifier")
+            raise ConfigurationError(
+                "invalid experiment identifier",
+                message_code="experiment.invalid_id",
+            )
         scenario = parse_scenario(scenario_source)
         topology = self._topology(topology_id)
         control = self.deployments.get(topology_id)
         if control is None:
-            raise ConfigurationError("topology must be deployed before an experiment")
+            raise ConfigurationError(
+                "topology must be deployed before an experiment",
+                message_code="experiment.topology_not_deployed",
+                params={"topology_id": topology_id},
+            )
         backend = control.backend
         executor: ActionExecutor
         if isinstance(backend, NamespaceBackend):
@@ -319,7 +342,10 @@ class ControlPlane:
             executor = HybridScenarioExecutor(backend)
         else:
             self.destroy(topology_id)
-            raise ConfigurationError("scenario execution is unsupported for this backend")
+            raise ConfigurationError(
+                "scenario execution is unsupported for this backend",
+                message_code="experiment.unsupported_backend",
+            )
         try:
             ScenarioEngine().validate_against(scenario, topology)
         except ScenarioError:
@@ -333,11 +359,16 @@ class ControlPlane:
                 or experiment_id in self.experiments
                 or self.telemetry.exists(experiment_id)
             ):
-                raise ConfigurationError(f"experiment '{experiment_id}' already exists")
+                raise ConfigurationError(
+                    f"experiment '{experiment_id}' already exists",
+                    message_code="experiment.exists",
+                    params={"experiment_id": experiment_id},
+                )
             if self.benchmarks.running() is not None:
                 raise ResourceLimitError(
                     "experiment refused while a benchmark job is running",
                     details={"benchmark_jobs": {"active": 1, "limit": 0}},
+                    message_code="experiment.benchmark_running",
                 )
             self.admission.admit_experiment(
                 scenario, len(self.active_experiments), data_directory=self.data_directory
@@ -404,11 +435,13 @@ class ControlPlane:
             self._execute_experiment(experiment_id, topology, scenario, executor, engine)
         except Exception as error:  # recorded for GET /experiments/{id}; never lost silently
             if isinstance(error, PolmonError):
-                failure = {"code": error.code, "message": error.message, "details": error.details}
+                failure = error.document()
             else:
                 failure = {
                     "code": "internal_error",
                     "message": f"{type(error).__name__}: experiment aborted",
+                    "message_code": "experiment.aborted",
+                    "params": {"cause": type(error).__name__},
                     "details": {},
                 }
             with self._lock:
@@ -534,8 +567,18 @@ class ControlPlane:
         elif isinstance(executor, HybridScenarioExecutor):
             for frame in executor.captured_frames():
                 session.packet(frame)
-        for error in result.errors:
-            session.event(EventCategory.EXECUTION_ERROR, "error", payload={"message": error})
+        for error, detail in zip(
+            result.errors, result.error_details or [{}] * len(result.errors), strict=False
+        ):
+            session.event(
+                EventCategory.EXECUTION_ERROR,
+                "error",
+                payload={
+                    "message": error,
+                    "message_code": detail.get("message_code"),
+                    "params": detail.get("params") or {},
+                },
+            )
         session.resources(self._sample(topology_id))
         summary = session.close(result.status)
         events = self.telemetry.events(experiment_id)
@@ -593,7 +636,11 @@ class ControlPlane:
         with self._lock:
             engine = self.active_experiments.get(experiment_id)
             if engine is None:
-                raise ConfigurationError(f"experiment '{experiment_id}' is not active")
+                raise ConfigurationError(
+                    f"experiment '{experiment_id}' is not active",
+                    message_code="experiment.not_active",
+                    params={"experiment_id": experiment_id},
+                )
             engine.cancel()
             if experiment_id in self.progress:
                 self.progress[experiment_id]["state"] = "cancelling"
@@ -634,6 +681,7 @@ class ControlPlane:
                 "Local backend supports L0 benchmarks only; L1 and target benchmarks require a "
                 "polmon backend on a Linux host with network namespace privileges.",
                 details={"fidelity": "l0_only", "requires": "linux_network_namespaces"},
+                message_code="fidelity.l0_benchmarks_only",
             )
         return self.benchmarks.start(request)
 
@@ -669,7 +717,11 @@ class ControlPlane:
                 "persisted": True,
                 "progress": None,
             }
-        raise ConfigurationError(f"unknown experiment '{experiment_id}'")
+        raise ConfigurationError(
+            f"unknown experiment '{experiment_id}'",
+            message_code="experiment.unknown",
+            params={"experiment_id": experiment_id},
+        )
 
     def list_experiments(self, limit: int = 200) -> list[dict[str, object]]:
         with self._lock:
@@ -714,36 +766,69 @@ class ControlPlane:
     def experiment_capture_path(self, experiment_id: str) -> Path:
         """The finished experiment's bounded PCAP file (written when the experiment closes)."""
         if not EXPERIMENT_ID.fullmatch(experiment_id):
-            raise ConfigurationError("invalid experiment identifier")
+            raise ConfigurationError(
+                "invalid experiment identifier",
+                message_code="experiment.invalid_id",
+            )
         with self._lock:
             if experiment_id in self.active_experiments:
-                raise ConfigurationError(f"experiment '{experiment_id}' is still running")
+                raise ConfigurationError(
+                    f"experiment '{experiment_id}' is still running",
+                    message_code="experiment.still_running",
+                    params={"experiment_id": experiment_id},
+                )
         path = self.data_directory / "captures" / f"{experiment_id}.pcap"
         if not path.is_file():
-            raise ConfigurationError(f"capture for experiment '{experiment_id}' does not exist")
+            raise ConfigurationError(
+                f"capture for experiment '{experiment_id}' does not exist",
+                message_code="experiment.capture_missing",
+                params={"experiment_id": experiment_id},
+            )
         return path
 
     def experiment_report_markdown(self, experiment_id: str) -> dict[str, object]:
         if not EXPERIMENT_ID.fullmatch(experiment_id):
-            raise ConfigurationError("invalid experiment identifier")
+            raise ConfigurationError(
+                "invalid experiment identifier",
+                message_code="experiment.invalid_id",
+            )
         path = self.data_directory / "reports" / f"{experiment_id}.md"
         if not path.is_file():
-            raise ConfigurationError(f"report for experiment '{experiment_id}' does not exist")
+            raise ConfigurationError(
+                f"report for experiment '{experiment_id}' does not exist",
+                message_code="experiment.report_missing",
+                params={"experiment_id": experiment_id},
+            )
         return {"experiment_id": experiment_id, "markdown": path.read_text(encoding="utf-8")}
 
     def experiment_report(self, experiment_id: str) -> dict[str, object]:
         if not EXPERIMENT_ID.fullmatch(experiment_id):
-            raise ConfigurationError("invalid experiment identifier")
+            raise ConfigurationError(
+                "invalid experiment identifier",
+                message_code="experiment.invalid_id",
+            )
         path = self.data_directory / "reports" / f"{experiment_id}.json"
         if not path.is_file():
-            raise ConfigurationError(f"report for experiment '{experiment_id}' does not exist")
+            raise ConfigurationError(
+                f"report for experiment '{experiment_id}' does not exist",
+                message_code="experiment.report_missing",
+                params={"experiment_id": experiment_id},
+            )
         document = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(document, dict):
-            raise ConfigurationError(f"report for experiment '{experiment_id}' is invalid")
+            raise ConfigurationError(
+                f"report for experiment '{experiment_id}' is invalid",
+                message_code="experiment.report_invalid",
+                params={"experiment_id": experiment_id},
+            )
         return document
 
     def _topology(self, topology_id: str) -> Topology:
         try:
             return self.topologies[topology_id]
         except KeyError as error:
-            raise ConfigurationError(f"unknown topology '{topology_id}'") from error
+            raise ConfigurationError(
+                f"unknown topology '{topology_id}'",
+                message_code="topology.unknown",
+                params={"topology_id": topology_id},
+            ) from error

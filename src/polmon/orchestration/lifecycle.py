@@ -50,7 +50,8 @@ class OwnershipRegistry:
             }
             if conflicts:
                 raise OrchestrationError(
-                    "resource ownership conflict", details={"conflicts": conflicts}
+                    "resource ownership conflict", details={"conflicts": conflicts},
+                    message_code="orchestration.ownership_conflict",
                 )
             self._owners.update({resource: owner for resource in resources})
 
@@ -93,6 +94,8 @@ class Orchestrator:
             raise OrchestrationError(
                 f"cannot {operation} topology while lifecycle state is '{self.state}'",
                 details={"state": self.state, "allowed": sorted(allowed)},
+                message_code="orchestration.invalid_state",
+                params={"operation": operation, "state": self.state},
             )
 
     def validate(self) -> None:
@@ -174,4 +177,10 @@ class Orchestrator:
         return OrchestrationError(
             f"backend '{self.backend.name}' failed during {operation}",
             details={"operation": operation, "cause": type(error).__name__},
+            message_code="orchestration.backend_failed",
+            params={
+                "backend": self.backend.name,
+                "operation": operation,
+                "cause": type(error).__name__,
+            },
         )

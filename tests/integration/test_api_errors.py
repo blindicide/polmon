@@ -7,7 +7,12 @@ from polmon.core.errors import ConfigurationError
 
 @app.get("/_test/error")
 def raise_configuration_error() -> None:
-    raise ConfigurationError("invalid test input", details={"field": "example"})
+    raise ConfigurationError(
+        "invalid test input",
+        details={"field": "example"},
+        message_code="test.invalid_input",
+        params={"field": "example"},
+    )
 
 
 @pytest.mark.integration
@@ -18,6 +23,8 @@ def test_application_error_contract() -> None:
         "error": {
             "code": "configuration_error",
             "message": "invalid test input",
+            "message_code": "test.invalid_input",
+            "params": {"field": "example"},
             "details": {"field": "example"},
         }
     }

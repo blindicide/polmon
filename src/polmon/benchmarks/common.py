@@ -63,6 +63,7 @@ class BenchmarkLimits:
                     "measured_mb": round(measured / 1_048_576, 3),
                     "limit_mb": self.max_incremental_memory_mb,
                 },
+                message_code="benchmark.memory_ceiling",
             )
 
 
@@ -176,6 +177,7 @@ def run_worker(kind: str, params: dict[str, object], *, timeout: float) -> dict[
                 "terminated_gracefully": not killed,
                 "stderr": (stderr or "").strip()[-2_000:],
             },
+            message_code="benchmark.duration_limit",
         ) from None
     completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     if completed.returncode != 0:
@@ -186,13 +188,20 @@ def run_worker(kind: str, params: dict[str, object], *, timeout: float) -> dict[
                 "returncode": completed.returncode,
                 "stderr": completed.stderr.strip()[-2_000:],
             },
+            message_code="benchmark.worker_failed",
         )
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     if not lines:
-        raise BenchmarkLimitError("benchmark worker produced no result", details={"kind": kind})
+        raise BenchmarkLimitError(
+            "benchmark worker produced no result", details={"kind": kind},
+            message_code="benchmark.worker_no_result",
+        )
     row = json.loads(lines[-1])
     if not isinstance(row, dict):
-        raise BenchmarkLimitError("benchmark worker returned a non-object", details={"kind": kind})
+        raise BenchmarkLimitError(
+            "benchmark worker returned a non-object", details={"kind": kind},
+            message_code="benchmark.worker_bad_result",
+        )
     return row
 
 

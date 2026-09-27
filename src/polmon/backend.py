@@ -54,10 +54,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 async def handle_polmon_error(_: Request, error: PolmonError) -> JSONResponse:
     """Return consistent safe errors without leaking traces or local state."""
-    return JSONResponse(
-        status_code=error.status_code,
-        content={"error": {"code": error.code, "message": error.message, "details": error.details}},
-    )
+    return JSONResponse(status_code=error.status_code, content={"error": error.document()})
 
 
 def root() -> dict[str, str]:
