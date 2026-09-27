@@ -4,6 +4,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-27
+
 ### Changed
 
 - The Local backend keeps one persistent data directory (`<state>/polmon/data`), so local
