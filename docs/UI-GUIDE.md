@@ -40,48 +40,50 @@ CLI output, the self-test and the packaged-client probe stay English (they are p
 
 ### Glossary
 
-One Russian term per concept. The right column lists variants the completeness gate rejects in
+One Russian term per concept. The last column lists variants the completeness gate rejects in
 the Russian catalog.
 
-| English | Russian | Rejected variants |
-|---------|---------|-------------------|
-| backend | бэкенд | `бекенд`, `бэкэнд`, `сервер\s+polmon` |
-| client | клиент | — |
-| deployment / deploy | развёртывание / развернуть | `развертыв`, `деплой` |
-| destroy | разобрать | `уничтож`, `снести` |
-| reset environment | сбросить окружение | — |
-| topology | топология | — |
-| node | узел | `\bнод[аыуе]?\b` |
-| endpoint | конечная точка | `эндпоинт`, `endpoint` |
-| namespace | пространство имён | `неймспейс`, `пространств\w* имен\b` |
-| scenario | сценарий | — |
-| experiment | эксперимент | — |
-| action | действие | — |
-| telemetry | телеметрия | — |
-| report | отчёт | `\bотчет` |
-| benchmark | бенчмарк | `\bтест производительности` |
-| measurement | замер | — |
-| admission control | контроль допуска | — |
-| limit | лимит | `\bквот` |
-| capture | захват | `перехват` |
-| frame | кадр | `фрейм` |
-| validate / validation | проверить / проверка | `валидац` |
-| timeout | тайм-аут | `таймаут` |
-| activity log | журнал действий | `\bлог\b`, `\bлоги\b` |
-| CPU | ЦП | `\bCPU\b` |
-| emulation level (fidelity) | уровень эмуляции | — |
-| token | токен | — |
+| English | Russian | Concept | Rejected variants |
+|---------|---------|---------|-------------------|
+| backend | бэкенд | the polmon-backend service the client controls over HTTP | `бекенд`, `бэкэнд`, `сервер\s+polmon` |
+| client | клиент | this desktop application | — |
+| deployment / deploy | развёртывание / развернуть | a topology instantiated on the backend; the act of creating it | `развертыв`, `деплой` |
+| destroy | разобрать | tear one deployment down and release its resources | `уничтож`, `снести` |
+| reset environment | сбросить окружение | destroy every deployment the backend owns | — |
+| topology | топология | the YAML description of nodes, networks and interfaces | — |
+| node | узел | a host in a topology (L0 synthetic or L1 namespace) | `\bнод[аыуе]?\b` |
+| endpoint | конечная точка | an addressable interface of a node; the unit of admission limits | `эндпоинт`, `endpoint` |
+| namespace | пространство имён | a Linux network namespace backing an L1 node | `неймспейс`, `пространств\w* имен\b` |
+| scenario | сценарий | the YAML description of an experiment: actions and conditions | — |
+| experiment | эксперимент | one run of a scenario against a deployment | — |
+| action | действие | one step of a scenario (probe, request) | — |
+| telemetry | телеметрия | the event stream an experiment produces | — |
+| report | отчёт | the JSON/Markdown result of an experiment | `\bотчет` |
+| benchmark | бенчмарк | a bounded measurement job on the backend | `\bтест производительности` |
+| measurement | замер | one row of a benchmark result | — |
+| admission control | контроль допуска | the backend check that refuses work beyond its limits | — |
+| limit | лимит | a configured ceiling (endpoints, namespaces, memory, duration) | `\bквот` |
+| capture | захват | the packet capture (PCAP) of an experiment | `перехват` |
+| frame | кадр | one captured Ethernet frame | `фрейм` |
+| validate / validation | проверить / проверка | checking a document on the backend without deploying it | `валидац` |
+| timeout | тайм-аут | how long the client waits for one HTTP response | `таймаут` |
+| activity log | журнал действий | the dockable history of what the client did | `\bлог\b`, `\bлоги\b` |
+| CPU | ЦП | processor time and load | `\bCPU\b` |
+| emulation level (fidelity) | уровень эмуляции | what the backend can emulate: L0 only, or L0 + L1 + hybrid | — |
+| token | токен | the API token the backend requires | — |
 
 **Kept as is** in both languages (names, protocols, formats, units): polmon, L0, L1, L2, TAP,
 YAML, JSON, PCAP, CSV, Markdown, HTTP(S), API, URL, IP, IPv4, MAC, ICMP, TCP, ARP, TTL,
 Ethernet, EtherType, RSS, ID, SHA-256, Linux, Windows, systemd, sudo, iproute2, ping, veth,
-Qt, PySide6, and the byte units B, KiB, MiB, GiB (`scripts/i18n_audit.py`, `KEPT_TERMS`).
+Qt, PySide6, and the unit symbols B, KiB, MiB, GiB, ms, s, min, h (`scripts/i18n_audit.py`,
+`KEPT_TERMS`).
 Mixed forms are fine where Russian usage has them: *MAC-адрес*, *IP-адрес*,
 *loopback-интерфейс*.
 
-**Numbers and units.** Decimal point in both languages (values are copied into YAML and
-tickets); byte sizes in IEC units; durations in the language's abbreviations: `мс`, `с`, `мин`,
-`ч` / `ms`, `s`, `min`, `h` (`unit.*` keys). Timestamps are ISO-like `YYYY-MM-DD HH:MM:SS`.
+**Numbers and units.** Unit symbols are machine notation and are not translated: `B`, `KiB`,
+`MiB`, `GiB`, `ms`, `s`, `min`, `h` (`250 ms`, `4.2 s`, `1 min 15 s`, `1 h 05 min`, spin-box
+suffixes ` s` and ` MiB`). Decimal point in both languages (values are copied into YAML and
+tickets). Timestamps are ISO-like `YYYY-MM-DD HH:MM:SS`.
 
 **Style.** Sentence case for titles, buttons and menu items; buttons are verbs in the
 infinitive (*Развернуть*, *Разобрать*, *Сбросить окружение*); Russian quotes «…» around names;
@@ -152,16 +154,24 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
   column pairs, long values in the first column, identifiers monospaced and never broken.
   **ResourceTiles**: live counters with sparklines. **Tables** (`make_table`): sortable,
   resizable, alternating rows, monospaced identifier columns, numbers right-aligned, status
-  cells with glyph + word; columns fit their content and a long cell cannot take the table.
+  cells with glyph + word. Columns fit their content (capped at 360 px); when a table is wider
+  than its view, header slack is given up first, cell content is never cut, and only then does
+  the table scroll.
 - **Buttons by role:** *primary* (filled accent, one per area), *secondary* (outlined),
   *danger* (red outline; always confirmed), *quiet* (text only, for links such as *Все отчёты*).
+  The primary action of each screen: *Подключиться* (header, while disconnected), *Развернуть…*
+  (topologies), *Развернуть* (deployment), *Запустить эксперимент* (scenarios), *Экспорт CSV…*
+  (telemetry), *Сохранить Markdown…* (reports), *Запустить бенчмарк* (benchmarks); the
+  dashboard is read-only. While connected to the Local backend, *Отключиться* is a danger
+  button: it stops the owned backend.
 - **States** (`StateView`): *empty* (○ + what to do next), *loading* (spinner + what is
   loading), *error* (✕ + the problem), always with a sentence, never a blank area.
 - **Feedback:** problem banners (title — detail, bullet items, hint; closable), a status-bar
   busy indicator for any request that takes longer than 400 ms, operation progress with
   percentage, step, elapsed time, ETA and *Отменить* (Esc), and a task-bar alert when a long
   operation ends while the window is in the background.
-- **Destructive actions** (*Разобрать*, *Сбросить окружение*, quitting with an operation
+- **Destructive actions** (*Разобрать*, *Сбросить окружение*, disconnecting from the Local
+  backend — it stops the owned backend —, quitting with an operation
   running) ask for confirmation in a dialog that names the object and the consequence.
 
 ## 4. Usability floor
