@@ -229,3 +229,19 @@ def test_resource_tiles_warn_when_headroom_or_storage_runs_low(qtbot) -> None:
     assert tiles.data.value.property("tone") == "danger" and "96%" in tiles.data.secondary.text()
     # No swap figure in the snapshot (a Windows backend): say so instead of implying zero use.
     assert tiles.swap.secondary.text() == tr("tile.not_reported")
+
+
+def test_identifiers_use_a_real_fixed_pitch_font(qapp) -> None:
+    """Identifiers render monospaced on every platform (the system fixed font is Courier New on
+    Windows and absent on the offscreen platform)."""
+    from PySide6.QtGui import QFontDatabase, QFontInfo
+
+    from polmon.client.theme import MONOSPACE_FAMILIES, monospace_family
+    from polmon.client.widgets import monospace_font
+
+    font = monospace_font()
+    assert QFontInfo(font).fixedPitch()
+    system = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    assert font.pointSizeF() == system.pointSizeF()  # the family changes, not the size
+    if set(MONOSPACE_FAMILIES) & set(QFontDatabase.families()):
+        assert monospace_family() in MONOSPACE_FAMILIES

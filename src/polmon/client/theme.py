@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QGuiApplication, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication
 
 THEMES = ("system", "light", "dark")
@@ -228,11 +228,25 @@ def _arrow_images(v: dict[str, str]) -> dict[str, str]:
     return paths
 
 
+# Identifier font: the first installed of these (Windows 11, Windows, Linux, Linux, macOS), else
+# the platform's fixed font — which is Courier New on Windows and missing offscreen.
+MONOSPACE_FAMILIES = ("Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Menlo")
+
+
+def monospace_family() -> str:
+    installed = set(QFontDatabase.families()) if QGuiApplication.instance() is not None else set()
+    for family in MONOSPACE_FAMILIES:
+        if family in installed:
+            return family
+    return QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+
+
 def stylesheet(v: dict[str, str]) -> str:
     """The whole application stylesheet, generated from one token set."""
     s, t, h, r = SPACE, TYPE, CONTROL_HEIGHT, RADIUS
     inner = h - 2  # content height inside a 1-px border
     arrows = _arrow_images(v) if QGuiApplication.instance() is not None else {}
+    mono = monospace_family() if QGuiApplication.instance() is not None else "monospace"
     return f"""
 * {{ outline: 0; }}
 QWidget {{ font-size: {t["body"]}px; color: {v["text"]}; }}
@@ -276,7 +290,7 @@ QLabel#cardHint, QLabel#muted, QLabel#caption {{ color: {v["text_muted"]}; }}
 QLabel#caption {{ font-size: {t["caption"]}px; }}
 QLabel#sectionLabel {{ color: {v["text_secondary"]}; font-size: {t["caption"]}px;
                        font-weight: 600; }}
-QLabel#mono {{ font-family: monospace; }}
+QLabel#mono {{ font-family: "{mono}"; }}
 
 QFrame#tile {{ background: {v["surface_alt"]}; border: 1px solid {v["border"]};
                border-radius: {r["card"]}px; }}

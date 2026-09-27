@@ -79,8 +79,11 @@ class ThemeAware:
 
 
 def monospace_font() -> QFont:
-    font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    """The identifier font (theme.MONOSPACE_FAMILIES) at the UI's text size."""
+    font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)  # keeps its size
+    font.setFamily(theme.monospace_family())
     font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setFixedPitch(True)
     return font
 
 

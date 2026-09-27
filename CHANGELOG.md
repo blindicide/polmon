@@ -4,6 +4,15 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Identifiers render in a real monospaced font on every platform (Cascadia Mono, Consolas,
+  DejaVu Sans Mono, Liberation Mono or Menlo, whichever is installed); on Windows they fell back
+  to the platform's fixed font or to the proportional UI font.
+- CI renders the Russian UI on `windows-latest` too (`ui-screenshots-windows` artifact).
+- RESOURCE-BUDGET.md attributes the v0.4.0 client memory growth (denser widget tree and larger
+  stylesheet; the UI language makes no difference).
+
 ## [0.4.0] - 2026-09-27
 
 ### Added

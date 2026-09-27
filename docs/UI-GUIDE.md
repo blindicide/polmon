@@ -138,6 +138,11 @@ Themes: *system* (follows the OS), *light*, *dark* — **Ctrl+Shift+T** cycles t
 | Radius (`RADIUS`) | control 6 · card 8 · pill 10 |
 | Control height | 28 px for buttons, inputs, combo and spin boxes |
 
+Identifiers (URLs, IDs, topology and node names, addresses, YAML) use the first installed of
+Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, Menlo (`theme.MONOSPACE_FAMILIES`) at
+the platform's fixed-font size; everything else uses the platform UI font (Segoe UI on
+Windows).
+
 Page padding is `lg` horizontally and `sm` vertically; cards have `md` padding and `sm` gaps;
 tiles show a caption (11/600), one metric (22/600) and one muted detail line.
 
@@ -210,7 +215,8 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
 All images are real renders of the running client (`scripts/ui_screenshots.py`: offscreen
 platform, window 1440×900, a live `polmon-backend` with an API token, the `l0-office` topology
 and the `office-sweep` scenario). CI renders the same set, plus the English UI, as the
-`ui-screenshots` artifact. Details: [ui/SCREENSHOTS.md](ui/SCREENSHOTS.md).
+`ui-screenshots` artifact, and renders it again on `windows-latest` with the Windows fonts as
+`ui-screenshots-windows` (every screen except the Linux-only benchmark run). Details: [ui/SCREENSHOTS.md](ui/SCREENSHOTS.md).
 
 ### Before / after
 
