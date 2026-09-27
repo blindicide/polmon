@@ -71,8 +71,10 @@ def main() -> int:
     settings = QSettings(str(workdir / "client.ini"), QSettings.Format.IniFormat)
     window = MainWindow(settings)
     window.resize(1440, 900)
+    # No set_theme() here: create_application applied the theme before the window existed,
+    # exactly as a real launch does. Re-applying it re-polished every widget and once hid a
+    # launch-only layout bug (overlapping sidebar rows) from these screenshots.
     window.show()
-    window.set_theme("light")
     shots: list[tuple[str, str]] = []
 
     def grab(name: str, caption: str) -> None:
