@@ -281,8 +281,11 @@ def test_smoke_start_shows_the_window_and_reports(qapp) -> None:
     from polmon.client.selftest import smoke_start
 
     stream = io.StringIO()
-    assert smoke_start(0.5, ["polmon-client"], stream) == 0
+    # 0.5 s was too short on a loaded Windows runner (Build Windows 36283869533): the window was
+    # not yet exposed when the smoke start ended. Exposure is what is under test, not speed.
+    code = smoke_start(2.0, ["polmon-client"], stream)
     output = stream.getvalue()
+    assert code == 0, output
     assert "exposed after" in output
     platform = QApplication.platformName()
     assert f"polmon {__version__} smoke-start: PASS platform={platform}" in output
