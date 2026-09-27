@@ -21,7 +21,7 @@ from polmon.api.limits import RequestSizeLimit
 from polmon.api.routes import router
 from polmon.core.diagnostics import collect_diagnostics, fidelity_readiness
 from polmon.core.errors import PolmonError
-from polmon.core.lifeline import onefile_launcher_pid, watch_process
+from polmon.core.lifeline import onefile_launcher_pid, watch_process, watch_stream_eof
 from polmon.core.logging import configure_logging
 from polmon.resources import ResourceLimits
 from polmon.version import __version__
@@ -110,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--local-l0-only",
         action="store_true",
         help="enforce the local-client L0-only fidelity boundary (automatic on Windows)",
+    )
+    parser.add_argument(
+        "--exit-with-stdin",
+        action="store_true",
+        help="shut down gracefully at EOF on stdin (used by the client that owns this process, "
+        "so the backend never outlives it)",
     )
     parser.add_argument(
         "--run-benchmark",
@@ -260,9 +266,14 @@ def main(argv: list[str] | None = None) -> int:
     server = uvicorn.Server(
         uvicorn.Config(create_app(control, api_token=token), host=args.host, port=args.port)
     )
+    def request_exit() -> None:
+        server.should_exit = True
+
     launcher = onefile_launcher_pid()
     if launcher is not None:
-        watch_process(launcher, lambda: setattr(server, "should_exit", True))
+        watch_process(launcher, request_exit)
+    if args.exit_with_stdin and sys.stdin is not None:
+        watch_stream_eof(sys.stdin.buffer, request_exit)
     try:
         server.run()
     finally:

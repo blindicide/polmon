@@ -29,3 +29,17 @@ def test_launcher_is_watched_only_in_one_file_bundles(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "_MEI123452"), raising=False)
     monkeypatch.setattr(lifeline.os, "getppid", lambda: 4242)
     assert lifeline.onefile_launcher_pid() == 4242
+
+
+def test_stream_eof_fires_when_the_owner_closes_its_end() -> None:
+    import os
+
+    read_end, write_end = os.pipe()
+    fired = threading.Event()
+    with os.fdopen(read_end, "rb") as stream:
+        thread = lifeline.watch_stream_eof(stream, fired.set, grace_seconds=None)
+        os.write(write_end, b"ignored")
+        assert not fired.wait(0.2)
+        os.close(write_end)
+        assert fired.wait(5)
+        thread.join(timeout=5)

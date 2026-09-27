@@ -385,9 +385,12 @@ class LocalBackendManager:
                         "--port",
                         str(self.port),
                         "--local-l0-only",
+                        # Lifeline: the backend leaves at EOF on this pipe, i.e. when we close
+                        # it in stop() or when this client dies (the OS closes it for us).
+                        "--exit-with-stdin",
                     ],
                     cwd=self.data_directory,
-                    stdin=subprocess.DEVNULL,
+                    stdin=subprocess.PIPE,
                     stdout=self._log,
                     stderr=subprocess.STDOUT,
                     env=environment,
@@ -459,10 +462,15 @@ class LocalBackendManager:
             self._close_log()
             return code
 
-    def _terminate_child(self, *, timeout: float) -> int | None:
+    def _terminate_child(self, *, timeout: float, graceful: float = 5.0) -> int | None:
         process = self.process
         if process is None:
             return None
+        if process.stdin is not None and not process.stdin.closed:
+            with contextlib.suppress(OSError):
+                process.stdin.close()  # EOF on the lifeline: graceful shutdown on every platform
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=min(graceful, timeout))
         if process.poll() is None:
             try:
                 if os.name == "posix":
@@ -569,6 +577,8 @@ def packaged_workflow_self_test(
     if process.poll() is None:
         raise LocalBackendError(f"backend process {process.pid} remained after normal stop")
     record["normal_stop_exit_code"] = process.returncode
+    if process.returncode != 0:  # closing the lifeline must end it gracefully, not by a kill
+        raise LocalBackendError(f"backend did not shut down gracefully: {process.returncode}")
     killed_connection = manager.start()
     killed_process = manager.process
     assert killed_process is not None

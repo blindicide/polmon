@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -32,11 +33,10 @@ def test_real_local_backend_starts_runs_l0_and_stops(tmp_path) -> None:
     client = ApiClient(str(connection["url"]), token=str(connection["token"]))
     assert client.resources()["capabilities"]["fidelity"] == "l0_only"
     code = manager.stop()
-    assert code is not None and process.poll() is not None
+    assert code == 0 and process.poll() is not None  # graceful via the stdin lifeline
     log = manager.log_tail(10_000)
     assert manager.log_path is not None and '"POST /v1/reset HTTP/1.1" 200' in log
-    if os.name == "posix":
-        assert "shutdown_cleanup" in log
+    assert '"event":"owner_exit"' in log and "shutdown_cleanup" in log
 
 
 def test_start_retries_when_selected_port_is_taken(tmp_path, monkeypatch) -> None:
@@ -127,3 +127,27 @@ def test_packaged_self_test_is_repeatable_and_leaves_operator_state_alone(
         record = module.packaged_workflow_self_test()
         assert record["experiment_status"] == "succeeded"
     assert not (tmp_path / "operator").exists()
+
+
+def test_backend_leaves_when_its_client_dies_abruptly(tmp_path) -> None:
+    import json
+    import subprocess
+    import sys
+    import time
+
+    from polmon.client.local_backend import _pid_alive
+
+    output = tmp_path / "crash.json"
+    probe = (
+        "from pathlib import Path; from polmon.client.local_backend import crash_cleanup_probe; "
+        f"crash_cleanup_probe(Path({str(output)!r}), state_directory=Path({str(tmp_path)!r}))"
+    )
+    # crash_cleanup_probe ends with os._exit(77): no cleanup code runs in the client.
+    assert subprocess.run([sys.executable, "-c", probe], timeout=60).returncode == 77
+    record = json.loads(output.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 20
+    while _pid_alive(int(record["pid"])) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _pid_alive(int(record["pid"])), "the backend outlived its crashed client"
+    log = Path(record["log_path"]).read_text(encoding="utf-8")
+    assert '"event":"owner_exit"' in log or os.name == "nt"  # Windows: the job may kill first
