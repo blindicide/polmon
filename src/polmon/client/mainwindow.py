@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6 import __version__ as pyside_version
-from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, QUrl, qVersion
+from PySide6.QtCore import QByteArray, QSettings, QSize, Qt, QTimer, QUrl, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -70,6 +72,7 @@ ACCESSIBLE_KINDS = (
     QComboBox,
     QAbstractSpinBox,
     QPlainTextEdit,
+    QScrollArea,
     QAbstractItemView,
 )
 POLL_INTERVAL_MS = 3000
@@ -155,11 +158,20 @@ class ConnectionBar(QFrame):
         self.url_box.setObjectName("backendUrl")
         self.url_box.setEditable(True)
         self.url_box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.url_box.setMinimumWidth(205)
+        # Prefers a whole loopback URL (about 24 characters) but shrinks to 140 px, which keeps
+        # the window within a 1366-px laptop screen.
+        self.url_box.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.url_box.setMinimumContentsLength(24)
+        self.url_box.setMinimumWidth(140)
+        self.url_box.setMaximumWidth(280)
+        self.url_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         bind_tip(self.url_box, "connection.url.tip")
         self.url = self.url_box.lineEdit()
         self.url.setText(DEFAULT_URL)
         self.remote_actions.append(self.addWidget(self.url_box))
+        self._layout.setStretchFactor(self.url_box, 4)  # spare width goes to the URL first
         self.remote_actions.append(self.addWidget(label("connection.token", name="fieldLabel")))
         self.token = QLineEdit()
         self.token.setObjectName("apiToken")
@@ -167,7 +179,7 @@ class ConnectionBar(QFrame):
         bind(self.token, "setPlaceholderText", "connection.token.placeholder")
         bind_tip(self.token, "connection.token.tip")
         self.token.setMinimumWidth(80)
-        self.token.setMaximumWidth(140)
+        self.token.setMaximumWidth(104)
         # A long token filled in without focus (restored, pasted by a script) shows its start
         # instead of a clipped tail.
         self.token.textChanged.connect(
@@ -182,6 +194,7 @@ class ConnectionBar(QFrame):
         self.timeout.setDecimals(0)
         self.timeout.setSuffix(" s")  # unit symbols are not translated
         self.timeout.setValue(DEFAULT_TIMEOUT)
+        self.timeout.setFixedWidth(84)  # "120 s" and the arrows
         bind_tip(self.timeout, "connection.timeout.tip")
         self.addWidget(self.timeout)
         self.connect_button = primary_button(
@@ -195,7 +208,7 @@ class ConnectionBar(QFrame):
         )
         self.log_button.setEnabled(False)
         self.local_actions = [self.addWidget(self.log_button)]
-        self._layout.addStretch(1)
+        self._layout.addStretch(0)  # takes only what the URL field (stretch 4) leaves
         self.fidelity = label(name="fidelity")
         self.fidelity.setObjectName("fidelity")
         self.fidelity.hide()
@@ -210,6 +223,27 @@ class ConnectionBar(QFrame):
     def addWidget(self, widget: QWidget) -> QWidget:  # noqa: N802 - mirrors QToolBar's API
         self._layout.addWidget(widget)
         return widget
+
+
+class PageHost(QWidget):
+    """Holds a page inside its scroll area and reports the page's *minimum* size: a scroll area
+    otherwise sizes a wrapping layout by its preferred height for the width and would scroll
+    pages that fit."""
+
+    def __init__(self, page: QWidget) -> None:
+        super().__init__()
+        self.page = page
+        page.setParent(self)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return self.page.minimumSizeHint().expandedTo(self.page.minimumSize())
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return self.minimumSizeHint()
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+        self.page.setGeometry(self.rect())
+        super().resizeEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -264,10 +298,21 @@ class MainWindow(QMainWindow):
         self.navigation.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.stack = QStackedWidget()
         self.pages: dict[str, Page] = {}
+        self._page_order: list[Page] = []
+        self.page_scrolls: dict[str, QScrollArea] = {}
         for page_class in PAGES:
             page = page_class(self.context)
             self.pages[page.key] = page
-            self.stack.addWidget(page)
+            self._page_order.append(page)
+            # A screen smaller than the page's minimum (below 1440x900) scrolls instead of
+            # clipping; at 1440x900 and above no page needs to (tests/gui/test_language.py).
+            scroll = QScrollArea()
+            scroll.setObjectName("pageScroll")
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidget(PageHost(page))
+            self.page_scrolls[page.key] = scroll
+            self.stack.addWidget(scroll)
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, page.key)
             self.navigation.addItem(item)
@@ -554,17 +599,31 @@ class MainWindow(QMainWindow):
     def _page_changed(self, index: int) -> None:
         if index < 0:
             return
-        self.settings.setValue("window/page", self.stack.widget(index).key)
+        page = self._page_order[index]
+        self.settings.setValue("window/page", page.key)
         self.stack.setCurrentIndex(index)
-        page = self.stack.currentWidget()
-        if isinstance(page, Page):
-            page.activated()
+        page.activated()
 
     @property
     def current_page(self) -> Page:
-        page = self.stack.currentWidget()
-        assert isinstance(page, Page)
-        return page
+        return self._page_order[self.stack.currentIndex()]
+
+    def minimum_size_for(self, page: Page) -> QSize:
+        """The smallest window that shows ``page`` without scrolling: Qt's own layout answer
+        with the page area held at the page's minimum (sidebar, header, menus, log dock and
+        status bar at theirs)."""
+        needed = page.minimumSizeHint().expandedTo(page.minimumSize())
+        previous = self.stack.minimumSize()
+        self.stack.setMinimumSize(needed)
+        for layout in (self.centralWidget().layout(), self.layout()):
+            layout.invalidate()
+            layout.activate()
+        size = self.minimumSizeHint().expandedTo(self.minimumSize())
+        self.stack.setMinimumSize(previous)
+        for layout in (self.centralWidget().layout(), self.layout()):
+            layout.invalidate()
+            layout.activate()
+        return size
 
     # -- connection ---------------------------------------------------------------------------
 
@@ -1121,6 +1180,9 @@ class MainWindow(QMainWindow):
         state = settings.value("window/state")
         if isinstance(state, QByteArray):
             self.restoreState(state)
+        else:  # a compact log (five lines) leaves the page area its room; the operator can grow it
+            lines = self.log_view.fontMetrics().lineSpacing() * 5 + 2 * theme.SPACE["md"]
+            self.resizeDocks([self.log_dock], [lines], Qt.Orientation.Vertical)
         self._connection_mode_changed()
 
     def shutdown(self, wait_ms: int = 2000) -> bool:

@@ -281,6 +281,8 @@ QLabel#fidelity {{ border-radius: {r["pill"]}px; padding: 2px {s["sm"] + 2}px; f
                    background: {v["accent_soft"]}; color: {v["accent"]}; }}
 
 QWidget#page {{ background: {v["bg"]}; }}
+QScrollArea#pageScroll, QScrollArea#pageScroll > QWidget > QWidget {{ background: {v["bg"]};
+                                                                     border: none; }}
 QLabel#pageTitle {{ font-size: {t["title"]}px; font-weight: 600; color: {v["text"]}; }}
 QLabel#pageSubtitle {{ color: {v["text_muted"]}; }}
 QFrame#card {{ background: {v["surface"]}; border: 1px solid {v["border"]};

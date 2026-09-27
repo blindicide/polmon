@@ -210,10 +210,10 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
             # The largest minimum size over every page, in the UI language, on this platform's
             # real fonts: the window must fit a 1440x900 screen (docs/UI-GUIDE.md).
             width = height = 0
-            for key in window.pages:
+            for key, page in window.pages.items():
                 window.navigate(key)
-                hint = window.minimumSizeHint().expandedTo(window.minimumSize())
-                width, height = max(width, hint.width()), max(height, hint.height())
+                needed = window.minimum_size_for(page)  # without scrolling the page
+                width, height = max(width, needed.width()), max(height, needed.height())
             observed["minimum"] = f"{width}x{height}"
             observed["rss"] = resource_snapshot().process_rss_bytes
             window.shutdown(wait_ms=1000)

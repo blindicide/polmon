@@ -10,6 +10,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   DejaVu Sans Mono, Liberation Mono or Menlo, whichever is installed); on Windows they fell back
   to the platform's fixed font or to the proportional UI font.
 - CI renders the Russian UI on `windows-latest` too (`ui-screenshots-windows` artifact).
+- The window fits a 1366×768 laptop screen: pages scroll when the window is smaller than a
+  page needs (at 1440×900 and above nothing scrolls), the URL field narrows, the log starts
+  five lines tall. The GUI test suite deletes each window after its test (about 25 % faster).
 - RESOURCE-BUDGET.md attributes the v0.4.0 client memory growth (denser widget tree and larger
   stylesheet; the UI language makes no difference).
 

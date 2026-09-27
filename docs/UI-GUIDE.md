@@ -153,8 +153,10 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
   state), the page, the dockable activity log and the status bar (connection summary, busy
   indicator or operation progress with *Отменить*, client version).
 - **Page:** title and one-line subtitle, header actions on the right, one problem banner, then
-  cards. Everything fits 1440×900 in both languages with a banner shown
-  (`test_window_fits_1440_by_900_on_every_page_with_banners`).
+  cards. Every page fits 1440×900 in both languages with a banner shown and nothing scrolls
+  (`test_window_fits_1440_by_900_on_every_page_with_banners`; CI also checks the native
+  platforms through `--smoke-start`'s `minimum-size`). On a smaller screen the window still
+  fits 1366×768 — the URL field narrows and the page area scrolls instead of clipping.
 - **Card** (`Card`): title, optional muted hint, content. **KeyValueGrid**: label/value pairs in
   column pairs, long values in the first column, identifiers monospaced and never broken.
   **ResourceTiles**: live counters with sparklines. **Tables** (`make_table`): sortable,

@@ -78,10 +78,13 @@ def test_unreachable_backend_is_explained_and_ui_stays_live(window, qtbot) -> No
     timer.start(20)
     connect(qtbot, window, url=f"http://127.0.0.1:{free_port()}", token="")
     qtbot.waitUntil(lambda: window.session.state is ConnectionState.DISCONNECTED, timeout=10_000)
+    # A refused loopback connection fails within milliseconds, often before a tick; blocking
+    # during a pending request is covered by test_slow_backend_times_out_without_blocking.
+    qtbot.wait(100)
     timer.stop()
     banner = window.pages["dashboard"].banner
     assert banner.isVisible() and banner.problem.key == "problem.refused"
-    assert ticks, "the event loop must keep running while connecting"
+    assert ticks, "the event loop must keep running through the refusal"
     assert "Traceback" not in log_text(window)
 
 
@@ -96,6 +99,8 @@ def test_local_preset_starts_connects_and_reaps_owned_backend(window, qtbot) -> 
     assert tr("connection.local_label") in window.status_text.text()
     assert window.bar.fidelity.isVisible()  # persistent fidelity indicator
     assert window.bar.log_button.isEnabled()
+    minimum = window.minimumSizeHint()  # the connected header (pill, log link) fits 1366 px
+    assert minimum.width() <= 1366 and minimum.height() <= 768, minimum
     recent = window.pages["dashboard"].recent_state  # "none yet", no longer "not connected"
     qtbot.waitUntil(lambda: recent._title.key == "dashboard.recent.empty", timeout=5_000)
     # Disconnecting stops the owned backend: styled as destructive, confirmed when it would

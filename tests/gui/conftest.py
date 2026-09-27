@@ -202,6 +202,13 @@ def window(qtbot, tmp_path, monkeypatch):
     yield main
     main.shutdown(wait_ms=5000)
     set_confirm_handler(None)
+    # Delete the window now: a closed but living window would be re-polished by every later
+    # test's theme.apply(), making each set-up slower than the last.
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    main.close()
+    main.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert not i18n.missing, f"catalog keys missing: {sorted(i18n.missing)}"
 
 

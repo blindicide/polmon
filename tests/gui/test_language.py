@@ -195,15 +195,25 @@ def test_runtime_switch_retranslates_every_screen_and_keeps_state(
 
 @pytest.mark.parametrize("language", ["ru", "en"])
 def test_window_fits_1440_by_900_on_every_page_with_banners(window, qtbot, language) -> None:
+    """At 1440x900 no page scrolls or clips, with a problem banner shown; on a smaller screen the
+    window still fits and the page area scrolls."""
     window.set_language(language)
     problem = Problem("problem.l0_only", i18n.Msg("backend.fidelity.l0_only"))
     for page in window.pages.values():
         page.banner.show_problem(problem)
-    for key in window.pages:
-        window.navigate(key)
-        qtbot.wait(10)
-        hint = window.minimumSizeHint().expandedTo(window.minimumSize())
-        assert hint.width() <= 1440 and hint.height() <= 900, (language, key, hint)
     window.resize(1440, 900)
     qtbot.wait(20)
-    assert (window.width(), window.height()) == (1440, 900)
+    for key, page in window.pages.items():
+        window.navigate(key)
+        qtbot.wait(10)
+        needed = window.minimum_size_for(page)
+        assert needed.width() <= 1440 and needed.height() <= 900, (language, key, needed)
+        if (window.width(), window.height()) == (1440, 900):  # a smaller screen clamps it
+            scroll = window.page_scrolls[key]
+            bars = scroll.horizontalScrollBar(), scroll.verticalScrollBar()
+            assert not any(bar.isVisible() for bar in bars), (language, key)
+    for mode in ("remote", "local"):  # a 1366x768 laptop shows the window; its pages scroll
+        window.bar.mode.setCurrentIndex(window.bar.mode.findData(mode))
+        qtbot.wait(10)
+        minimum = window.minimumSizeHint()
+        assert minimum.width() <= 1366 and minimum.height() <= 768, (language, mode, minimum)
