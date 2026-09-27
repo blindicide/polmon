@@ -4,6 +4,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-27
+
 ### Changed
 
 - The activity log follows a language or theme switch: earlier lines are re-rendered in the

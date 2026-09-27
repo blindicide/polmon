@@ -5,10 +5,10 @@ a real `polmon-backend` process with an API token, the unmodified main window, t
 `l0-office` example topology and the `office-sweep` scenario. CI regenerates the same
 set as the `ui-screenshots` artifact.
 
-- Generated: 2026-09-27 05:43 UTC
-- polmon 0.4.0, Qt 6.11.2, PySide6 6.11.2
+- Generated: 2026-09-27 06:23 UTC
+- polmon 0.4.1, Qt 6.11.2, PySide6 6.11.2
 - Platform: `offscreen` on Linux 6.8.0-138-generic, window 1440×900
-- Experiment: `gui-20260927-074251-c08b`
+- Experiment: `gui-20260927-082326-0a3d`
 - UI language: `ru`
 
 ## local-backend
