@@ -38,6 +38,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   `detail_code` and `detail_params` (approach (a), docs/API.md) and the client renders
   *запуск*, *конечных точек: 10 · повтор 1*, *отмена…*; an older backend's text is quoted.
 - An unknown remaining time reads *осталось: —* instead of *осталось: ≈ —*.
+- The scenario sequence table shows each action's status right after its number, and hides
+  the service column when no action has a service: status and details had scrolled out of the
+  analysis card (its last visible header was cut to *Слу…*).
 
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).

@@ -45,6 +45,21 @@ def new_experiment_id() -> str:
     return f"gui-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
 
 
+
+# The sequence table: status right after the number, so a run's progress is always in view.
+SEQUENCE_COLUMNS = (
+    "column.number",
+    "column.status",
+    "column.action",
+    "column.kind",
+    "column.source_target",
+    "column.service",
+    "column.detail",
+)
+STATUS_COLUMN = SEQUENCE_COLUMNS.index("column.status")
+ACTION_COLUMN = SEQUENCE_COLUMNS.index("column.action")
+SERVICE_COLUMN = SEQUENCE_COLUMNS.index("column.service")
+
 class BackendLost(RuntimeError):
     def __init__(self, experiment_id: str) -> None:
         super().__init__(f"lost contact with the backend while experiment {experiment_id} ran")
@@ -134,17 +149,9 @@ class ScenariosPage(Page):
         self.summary = make_table(("column.property", "column.value"), stretch=1,
                                   sortable=False, name="scenarioSummary")
         self.sequence = make_table(
-            (
-                "column.number",
-                "column.action",
-                "column.kind",
-                "column.source_target",
-                "column.service",
-                "column.status",
-                "column.detail",
-            ),
-            stretch=6,
-            mono=(1, 3),
+            SEQUENCE_COLUMNS,
+            stretch=SEQUENCE_COLUMNS.index("column.detail"),
+            mono=(ACTION_COLUMN, SEQUENCE_COLUMNS.index("column.source_target")),
             sortable=False,
             name="scenarioSequence",
         )
@@ -455,15 +462,19 @@ class ScenariosPage(Page):
             rows.append(
                 (
                     index,
+                    status,
                     action["id"],
                     action["kind"],
                     f"{action['source']} → {action['target']}",
                     action.get("service"),
-                    status,
                     detail,
                 )
             )
-        fill_table(self.sequence, rows, colors={5: "status"})
+        # ICMP-only sequences have no services: the column would only push the details out of
+        # the narrow analysis card.
+        services = any(action.get("service") for action in scenario.get("sequence") or [])
+        self.sequence.setColumnHidden(SERVICE_COLUMN, not services)
+        fill_table(self.sequence, rows, colors={STATUS_COLUMN: "status"})
 
     def _fill_conditions(self, report: dict[str, object] | None) -> None:
         if report and isinstance(report.get("expected_vs_actual"), list):

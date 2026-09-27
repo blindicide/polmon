@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 
 from polmon.api import control as control_module
 from polmon.client.i18n import status_label, tr
+from polmon.client.pages.scenarios import STATUS_COLUMN
 from polmon.client.state import ConnectionState
 from polmon.client.widgets import raw_value
 from polmon.resources import ResourceLimits
@@ -74,12 +75,12 @@ def test_full_operator_workflow(window, qtbot, live_backend, tmp_path) -> None:
     scenarios.run()
     assert window.context.busy and window.progress.isVisible()
     qtbot.waitUntil(lambda: scenarios.outcome.status == "succeeded", timeout=30_000)
-    assert [raw_value(scenarios.sequence, r, 5) for r in range(3)] == ["ok", "ok", "ok"]
+    assert [raw_value(scenarios.sequence, r, STATUS_COLUMN) for r in range(3)] == ["ok", "ok", "ok"]
     assert raw_value(scenarios.conditions, 0, 4) == "met"
     assert status_label("succeeded") in window.statusBar().currentMessage()  # announced
     scenarios.validate(quiet=True)  # background re-validation must not wipe the run results
     qtbot.wait(500)
-    assert [raw_value(scenarios.sequence, r, 5) for r in range(3)] == ["ok", "ok", "ok"]
+    assert [raw_value(scenarios.sequence, r, STATUS_COLUMN) for r in range(3)] == ["ok", "ok", "ok"]
     assert raw_value(scenarios.conditions, 0, 4) == "met"
     experiment_id = scenarios.last_record["experiment_id"]
 
@@ -216,7 +217,7 @@ def test_running_experiment_can_be_cancelled(
     assert update.total == 30 and "/30" in window.progress.detail.text()
     assert window.context.cancel_operation()  # Esc / Cancel: graceful backend cancellation
     qtbot.waitUntil(lambda: scenarios.outcome.status == "cancelled", timeout=20_000)
-    done = sum(raw_value(scenarios.sequence, r, 5) == "ok" for r in range(30))
+    done = sum(raw_value(scenarios.sequence, r, STATUS_COLUMN) == "ok" for r in range(30))
     assert 0 < done < 30
     assert not window.context.busy
 
