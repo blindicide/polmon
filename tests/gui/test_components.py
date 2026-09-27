@@ -247,3 +247,32 @@ def test_identifiers_use_a_real_fixed_pitch_font(qapp) -> None:
     assert font.pointSizeF() == system.pointSizeF()  # the family changes, not the size
     if set(MONOSPACE_FAMILIES) & set(QFontDatabase.families()):
         assert monospace_family() in MONOSPACE_FAMILIES
+
+
+def test_benchmark_progress_detail_is_rendered_from_codes() -> None:
+    """The step of a running job comes from ``detail_code``/``detail_params`` (keys asserted),
+    never as the backend's English text; an older backend's text is quoted."""
+    from polmon.client import i18n
+    from polmon.client.pages.benchmarks import progress_detail
+
+    run = progress_detail(
+        {
+            "detail": "endpoints=10 repeat=1",
+            "detail_code": "run",
+            "detail_params": {"endpoints": 10, "repeat": 1},
+        }
+    )
+    assert [part.key for part in run.parts] == [
+        "benchmarks.progress.field.endpoints",
+        "benchmarks.progress.field.repeat",
+    ]
+    assert progress_detail({"detail_code": "cancelling"}).key == "benchmarks.progress.cancelling"
+    older = progress_detail({"detail": "endpoints=10 repeat=1"})
+    assert older.key == "benchmarks.progress.other"
+    assert older.params["detail"] == "endpoints=10 repeat=1"
+    previous = i18n.language()
+    try:
+        i18n.set_language("ru")
+        assert "repeat" not in str(run) and "10" in str(run)
+    finally:
+        i18n.set_language(previous)

@@ -340,7 +340,7 @@ def required_families() -> dict[str, set[str]]:
     from polmon.client.mainwindow import FEATURE_EXPERIMENTS, FEATURE_TOPOLOGIES, PAGES
     from polmon.client.models import CATEGORIES
     from polmon.client.pages import FILE_PATTERNS
-    from polmon.client.pages.benchmarks import KINDS
+    from polmon.client.pages.benchmarks import KINDS, PROGRESS_CODES, PROGRESS_FIELDS
     from polmon.client.state import ConnectionState
     from polmon.topology.io import YAML_PROBLEMS
 
@@ -384,6 +384,8 @@ def required_families() -> dict[str, set[str]]:
         "fits": {f"topologies.fit.{v}" for v in ("fits", "exceeds", "memory_fits",
                                                  "memory_exceeds", "unsupported")},
         "units": {f"unit.{name}" for name in UNITS} | {"unit.decimal_separator"},
+        "benchmark progress": {f"benchmarks.progress.{code}" for code in PROGRESS_CODES}
+        | {f"benchmarks.progress.field.{name}" for name in PROGRESS_FIELDS},
         "targets": {f"deployment.target.{v}" for v in ("editor", "loaded", "deployed")},
         "problems": {f"{key}.title" for key in problem_keys()},
         "limits": {f"limit.{name}" for name in (

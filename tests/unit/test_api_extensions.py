@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from polmon.api import control as control_module
-from polmon.api.benchmarks import BenchmarkRequest, benchmark_command
+from polmon.api.benchmarks import BenchmarkRequest, benchmark_command, progress_detail
 from polmon.api.control import ControlPlane
 from polmon.backend import create_app
 from polmon.core.errors import ConfigurationError
@@ -285,6 +285,14 @@ def fake_launcher(command, stdout):
     )
 
 
+def test_progress_details_carry_codes_for_localized_clients() -> None:
+    assert progress_detail("starting") == ("starting", {})
+    assert progress_detail("cancelling") == ("cancelling", {})
+    assert progress_detail("l0=50 l1=2 repeat=3") == ("run", {"l0": 50, "l1": 2, "repeat": 3})
+    assert progress_detail("namespaces=2 repeat=1") == ("run", {"namespaces": 2, "repeat": 1})
+    assert progress_detail("something new") == ("other", {"detail": "something new"})
+
+
 def test_benchmark_jobs_report_progress_and_can_be_cancelled(tmp_path) -> None:
     plane = ControlPlane(tmp_path)
     PLANES.append(plane)
@@ -300,6 +308,8 @@ def test_benchmark_jobs_report_progress_and_can_be_cancelled(tmp_path) -> None:
     )
     assert progressed["progress"]["total_steps"] == 3
     assert progressed["progress"]["detail"] == "endpoints=10 repeat=1"
+    assert progressed["progress"]["detail_code"] == "run"
+    assert progressed["progress"]["detail_params"] == {"endpoints": 10, "repeat": 1}
     second = client.post("/v1/benchmarks", json={"kind": "l0", "limits": LIMITS})
     assert second.status_code == 429
     assert "concurrent_benchmarks" in second.json()["error"]["details"]

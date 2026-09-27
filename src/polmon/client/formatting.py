@@ -191,16 +191,20 @@ def pretty_json(value: object) -> str:
 
 
 def progress_text(
-    completed: int, total: int, elapsed: float | None, eta: float | None, detail: str = ""
+    completed: int, total: int, elapsed: float | None, eta: float | None, detail: object = ""
 ) -> str:
     """``шаг 3/10 · 30 % · прошло: 4,2 секунды · осталось: ≈ 9,8 секунды · detail``."""
     parts = [tr("progress.step", completed=completed, total=total)]
     if total:
         parts.append(format_percent(100 * completed / total, 0))
     parts.append(tr("progress.elapsed", duration=format_duration(elapsed)))
-    parts.append(tr("progress.eta", duration=format_duration(eta) if eta is not None else "—"))
-    if detail:
-        parts.append(detail)
+    if eta is None:
+        parts.append(tr("progress.eta_unknown"))
+    else:
+        parts.append(tr("progress.eta", duration=format_duration(eta)))
+    text = str(detail)  # a Msg renders in the current language
+    if text:
+        parts.append(text)
     return " · ".join(parts)
 
 

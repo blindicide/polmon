@@ -47,9 +47,32 @@ from polmon.client.widgets import (
 )
 
 KINDS = ("l0", "l1", "target")
+# Plan-step fields of a running job's progress (``detail_params`` of ``detail_code: run``).
+PROGRESS_FIELDS = ("endpoints", "namespaces", "l0", "l1", "repeat")
+PROGRESS_CODES = ("starting", "cancelling", "other")
 TERMINAL = {"succeeded", "not_run", "aborted", "failed", "cancelled"}
 SCALAR_COLUMNS = 9
 
+
+def progress_detail(progress: dict[str, object]) -> object:
+    """The step a job is measuring, from ``detail_code``/``detail_params``; a backend without
+    codes has its English ``detail`` quoted."""
+    code = progress.get("detail_code")
+    params = progress.get("detail_params")
+    params = params if isinstance(params, dict) else {}
+    if code in {"starting", "cancelling"}:
+        return Msg(f"benchmarks.progress.{code}")
+    if code == "run":
+        known = [
+            Msg(f"benchmarks.progress.field.{name}", value=params[name])
+            for name in PROGRESS_FIELDS
+            if name in params
+        ]
+        extra = [Msg.raw(f"{name}={value}") for name, value in params.items()
+                 if name not in PROGRESS_FIELDS]
+        return Joined([*known, *extra])
+    detail = str(progress.get("detail") or "")
+    return Msg("benchmarks.progress.other", detail=detail) if detail else ""
 
 def _spin(low: int, high: int, value: int, unit: str | None = None) -> QSpinBox:
     """An integer field, with ``unit.<unit>`` after the value when given."""
@@ -304,7 +327,7 @@ class BenchmarksPage(Page):
         def work(token: CancelToken, report) -> dict[str, object]:  # noqa: ANN001
             job = client.start_benchmark(request)
             job_id = str(job["job_id"])
-            report(ProgressUpdate(0, 1, tr("benchmarks.progress.starting"), payload=job))
+            report(ProgressUpdate(0, 1, Msg("benchmarks.progress.starting"), payload=job))
             failures = 0
             while str(job.get("state")) not in TERMINAL:
                 token.sleep(0.5)
@@ -322,7 +345,7 @@ class BenchmarksPage(Page):
                     ProgressUpdate(
                         int(progress.get("completed_steps") or 0),
                         int(progress.get("total_steps") or 1),
-                        str(progress.get("detail") or ""),
+                        progress_detail(progress),
                         float(job.get("elapsed_seconds") or 0),  # type: ignore[arg-type]
                         progress.get("eta_seconds"),  # type: ignore[arg-type]
                         job,

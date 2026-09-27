@@ -124,6 +124,8 @@ def test_progress_text_is_total(language) -> None:  # noqa: ANN001
     parts = text.split(" · ")
     assert "3/10" in parts[0] and parts[1] == "30\u00a0%" and parts[-1] == "action ping"
     assert format_duration(4.2) in parts[2] and format_duration(9.8) in parts[3]
+    unknown = progress_text(0, 10, 0.1, None).split(" · ")
+    assert unknown[3] == i18n.tr("progress.eta_unknown")
 
 
 def test_yaml_locations_resolve_to_lines() -> None:

@@ -33,6 +33,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 ### Fixed
 
 - The topology node inspector re-renders node resources after a language switch.
+- The benchmark progress line showed the backend's English step text (`starting`,
+  `endpoints=10 repeat=1`, `cancelling`) in the Russian UI. Job progress now also carries
+  `detail_code` and `detail_params` (approach (a), docs/API.md) and the client renders
+  *запуск*, *конечных точек: 10 · повтор 1*, *отмена…*; an older backend's text is quoted.
+- An unknown remaining time reads *осталось: —* instead of *осталось: ≈ —*.
 
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).

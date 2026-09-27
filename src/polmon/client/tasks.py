@@ -45,7 +45,7 @@ class CancelToken:
 class ProgressUpdate:
     completed: int
     total: int
-    detail: str = ""
+    detail: object = ""  # text or a Msg, rendered on display
     elapsed: float | None = None
     eta: float | None = None
     payload: object = None

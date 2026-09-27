@@ -36,6 +36,21 @@ PROGRESS_LINE = re.compile(r"step (\d+)/(\d+) elapsed \S+ eta \S+ ?(.*)$")
 TERMINATION_GRACE_SECONDS = 20.0
 MAX_RETAINED_JOBS = 20
 EXIT_STATES = {0: "succeeded", 2: "not_run", 3: "aborted"}
+DETAIL_FIELD = re.compile(r"([a-z][a-z0-9_]*)=(\S+)")
+FIXED_DETAILS = {"starting", "cancelling"}
+
+
+def progress_detail(detail: str) -> tuple[str, dict[str, object]]:
+    """The progress ``detail`` as a code and parameters for localized clients (the English
+    ``detail`` stays): ``starting``, ``cancelling``, ``run`` with the plan step's ``key=value``
+    pairs (``endpoints=10 repeat=1``), or ``other`` carrying the text."""
+    text = detail.strip()
+    if text in FIXED_DETAILS:
+        return text, {}
+    pairs = DETAIL_FIELD.findall(text)
+    if pairs and " ".join(f"{key}={value}" for key, value in pairs) == text:
+        return "run", {key: int(value) if value.isdigit() else value for key, value in pairs}
+    return "other", {"detail": text}
 
 
 class BenchmarkJobLimits(StrictModel):
@@ -133,6 +148,7 @@ class BenchmarkJob:
         done = self.completed_steps
         running = self.state == "running"
         eta = (elapsed / done) * (self.total_steps - done) if done and running else None
+        detail_code, detail_params = progress_detail(self.detail)
         return {
             "job_id": self.job_id,
             "kind": self.request.kind,
@@ -145,6 +161,8 @@ class BenchmarkJob:
                 "percent": round(100 * done / self.total_steps, 1),
                 "eta_seconds": None if eta is None else round(eta, 1),
                 "detail": self.detail,
+                "detail_code": detail_code,
+                "detail_params": detail_params,
             },
             "request": self.request.model_dump(mode="json"),
             "result_name": self.result_name,
