@@ -94,9 +94,23 @@ Windows run 36294462584, Build Linux run 36294463788), against v0.3.0's numbers 
 | Largest minimum window size over all pages (Russian) | 1284×848 Windows, 1398×813 Linux | — |
 
 The artifacts grew by about 0.2 MB (the Russian Qt translation `qtbase_ru.qm` and both
-catalogs). Idle memory grew by 10–13 MiB (11–14 %); the growth has not been attributed to a
-component yet (candidates: the richer widget tree, the painted stylesheet images, the catalogs
-and the Qt translator).
+catalogs). Idle memory grew by 10–13 MiB (11–14 %).
+
+**Attribution** (development host, Xvfb, RSS read at each start-up stage of the same script run
+against the v0.3.2 and v0.4.0 sources, light theme; 8.6 MiB difference locally, 99.0 → 109.0
+MiB idle after 10 s in both UI languages alike):
+
+| Stage | v0.3.2 | v0.4.0 | Difference |
+|---|---:|---:|---:|
+| Client modules imported | 59.3 MiB | 60.5 MiB | +1.2 MiB (catalogs, report renderer) |
+| Main window built, no stylesheet | +19.1 MiB | +22.5 MiB | +3.4 MiB (962 widgets instead of 821; QLabels 105 → 210) |
+| Stylesheet cost of the built window | +7.9 MiB | +11.6 MiB | +3.7 MiB (more rules × more widgets) |
+| Shown, 5 s idle | +5.8 MiB | +6.2 MiB | +0.4 MiB |
+
+The language does not matter (the Russian and English UIs measure the same), and only 20
+widgets carry a stylesheet of their own, so the cost is the denser widget tree (key/value
+grids, card titles, empty/loading/error views) and the larger application stylesheet it is
+styled with — the price of the redesign, kept deliberately.
 
 ## Self-contained backend (v0.3.0)
 
