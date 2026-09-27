@@ -1,0 +1,20 @@
+$ git rev-parse --short HEAD
+7d15ebc
+
+$ python scripts/i18n-lint.py
+i18n-lint: 19 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+exit status: 0
+
+# A copy of src/polmon/client/pages/dashboard.py with three violations appended:
+#   
+#   def injected(page) -> None:
+#       page.header_actions.addWidget(QPushButton("Refresh now"))
+#       page.subtitle.setText("Обновлено")
+#       page.session.log(f"Deployed {len(page.session.deployments)} topologies to the backend")
+
+$ python scripts/i18n-lint.py dashboard-with-literals.py
+dashboard-with-literals.py:317: literal passed to a Qt text API: 'Refresh now'
+dashboard-with-literals.py:318: literal passed to a Qt text API: 'Обновлено'
+dashboard-with-literals.py:319: literal passed to a Qt text API: 'Deployed  {}  topologies to the backend'
+i18n-lint: 1 modules checked, 13 exempt, 3 hard-coded user-facing literal(s)
+exit status: 1

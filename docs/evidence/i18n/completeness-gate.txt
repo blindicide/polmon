@@ -1,0 +1,25 @@
+$ git rev-parse --short HEAD
+7d15ebc
+
+$ python scripts/i18n-completeness.py
+i18n-completeness: PASS: 903 keys, 9 plural keys, 130 backend message codes, 583 literal keys in code; 0 problem(s)
+exit status: 0
+
+# The same gate against copies of the catalogs broken in six ways (broken_catalogs.py):
+#   del ru["common.close"]  # 1. a key missing from Russian
+#   ru["log.done"] = "Готово"  # 2. the {name} placeholder dropped
+#   ru["common.cancel"] = "Cancel"  # 3. left untranslated
+#   ru["count.frames_captured"] = {"one": "{count} кадр", "other": "{count} кадров"}  # 4. plural forms
+#   en["common.never_used"] = "Never shown"  # 5. a key no code uses
+#   en["common.yes"] = "Да"  # 6. Cyrillic in English
+
+$ python docs/evidence/i18n/broken_catalogs.py
+ru: missing key common.close
+ru: missing key common.never_used
+ru: common.cancel: untranslated words ['Cancel']: 'Cancel'
+en: common.yes: Cyrillic in the English catalog: 'Да'
+ru: count.frames_captured: plural forms ['one', 'other'] != ['few', 'many', 'one', 'other']
+log.done: placeholders differ ({'name'} vs set())
+unused key common.never_used
+i18n-completeness: FAIL: 904 keys, 9 plural keys, 130 backend message codes, 583 literal keys in code; 7 problem(s)
+exit status: 1

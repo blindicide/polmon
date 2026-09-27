@@ -50,9 +50,12 @@ def test_model_validators_raise_only_coded_value_errors() -> None:
     for relative in VALIDATOR_MODULES:
         path = SOURCE / relative
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
-                if ast.unparse(node.exc.func) == "ValueError":
-                    plain.append(f"{relative}:{node.lineno}")
+            if (
+                isinstance(node, ast.Raise)
+                and isinstance(node.exc, ast.Call)
+                and ast.unparse(node.exc.func) == "ValueError"
+            ):
+                plain.append(f"{relative}:{node.lineno}")
     assert plain == []
 
 
