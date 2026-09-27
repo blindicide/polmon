@@ -1,7 +1,8 @@
 # Releases
 
 After a milestone gate passes, update the central version (`src/polmon/version.py`,
-`pyproject.toml`) and the changelog, commit, and create an annotated SemVer tag on the evidence
+`pyproject.toml`, and `uv.lock` via `uv lock --offline`; a unit test fails if they disagree) and
+the changelog, commit, and create an annotated SemVer tag on the evidence
 commit. Push the commit and the tag. `release.yml` then builds and verifies both platforms and
 publishes one GitHub Release with:
 

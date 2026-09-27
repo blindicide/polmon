@@ -46,3 +46,15 @@ def test_client_without_qt_explains_how_to_install(monkeypatch, capsys) -> None:
     monkeypatch.setattr(builtins, "__import__", no_qt)
     assert main(["--self-test"]) == 2
     assert "pip install polmon[gui]" in capsys.readouterr().err
+
+
+def test_lock_file_names_the_current_version() -> None:
+    import tomllib
+    from pathlib import Path
+
+    root = Path(__file__).parents[2]
+    lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    locked = {package["name"]: package for package in lock["package"]}
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    # uv.lock sat at 0.2.3 through v0.3.1: refresh it with `uv lock --offline` on every bump.
+    assert locked["polmon"]["version"] == project["version"] == __version__
