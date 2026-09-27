@@ -126,6 +126,10 @@ class DeploymentPage(Page):
         bind_tip(self.owned, "deployment.owned.tip")
         self.details = JsonTree()
         self.details.setObjectName("deploymentDetails")
+        # Two rows each at the least (Qt's default minimum is 60 px): with a problem banner the
+        # page still fits 1440x900 without scrolling; both grow with the window.
+        for view in (self.owned, self.details):
+            view.setMinimumHeight(48)
         detail_card.add(section_label("deployment.owned"))
         detail_card.add(self.owned, 1)
         detail_card.add(section_label("deployment.details"))

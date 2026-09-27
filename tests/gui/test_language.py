@@ -246,9 +246,21 @@ def test_russian_ui_shows_no_english_units(window, qtbot, live_backend, tmp_path
     walk_all_pages(window, qtbot)
     units = unit_leftovers(window)
     assert units == [], "\n".join(map(repr, units))
-    for key, page in window.pages.items():  # words are longer than symbols: still no scrolling
+    # Words are longer than symbols, and connected pages hold data: with a problem banner on
+    # every page, 1440x900 still shows each one whole.
+    problem = Problem("problem.l0_only", i18n.Msg("backend.fidelity.l0_only"))
+    for page in window.pages.values():
+        page.banner.show_problem(problem)
+    window.resize(1440, 900)
+    for key, page in window.pages.items():
+        window.navigate(key)
+        qtbot.wait(20)
         needed = window.minimum_size_for(page)
         assert needed.width() <= 1440 and needed.height() <= 900, (key, needed)
+        if (window.width(), window.height()) == (1440, 900):
+            scroll = window.page_scrolls[key]
+            bars = scroll.horizontalScrollBar(), scroll.verticalScrollBar()
+            assert not any(bar.isVisible() for bar in bars), key
 
     from polmon.client.formatting import format_duration, format_mebibytes
 

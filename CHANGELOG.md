@@ -41,6 +41,10 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - The scenario sequence table shows each action's status right after its number, and hides
   the service column when no action has a service: status and details had scrolled out of the
   analysis card (its last visible header was cut to *Слу…*).
+- A connected deployment page with a problem banner scrolled by a few pixels at 1440×900 (in
+  both languages, since v0.4.0): the owned-resources list and the backend-details tree now
+  need 48 px each instead of Qt's default 60. The GUI suite checks every connected page with a
+  banner at 1440×900 for scroll bars; before, only a disconnected window was checked.
 
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).
