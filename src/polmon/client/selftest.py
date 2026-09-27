@@ -178,6 +178,7 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
     from PySide6.QtCore import QEventLoop, QSettings, QTimer
     from PySide6.QtWidgets import QApplication
 
+    from polmon.client import i18n
     from polmon.client.app import create_application
     from polmon.client.mainwindow import MainWindow
     from polmon.core.diagnostics import resource_snapshot
@@ -206,6 +207,14 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
             handle = window.windowHandle()
             observed["exposed"] = bool(handle and handle.isExposed())
             observed["visible"] = window.isVisible()
+            # The largest minimum size over every page, in the UI language, on this platform's
+            # real fonts: the window must fit a 1440x900 screen (docs/UI-GUIDE.md).
+            width = height = 0
+            for key in window.pages:
+                window.navigate(key)
+                hint = window.minimumSizeHint().expandedTo(window.minimumSize())
+                width, height = max(width, hint.width()), max(height, hint.height())
+            observed["minimum"] = f"{width}x{height}"
             observed["rss"] = resource_snapshot().process_rss_bytes
             window.shutdown(wait_ms=1000)
             window.hide()
@@ -226,7 +235,8 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
     print(
         f"polmon {__version__} smoke-start: {'PASS' if ok else 'FAIL'} platform={platform} "
         f"visible={observed.get('visible')} exposed={observed.get('exposed')} "
-        f"in-process-startup={startup} idle-rss-after-{seconds:g}s={rss_text}",
+        f"in-process-startup={startup} idle-rss-after-{seconds:g}s={rss_text} "
+        f"language={i18n.language()} minimum-size={observed.get('minimum', 'unknown')}",
         file=out,
     )
     return 0 if ok else 1

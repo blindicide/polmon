@@ -80,7 +80,7 @@ class TelemetryPage(Page):
                                      name="refreshButton")
         self.refresh_button.clicked.connect(self.refresh_list)
         top.addWidget(self.refresh_button)
-        self.export_button = button("telemetry.export", tip="telemetry.export.tip",
+        self.export_button = button("telemetry.export", "primary", tip="telemetry.export.tip",
                                     name="exportCsv")
         self.export_button.clicked.connect(self.export_csv)
         top.addWidget(self.export_button)

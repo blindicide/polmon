@@ -13,7 +13,7 @@ import re
 from collections import deque
 from collections.abc import Iterable, Sequence
 
-from PySide6.QtCore import QEvent, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -277,9 +277,16 @@ def make_table(
     header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     header.setStretchLastSection(stretch is None)
     header.setMinimumSectionSize(48)
+    # The stylesheet draws section labels in the caption type; size hints must use the same font
+    # or every column is sized for text larger than the one shown.
+    caption = QFont(header.font())
+    caption.setPixelSize(theme.TYPE["caption"])
+    caption.setWeight(QFont.Weight.DemiBold)
+    header.setFont(caption)
     if stretch is not None:
         header.setSectionResizeMode(stretch, QHeaderView.ResizeMode.Stretch)
     table.setSortingEnabled(sortable)
+    table.viewport().installEventFilter(_TrimOnResize(table))
     return table
 
 
@@ -343,22 +350,64 @@ def fill_table(
 
 
 def fit_columns(table: QTableWidget) -> None:
-    """Size interactive columns to their content once, capped so one long cell cannot hog; a
-    small overflow is taken from the widest column so no scroll bar appears for a few pixels."""
+    """Size interactive columns to their content once, capped so one long cell cannot hog."""
     header = table.horizontalHeader()
-    interactive = [
-        column
-        for column in range(table.columnCount())
-        if header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
-    ]
-    for column in interactive:
-        table.resizeColumnToContents(column)
-        header.resizeSection(column, min(header.sectionSize(column), 360))
+    metrics = header.fontMetrics()  # the caption font the stylesheet draws labels in
+    padding = 2 * theme.SPACE["sm"] + 2
+    sorted_column = header.sortIndicatorSection() if table.isSortingEnabled() else -1
+    natural: dict[int, int] = {}
+    content: dict[int, int] = {}
+    for column in range(table.columnCount()):
+        if header.sectionResizeMode(column) != QHeaderView.ResizeMode.Interactive:
+            continue
+        # Qt's own header hint reserves sort-indicator room in every section; only the sorted
+        # column shows one.
+        item = table.horizontalHeaderItem(column)
+        label = metrics.horizontalAdvance(item.text() if item else "") + padding
+        if column == sorted_column:
+            label += 16
+        content[column] = min(table.sizeHintForColumn(column) + 2, 360)
+        natural[column] = min(max(label, content[column]), 360)
+    table.natural_widths = natural  # type: ignore[attr-defined]
+    table.content_widths = content  # type: ignore[attr-defined]
+    _fit_to_view(table)
+
+
+def _fit_to_view(table: QTableWidget) -> None:
+    """Apply the natural column widths; when the table is wider than its view, the overflow is
+    taken from header slack (a label wider than the cells below it), never from cell content —
+    beyond that the table scrolls. Runs after filling and on every resize of the view, always
+    from the natural widths (tables are often filled while hidden, before their final width is
+    known)."""
+    natural: dict[int, int] = getattr(table, "natural_widths", {})
+    content: dict[int, int] = getattr(table, "content_widths", {})
     available = table.viewport().width()
-    overflow = header.length() - available
-    if interactive and available > 0 and 0 < overflow <= 80:
-        widest = max(interactive, key=header.sectionSize)
-        header.resizeSection(widest, header.sectionSize(widest) - overflow)
+    if not natural or available <= 0:
+        return
+    header = table.horizontalHeader()
+    visible = {column: width for column, width in natural.items()
+               if not table.isColumnHidden(column)}
+    stretched = sum(
+        header.minimumSectionSize()
+        for column in range(table.columnCount())
+        if header.sectionResizeMode(column) == QHeaderView.ResizeMode.Stretch
+    )
+    overflow = sum(visible.values()) + stretched - available
+    slack = {column: max(width - max(content.get(column, width), 48), 0)
+             for column, width in visible.items()}
+    total = sum(slack.values())
+    take = min(max(overflow, 0), total)
+    for column, width in visible.items():
+        if take and slack[column]:
+            width -= min(slack[column], -(-take * slack[column] // total))  # proportional
+        header.resizeSection(column, width)
+
+
+class _TrimOnResize(QObject):
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
+        if event.type() == QEvent.Type.Resize:
+            _fit_to_view(self.parent())  # type: ignore[arg-type]
+        return False
 
 
 def raw_value(table: QTableWidget, row: int, column: int) -> object:

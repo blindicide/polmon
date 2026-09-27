@@ -25,7 +25,6 @@ from polmon.client.i18n import (
     Joined,
     Msg,
     bind_fn,
-    bind_suffix,
     bind_text,
     bind_tip,
     has,
@@ -51,23 +50,23 @@ TERMINAL = {"succeeded", "not_run", "aborted", "failed", "cancelled"}
 SCALAR_COLUMNS = 9
 
 
-def _spin(low: int, high: int, value: int, unit: str = "") -> QSpinBox:
-    """An integer field; ``unit`` names its localized suffix (``unit.suffix.<unit>``)."""
+def _spin(low: int, high: int, value: int, suffix: str = "") -> QSpinBox:
+    """An integer field; ``suffix`` is a unit symbol (not translated)."""
     box = QSpinBox()
     box.setRange(low, high)
     box.setValue(value)
-    if unit:
-        bind_suffix(box, unit)
+    if suffix:
+        box.setSuffix(suffix)
     return box
 
 
-def _double(low: float, high: float, value: float, unit: str = "s") -> QDoubleSpinBox:
+def _double(low: float, high: float, value: float, suffix: str = " s") -> QDoubleSpinBox:
     box = QDoubleSpinBox()
     box.setRange(low, high)
     box.setDecimals(1)
     box.setSingleStep(0.5)
     box.setValue(value)
-    bind_suffix(box, unit)
+    box.setSuffix(suffix)
     return box
 
 
@@ -152,8 +151,8 @@ class BenchmarksPage(Page):
         self.max_endpoints = _spin(1, 10_000, 50)
         self.max_namespaces = _spin(0, 1_000, 0)
         self.max_run = _double(1, 3600, 120.0)
-        self.max_incremental = _spin(1, 65_536, 512, "mib")
-        self.reserve = _spin(0, 1_048_576, 256, "mib")
+        self.max_incremental = _spin(1, 65_536, 512, " MiB")
+        self.reserve = _spin(0, 1_048_576, 256, " MiB")
         _form_row(limits_form, "benchmarks.max_endpoints", self.max_endpoints, "maxEndpoints")
         _form_row(limits_form, "benchmarks.max_namespaces", self.max_namespaces, "maxNamespaces")
         _form_row(limits_form, "benchmarks.max_run", self.max_run, "maxRun")

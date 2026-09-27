@@ -36,7 +36,6 @@ def test_client_has_no_hard_coded_user_facing_literals() -> None:
         'status = f"Deployed {count} nodes to the backend"',
         'MESSAGE = "The backend is not reachable"',
         'combo.addItem("Local backend")',
-        'timeout.setSuffix(" s")',
     ],
 )
 def test_lint_flags_hard_coded_text(source: str) -> None:
@@ -54,6 +53,7 @@ def test_lint_flags_hard_coded_text(source: str) -> None:
         'raise ValueError("unexpected response from the backend")',
         'reason = text.removeprefix("unable to reach backend: ")',
         'pattern = "*.yml *.yaml"',
+        'timeout.setSuffix(" s")',  # unit symbols are not translated
         'label.setText("Local backend")  # i18n: allow',
         'def f():\n    """Explain in plain English what happens."""',
     ],

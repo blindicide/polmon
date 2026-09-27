@@ -15,7 +15,7 @@ from polmon.client.formatting import (
     format_seconds,
     progress_text,
 )
-from polmon.client.i18n import Msg, tr
+from polmon.client.i18n import Msg
 from polmon.client.yamlmap import document_id, locate, reason_line
 
 LANGUAGES = i18n.languages()
@@ -126,15 +126,15 @@ def test_formatting_is_compact_and_total(language) -> None:  # noqa: ANN001
     assert format_bytes(512) == "512 B"
     assert format_bytes(3 * 1_048_576) == "3.0 MiB"
     assert format_bytes(None) == "—"
-    assert format_seconds(0.25) == tr("unit.ms", value="250")
-    assert format_seconds(75) == tr("unit.min_s", minutes=1, seconds="15")
-    assert format_seconds(3700) == tr("unit.h_min", hours=1, minutes="01")
+    assert format_seconds(0.25) == "250 ms"  # unit symbols are the same in every language
+    assert format_seconds(75) == "1 min 15 s"
+    assert format_seconds(3700) == "1 h 01 min"
     assert estimate_eta(2, 10, 4.0) == 16.0
     assert estimate_eta(0, 10, 4.0) is None
     text = progress_text(3, 10, 4.2, 9.8, "action ping")
     parts = text.split(" · ")
     assert "3/10" in parts[0] and parts[1] == "30 %" and parts[-1] == "action ping"
-    assert tr("unit.s", value="4.2") in parts[2] and tr("unit.s", value="9.8") in parts[3]
+    assert "4.2 s" in parts[2] and "9.8 s" in parts[3]
 
 
 def test_yaml_locations_resolve_to_lines() -> None:

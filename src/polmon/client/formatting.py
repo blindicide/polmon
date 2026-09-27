@@ -1,8 +1,8 @@
 """Compact formatting for dense operator displays (no Qt).
 
-Numbers use a decimal point and IEC byte symbols (B, KiB, MiB) in every language; durations use
-the current language's unit abbreviations (``unit.*``: ms/мс, s/с, min/мин, h/ч), see
-docs/UI-GUIDE.md. Words come from the catalogs.
+Numbers use a decimal point and unit symbols (B, KiB, MiB, ms, s, min, h) in every language:
+unit symbols are machine notation and are not translated (docs/UI-GUIDE.md). Words come from
+the catalogs.
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ def format_seconds(value: object) -> str:
         return "—"
     seconds = float(value)
     if seconds < 1:
-        return tr("unit.ms", value=f"{seconds * 1000:.0f}")
+        return f"{seconds * 1000:.0f} ms"
     if seconds < 60:
-        return tr("unit.s", value=f"{seconds:.1f}")
+        return f"{seconds:.1f} s"
     minutes, rest = divmod(int(round(seconds)), 60)
     if minutes < 60:
-        return tr("unit.min_s", minutes=minutes, seconds=f"{rest:02d}")
+        return f"{minutes} min {rest:02d} s"
     hours, minutes = divmod(minutes, 60)
-    return tr("unit.h_min", hours=hours, minutes=f"{minutes:02d}")
+    return f"{hours} h {minutes:02d} min"
 
 
 def format_percent(value: object) -> str:

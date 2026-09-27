@@ -48,6 +48,16 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "30 s)",
     "connection.connect": "Connect",
     "connection.disconnect": "Disconnect",
+    "connection.stop_local.confirm_title": "Stop the local backend",
+    "connection.stop_local.confirm": {
+        "one": "Disconnecting stops the local backend, and its {count} deployment is lost. "
+        "Reports are kept.",
+        "other": "Disconnecting stops the local backend, and its {count} deployments are lost. "
+        "Reports are kept.",
+    },
+    "connection.stop_local.confirm_accept": "Disconnect and stop",
+    "connection.disconnect_local.tip": "Stop the local backend; its deployments are discarded "
+    "(Ctrl+Return)",
     "connection.connect.tip": "Connect or disconnect (Ctrl+Return)",
     "connection.backend_log": "Backend log",
     "connection.backend_log.tip": "Open the owned local backend's output log",
@@ -212,12 +222,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "progress.eta": "ETA {duration}",
     "progress.elapsed_only": "{seconds} s elapsed",
     "progress.cancel_tip": "Cancel the running operation (Esc)",
-    "unit.ms": "{value} ms",
-    "unit.s": "{value} s",
-    "unit.min_s": "{minutes} min {seconds} s",
-    "unit.h_min": "{hours} h {minutes} min",
-    "unit.suffix.s": "s",
-    "unit.suffix.mib": "MiB",
     "activity.working": "Working: {name}",
     # -- statuses (machine values shown as words) -----------------------------------------------
     "status.disconnected": "disconnected",

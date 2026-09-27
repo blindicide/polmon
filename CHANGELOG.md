@@ -34,7 +34,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   tiles; sortable tables with monospaced identifiers and status glyphs; empty, loading and error
   states for every view; a status-bar busy indicator; confirmed, visibly destructive actions;
   accessible names for every input; every page fits 1440×900 in both languages.
-- Durations are shown with localized units (мс, с, мин, ч / ms, s, min, h).
+- Durations use unit symbols (`250 ms`, `4.2 s`, `1 min 15 s`, `1 h 05 min`); unit symbols are
+  not translated.
 
 ## [0.3.2] - 2026-09-27
 

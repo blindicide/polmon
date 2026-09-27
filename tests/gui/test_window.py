@@ -98,6 +98,18 @@ def test_local_preset_starts_connects_and_reaps_owned_backend(window, qtbot) -> 
     assert window.bar.log_button.isEnabled()
     recent = window.pages["dashboard"].recent_state  # "none yet", no longer "not connected"
     qtbot.waitUntil(lambda: recent._title.key == "dashboard.recent.empty", timeout=5_000)
+    # Disconnecting stops the owned backend: styled as destructive, confirmed when it would
+    # discard deployments.
+    from polmon.client.widgets import set_confirm_handler
+
+    assert window.bar.connect_button.property("role") == "danger"
+    declined: list[str] = []
+    set_confirm_handler(lambda title, text: declined.append(title) or False)
+    window.session.deployments = {"l0-office": {"state": "running"}}
+    window.toggle_connection()
+    assert declined == ["connection.stop_local.confirm_title"]
+    assert window.session.connected and process.poll() is None  # declined: nothing stopped
+    window.session.deployments = {}
     window.disconnect_backend()
     qtbot.waitUntil(lambda: process.poll() is not None, timeout=20_000)
     assert process.returncode is not None
@@ -338,6 +350,7 @@ def test_tab_order_follows_reading_order(window) -> None:
     """Sidebar, then the connection header, then the page, then the activity log."""
     from PySide6.QtCore import Qt
 
+    window.bar.mode.setCurrentIndex(window.bar.mode.findData("remote"))  # URL and token shown
     window.navigate("scenarios")
     start = window.navigation
     order, widget = [], start

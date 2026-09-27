@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 from polmon.client import i18n, theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
-from polmon.client.i18n import Msg, bind, bind_fn, bind_suffix, bind_text, bind_tip, tr
+from polmon.client.i18n import Msg, bind, bind_fn, bind_text, bind_tip, tr
 from polmon.client.icon import app_icon
 from polmon.client.language import apply_language
 from polmon.client.local_backend import LocalBackendError, LocalBackendManager
@@ -180,7 +180,7 @@ class ConnectionBar(QFrame):
         self.timeout.setObjectName("requestTimeout")
         self.timeout.setRange(1.0, 120.0)
         self.timeout.setDecimals(0)
-        bind_suffix(self.timeout, "s")
+        self.timeout.setSuffix(" s")  # unit symbols are not translated
         self.timeout.setValue(DEFAULT_TIMEOUT)
         bind_tip(self.timeout, "connection.timeout.tip")
         self.addWidget(self.timeout)
@@ -578,6 +578,15 @@ class MainWindow(QMainWindow):
         if self.session.state in {ConnectionState.DISCONNECTED, ConnectionState.UNAUTHORIZED}:
             self.connect_backend()
         else:
+            # Disconnecting from the owned local backend stops it: its deployments are lost.
+            count = len(self.session.deployments)
+            if self.session.local_backend and count and not confirm(
+                self,
+                "connection.stop_local.confirm_title",
+                Msg("connection.stop_local.confirm", count=count),
+                "connection.stop_local.confirm_accept",
+            ):
+                return
             self.disconnect_backend()
 
     def connect_backend(self) -> None:
@@ -939,7 +948,13 @@ class MainWindow(QMainWindow):
             "setText",
             "connection.connect" if editable else "connection.disconnect",
         )
-        self.bar.connect_button.setProperty("role", "primary" if editable else "secondary")
+        teardown = not editable and self.session.local_backend  # stops the owned backend
+        role = "primary" if editable else "danger" if teardown else "secondary"
+        self.bar.connect_button.setProperty("role", role)
+        bind_tip(
+            self.bar.connect_button,
+            "connection.disconnect_local.tip" if teardown else "connection.connect.tip",
+        )
         self.bar.connect_button.style().unpolish(self.bar.connect_button)
         self.bar.connect_button.style().polish(self.bar.connect_button)
         lifecycle_busy = self._local_start_handle is not None or self._local_stop_handle is not None

@@ -55,7 +55,8 @@ KEPT_TERMS = {
     "polmon", "polmon-backend", "polmon-client", "L0", "L1", "L2", "TAP", "YAML", "JSON",
     "PCAP", "CSV", "Markdown", "HTTP", "HTTPS", "API", "URL", "IPv4", "IP", "MAC", "ICMP",
     "TCP", "ARP", "TTL", "EtherType", "Ethernet", "RSS", "CPU", "mCPU", "MiB", "GiB", "KiB",
-    "MB", "ms", "s", "m", "h", "B", "Ctrl", "Shift", "Esc", "Return", "Enter", "F1", "F5", "Qt",
+    "MB", "ms", "s", "min", "m", "h", "B", "Ctrl", "Shift", "Esc", "Return", "Enter", "F1", "F5",
+    "Qt",
     "PySide6", "LGPLv3", "Linux", "Windows", "sudo", "iproute2", "setpriv", "ping", "ip",
     "netns", "Wireshark", "ID", "SHA-256", "systemd", "journalctl", "POLMON_API_TOKEN",
     "SmartScreen", "veth", "chmod", "stdout", "stderr", "UTF-8", "unicast", "multicast",
@@ -174,9 +175,7 @@ def lint_source(source: str, path: str = "<source>") -> list[Finding]:
                 text = _literal_text(argument)
                 if text is None:
                     continue
-                # Unit suffixes and prefixes differ by language even for one-letter symbols.
-                unit_text = api in {"setSuffix", "setPrefix"} and re.search(r"[^\W\d_]", text)
-                if _words(text) or CYRILLIC.search(text) or unit_text:
+                if _words(text) or CYRILLIC.search(text):
                     report(argument, "literal passed to a Qt text API", text)
     # 2. Prose-like literals and composed f-strings anywhere; 3. Cyrillic outside catalogs.
     for node in ast.walk(tree):
@@ -353,7 +352,6 @@ def required_families() -> dict[str, set[str]]:
         "fidelity": {f"fidelity.{v}" for v in ("l0_only", "linux_lab")}
         | {f"fidelity.badge.{v}{tip}" for v in ("l0_only", "linux_lab") for tip in ("", ".tip")},
         "features": {f"feature.{FEATURE_TOPOLOGIES}", f"feature.{FEATURE_EXPERIMENTS}"},
-        "unit suffixes": {f"unit.suffix.{unit}" for unit in ("s", "mib")},  # bind_suffix()
         "files": {f"files.{kind}" for kind in FILE_PATTERNS},
         "documents": {f"document.{kind}" for kind in ("topology", "scenario", "report")},
         "local": {f"local.{code}" for code in local_codes},

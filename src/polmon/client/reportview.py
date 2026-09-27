@@ -122,7 +122,7 @@ def _field(key: str, value: object) -> str:
         if key.endswith("_mb"):
             shown = _code(f"{value} MiB")
         elif "seconds" in key:
-            shown = _code(tr("unit.s", value=f"{value:g}"))
+            shown = _code(f"{value:g} s")
     return f"- {tr(label) if label else _code(key)}: {shown}"
 
 

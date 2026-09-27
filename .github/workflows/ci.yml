@@ -107,6 +107,15 @@ jobs:
             polmon-client --smoke-start 3 | tee smoke.txt
             grep -q "smoke-start: PASS platform=windows" smoke.txt
           fi
+          # Every page fits a 1440x900 screen with this platform's real fonts (Russian UI).
+          python - <<'PY'
+          import re
+          text = open("smoke.txt", encoding="utf-8").read()
+          width, height = map(int, re.search(r"minimum-size=(\d+)x(\d+)", text).groups())
+          assert "language=ru" in text, text
+          assert width <= 1440 and height <= 900, f"minimum window size {width}x{height}"
+          print(f"minimum window size {width}x{height} fits 1440x900")
+          PY
       - name: Small rootless benchmark (10/25 L0 endpoints)
         if: runner.os == 'Linux'
         run: pytest -m "performance and not privileged" -p no:cacheprovider --junitxml=results-perf.xml

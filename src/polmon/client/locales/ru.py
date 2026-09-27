@@ -46,9 +46,23 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "показывается",
     "connection.timeout": "Тайм-аут",
     "connection.timeout.tip": "Тайм-аут обычных запросов (развёртывание и сброс получают не "
-    "меньше 30 с)",
+    "меньше 30 s)",
     "connection.connect": "Подключиться",
     "connection.disconnect": "Отключиться",
+    "connection.stop_local.confirm_title": "Остановить локальный бэкенд",
+    "connection.stop_local.confirm": {
+        "one": "При отключении локальный бэкенд остановится, и {count} развёртывание будет "
+        "потеряно. Отчёты сохранятся.",
+        "few": "При отключении локальный бэкенд остановится, и {count} развёртывания будут "
+        "потеряны. Отчёты сохранятся.",
+        "many": "При отключении локальный бэкенд остановится, и {count} развёртываний будут "
+        "потеряны. Отчёты сохранятся.",
+        "other": "При отключении локальный бэкенд остановится, и {count} развёртывания будут "
+        "потеряны. Отчёты сохранятся.",
+    },
+    "connection.stop_local.confirm_accept": "Отключиться и остановить",
+    "connection.disconnect_local.tip": "Остановить локальный бэкенд; его развёртывания будут "
+    "потеряны (Ctrl+Return)",
     "connection.connect.tip": "Подключиться или отключиться (Ctrl+Return)",
     "connection.backend_log": "Журнал бэкенда",
     "connection.backend_log.tip": "Открыть журнал вывода локального бэкенда",
@@ -212,14 +226,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "progress.step": "шаг {completed}/{total}",
     "progress.elapsed": "прошло {duration}",
     "progress.eta": "осталось ≈ {duration}",
-    "progress.elapsed_only": "прошло {seconds} с",
+    "progress.elapsed_only": "прошло {seconds} s",
     "progress.cancel_tip": "Отменить текущую операцию (Esc)",
-    "unit.ms": "{value} мс",
-    "unit.s": "{value} с",
-    "unit.min_s": "{minutes} мин {seconds} с",
-    "unit.h_min": "{hours} ч {minutes} мин",
-    "unit.suffix.s": "с",
-    "unit.suffix.mib": "MiB",
     "activity.working": "Выполняется: {name}",
     # -- состояния (машинные значения словами) --------------------------------------------------
     "status.disconnected": "нет подключения",
@@ -384,7 +392,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "dashboard.limits": "Лимиты допуска",
     "dashboard.limits.hint": "заданы на бэкенде",
     "dashboard.resources": "Ресурсы в реальном времени",
-    "dashboard.resources.hint": "опрос каждые 3 с",
+    "dashboard.resources.hint": "опрос каждые 3 s",
     "dashboard.recent": "Последние эксперименты",
     "dashboard.recent.open": "Все отчёты",
     "dashboard.recent.empty": "Экспериментов пока нет",
@@ -744,7 +752,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- проблемы (сообщения клиента) -----------------------------------------------------------
     "problem.message.title": "Сообщение",
     "problem.timeout.title": "Бэкенд не ответил",
-    "problem.timeout.detail": "Запрос к {url} превысил тайм-аут {seconds} с.",
+    "problem.timeout.detail": "Запрос к {url} превысил тайм-аут {seconds} s.",
     "problem.timeout.hint": "Проверьте, не перегружен ли бэкенд, или увеличьте тайм-аут на "
     "панели подключения.",
     "problem.refused.title": "Бэкенд недоступен",
@@ -794,7 +802,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "повторите.",
     "problem.settings.title": "Неверные настройки",
     "problem.settings.detail": "URL бэкенда должен быть абсолютным адресом http:// или https://, "
-    "а тайм-аут — от 1 до 120 с.",
+    "а тайм-аут — от 1 до 120 s.",
     "problem.settings.hint": "Укажите URL вида http://192.168.1.10:8080.",
     "problem.unreadable.title": "Файл не читается",
     "problem.unreadable.detail": "Файл не является текстом в кодировке UTF-8.",
@@ -810,7 +818,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.local_stopped.detail": "Собственный бэкенд неожиданно завершился с кодом {code}.",
     "problem.local_stopped.hint": "Подробности — в журнале бэкенда: {log}",
     "problem.lost.title": "Бэкенд недоступен",
-    "problem.lost.detail": "{detail} Повтор каждые {seconds} с; действия недоступны, пока бэкенд "
+    "problem.lost.detail": "{detail} Повтор каждые {seconds} s; действия недоступны, пока бэкенд "
     "не ответит.",
     "problem.older_backend.title": "Устаревший бэкенд",
     "problem.older_backend.detail": "Бэкенд {version} не предоставляет: {features}. "
@@ -831,7 +839,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "local.not_l0_only": "Собственный бэкенд не сообщил о границе «только L0».",
     "local.exited": "Бэкенд завершился с кодом {exit_code} при попытке запуска {attempt}. "
     "Последний вывод: {output}",
-    "local.not_ready": "Бэкенд не стал готов за {seconds} с при попытке {attempt}. Последний "
+    "local.not_ready": "Бэкенд не стал готов за {seconds} s при попытке {attempt}. Последний "
     "вывод: {output}",
     "local.not_started": "Бэкенд не запустился. Последний вывод: {output}",
     # -- нарушения лимитов допуска --------------------------------------------------------------
@@ -839,13 +847,13 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "limit.active_namespaces": "Активные пространства имён",
     "limit.available_memory": "Доступная память",
     "limit.concurrent_experiments": "Одновременные эксперименты",
-    "limit.duration_seconds": "Длительность эксперимента (с)",
+    "limit.duration_seconds": "Длительность эксперимента (s)",
     "limit.data_directory": "Каталог данных",
     "limit.disk_free": "Свободное место на диске",
     "limit.max_endpoints": "Бенчмарк: максимум конечных точек",
     "limit.max_namespaces": "Бенчмарк: максимум пространств имён",
     "limit.memory_reserve_mb": "Бенчмарк: резерв памяти (MiB)",
-    "limit.max_run_seconds": "Бенчмарк: время прогона (с)",
+    "limit.max_run_seconds": "Бенчмарк: время прогона (s)",
     "limit.concurrent_benchmarks": "Одновременные бенчмарки",
     "limit.active_experiments": "Активные эксперименты",
     "limit.benchmark_jobs": "Выполняемые задания бенчмарков",
@@ -976,7 +984,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.orchestration.ownership_conflict": "Часть этих лабораторных ресурсов уже "
     "принадлежит другому развёртыванию.",
     "backend.hybrid.bridge_not_forwarding": "Мост {bridge} не перешёл в режим пересылки за "
-    "{seconds} с.",
+    "{seconds} s.",
     "backend.hybrid.no_tap_boundary": "У конечной точки-источника нет границы TAP.",
     "backend.hybrid.response_timeout": "Истёк тайм-аут ожидания ответа гибридной сети.",
     "backend.synthetic.event_limit": "Достигнут лимит синтетических событий.",

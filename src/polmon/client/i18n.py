@@ -245,15 +245,6 @@ def status_label(status: object) -> str:
     return tr(key) if has(key) else value.replace("_", " ")
 
 
-def bind_suffix(box: T, unit: str) -> T:
-    """Give a spin box the unit suffix ``unit.suffix.<unit>`` (e.g. " с" / " s"), kept current."""
-
-    def apply(target: T) -> None:
-        target.setSuffix(" " + tr(f"unit.suffix.{unit}"))  # type: ignore[attr-defined]
-
-    return bind_fn(box, apply, tag="suffix")
-
-
 def status_msg(status: object) -> Msg | str:
     """Like :func:`status_label`, but rendered on display (for message parameters)."""
     value = str(status or "")

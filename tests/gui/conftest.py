@@ -17,6 +17,12 @@ import pytest
 
 if sys.platform != "win32" and not os.environ.get("DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Qt's offscreen platform on Windows finds no fonts unless pointed at them: text would render as
+# boxes with wrong metrics (layouts measured too wide) and slow font fallback for Cyrillic.
+if sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    os.environ.setdefault(
+        "QT_QPA_FONTDIR", os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+    )
 
 pytest.importorskip("PySide6", reason="NOT RUN — environment unavailable: PySide6 not installed")
 
