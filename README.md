@@ -29,6 +29,11 @@ for L1 and hybrid TAP experiments. Linux releases also contain
 `polmon-backend-<version>-linux-x64.tar.gz`, a Qt-free backend bundle that runs without Python,
 pip, or a virtual environment.
 
+Phase IV (v0.4.0) localizes the desktop client — Russian by default, English switchable at run
+time, backend refusals rendered from stable message codes — and redesigns its interface (design
+tokens, dark navigation, cards and metric tiles, empty/loading/error states, ≥ 4.5:1 contrast).
+Visual system, glossary and before/after screenshots: [docs/UI-GUIDE.md](docs/UI-GUIDE.md).
+
 ## Which download?
 
 Every [release](https://github.com/blindicide/polmon/releases) carries these assets and a

@@ -75,3 +75,24 @@ tracks the connection (`connected`, `unauthorized`, `lost`) and refreshes resour
 deployments. The client imports no backend implementation module (enforced by a test); the
 backend gained additive routes for inspection, live experiment progress, telemetry paging, the
 Markdown report and bounded benchmark jobs ([docs/API.md](docs/API.md)).
+
+### Localization and backend text (approach (a))
+
+The UI is Russian by default and English on request, switched at run time without a restart
+([docs/UI-GUIDE.md](docs/UI-GUIDE.md), plan of record [docs/UI-RU-PLAN.md](docs/UI-RU-PLAN.md)).
+`polmon.client.i18n` is Qt-free: catalogs are Python modules (`locales/ru.py`, `locales/en.py`)
+with CLDR plurals; widgets bind to catalog keys and computed text is held as lazy `Msg` values,
+so a switch re-renders every screen in place. Qt's own strings follow via `qtbase_<lang>.qm`.
+
+Backend-originated text uses **approach (a): machine code plus parameters.** The backend is not
+localized and needs no locale negotiation. Every error document keeps its English `message`
+(the Phase III contract and every existing API consumer stay valid) and adds `message_code` and
+`params`: `{"error": {"code", "message", "message_code", "params", "details"}}`. Validation
+items, experiment `error_details`, benchmark jobs (`message_code`, `message_params`) and YAML
+errors (line, column, `problem_code`) carry codes the same way. The client renders
+`backend.<message_code>` from its catalog with the parameters; only a backend without codes (an
+older version) gets its English text shown, quoted inside a localized sentence. Approach (b)
+(the backend translating per request) was rejected: it would put a second catalog and locale
+handling into a service that has no UI, and codes are testable identifiers. Two tests keep the
+contract: every backend raise site passes a code (`tests/unit/test_error_codes.py`), and every
+code the backend can send has a Russian and an English entry (`scripts/i18n-completeness.py`).

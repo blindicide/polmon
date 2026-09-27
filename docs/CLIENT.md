@@ -22,7 +22,19 @@ Command-line options: `--version`; `--self-test` (checks Qt, its plugins, the ma
 API client without opening a window; exit status 0 when healthy); `--smoke-start SECONDS` (shows
 the window on the native platform and reports start-up time and memory); `--url URL` (prefill the
 backend URL and select the remote preset); `--backend-executable PATH` (override the local child);
-`--local-backend-self-test`; `--theme system|light|dark`; `--install-desktop-entry` (Linux).
+`--local-backend-self-test`; `--theme system|light|dark`; `--language ru|en`;
+`--install-desktop-entry` (Linux).
+
+## Language
+
+The client is in Russian by default. *Вид → Язык → English* (View → Language), or
+**Ctrl+Shift+U**, switches to English immediately — the connection, open documents, tables and a
+running operation are kept — and the choice is remembered. `--language` or the
+`POLMON_LANGUAGE` environment variable override it for one run. This guide names controls by
+their English labels; terms and their Russian equivalents are in the glossary of
+[UI-GUIDE.md](UI-GUIDE.md#glossary). Refusals from the backend (for example the Local backend's
+L0-only refusal) are shown in the UI language; the English backend text appears only for a
+backend older than v0.4.0.
 
 ## Connect
 
