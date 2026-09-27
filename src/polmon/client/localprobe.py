@@ -109,10 +109,16 @@ def _drive(app, window, states, record: dict[str, object], screenshot: Path | No
         "state_label": window.bar.state_label.text(),
         "language": language(),
         "status_bar": window.status_text.text(),
+        "fidelity_badge": window.bar.fidelity.text() if window.bar.fidelity.isVisible() else None,
         "l0_only": session.l0_only,
         "backend_rss_bytes": (session.resources or {}).get("snapshot", {}).get("process_rss_bytes"),
     }
-    if window.bar.state_label.text() != tr("connection.local_label") or not session.l0_only:
+    indicated = (
+        window.bar.fidelity.isVisible()
+        and window.bar.fidelity.text() == tr("fidelity.badge.l0_only")
+        and tr("connection.local_label") in window.status_text.text()
+    )
+    if not indicated or not session.l0_only:
         raise ProbeFailure("the Local backend fidelity indicator is missing")
 
     # 2. L1 topology: the backend answers 422 and the UI refuses before any deploy call.

@@ -97,6 +97,35 @@ def experiment_markdown(report: dict[str, object]) -> str:
     )
 
 
+# Benchmark document fields → the labels of the benchmark form that sets them.
+BENCHMARK_FIELDS = {
+    "endpoint_counts": "benchmarks.counts",
+    "namespace_count": "benchmarks.namespaces",
+    "l0_count": "benchmarks.target_l0",
+    "l1_count": "benchmarks.target_l1",
+    "repeats": "benchmarks.repeats",
+    "idle_seconds_per_run": "benchmarks.idle",
+    "settle_seconds_between_runs": "benchmarks.settle",
+    "max_endpoints": "benchmarks.max_endpoints",
+    "max_namespaces": "benchmarks.max_namespaces",
+    "max_run_seconds": "benchmarks.max_run",
+    "max_incremental_memory_mb": "benchmarks.max_incremental",
+    "memory_reserve_mb": "benchmarks.reserve",
+}
+
+
+def _field(key: str, value: object) -> str:
+    """``- label: value unit``; a field this client does not know keeps its machine name."""
+    label = BENCHMARK_FIELDS.get(key)
+    shown = _code(value)
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        if key.endswith("_mb"):
+            shown = _code(f"{value} MiB")
+        elif "seconds" in key:
+            shown = _code(tr("unit.s", value=f"{value:g}"))
+    return f"- {tr(label) if label else _code(key)}: {shown}"
+
+
 def benchmark_markdown(document: dict[str, object]) -> str:
     kind = str(document.get("benchmark") or "")
     workload = document.get("workload") or {}
@@ -124,11 +153,11 @@ def benchmark_markdown(document: dict[str, object]) -> str:
         key: value for key, value in workload.items() if isinstance(value, int | float | list)
     }
     lines += ["", f"#### {tr('reportview.benchmark.workload')}", ""]
-    lines += [f"- `{key}`: {_code(value)}" for key, value in workload_values.items()] or [
+    lines += [_field(key, value) for key, value in workload_values.items()] or [
         f"- {tr('reportview.none')}"
     ]
     lines += ["", f"#### {tr('reportview.benchmark.limits')}", ""]
-    lines += [f"- `{key}`: {_code(value)}" for key, value in limits.items()] or [
+    lines += [_field(key, value) for key, value in limits.items()] or [
         f"- {tr('reportview.none')}"
     ]
     lines += [

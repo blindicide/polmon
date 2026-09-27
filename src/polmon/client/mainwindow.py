@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 from polmon.client import i18n, theme
 from polmon.client.api import DEFAULT_TIMEOUT, DEFAULT_URL, ApiClientError
 from polmon.client.errors import Problem, describe
-from polmon.client.i18n import Msg, bind, bind_fn, bind_text, bind_tip, tr
+from polmon.client.i18n import Msg, bind, bind_fn, bind_suffix, bind_text, bind_tip, tr
 from polmon.client.icon import app_icon
 from polmon.client.language import apply_language
 from polmon.client.local_backend import LocalBackendError, LocalBackendManager
@@ -168,13 +168,19 @@ class ConnectionBar(QFrame):
         bind_tip(self.token, "connection.token.tip")
         self.token.setMinimumWidth(80)
         self.token.setMaximumWidth(140)
+        # A long token filled in without focus (restored, pasted by a script) shows its start
+        # instead of a clipped tail.
+        self.token.textChanged.connect(
+            lambda _text: None if self.token.hasFocus() else self.token.setCursorPosition(0)
+        )
+        self.token.editingFinished.connect(lambda: self.token.setCursorPosition(0))
         self.remote_actions.append(self.addWidget(self.token))
         self.addWidget(label("connection.timeout", name="fieldLabel"))
         self.timeout = QDoubleSpinBox()
         self.timeout.setObjectName("requestTimeout")
         self.timeout.setRange(1.0, 120.0)
         self.timeout.setDecimals(0)
-        self.timeout.setSuffix(" s")
+        bind_suffix(self.timeout, "s")
         self.timeout.setValue(DEFAULT_TIMEOUT)
         bind_tip(self.timeout, "connection.timeout.tip")
         self.addWidget(self.timeout)
@@ -954,7 +960,7 @@ class MainWindow(QMainWindow):
                 "statusbar.connected", prefix=prefix, url=session.url,
                 version=session.backend_version,
             )
-            short = prefix
+            short = tr("connection.state.connected")  # the pill beside it names the fidelity
         elif state is ConnectionState.LOST and session.lost_since:
             since = datetime.fromtimestamp(session.lost_since).strftime("%H:%M:%S")
             text = tr("statusbar.lost", since=since)
@@ -1029,9 +1035,16 @@ class MainWindow(QMainWindow):
         self.settings.setValue("view/theme", preference)
         if preference in self.theme_actions:
             self.theme_actions[preference].setChecked(True)
-        self.session.log(
-            Msg("log.theme", theme=Msg(f"theme.{preference}"), effective=Msg(f"theme.{effective}"))
-        )
+        if preference == "system":
+            self.session.log(
+                Msg(
+                    "log.theme_system",
+                    theme=Msg("theme.system"),
+                    effective=Msg(f"theme.{effective}"),
+                )
+            )
+        else:
+            self.session.log(Msg("log.theme", theme=Msg(f"theme.{preference}")))
         for widget in self.findChildren(QWidget):
             widget.update()
 

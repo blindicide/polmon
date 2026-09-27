@@ -92,10 +92,12 @@ def test_local_preset_starts_connects_and_reaps_owned_backend(window, qtbot) -> 
     process = window.local_backend.process
     assert process is not None and process.poll() is None
     assert window.session.l0_only
-    assert window.bar.state_label.text() == tr("connection.local_label")
+    assert window.bar.state_label.text() == tr("connection.state.connected")
     assert tr("connection.local_label") in window.status_text.text()
     assert window.bar.fidelity.isVisible()  # persistent fidelity indicator
     assert window.bar.log_button.isEnabled()
+    recent = window.pages["dashboard"].recent_state  # "none yet", no longer "not connected"
+    qtbot.waitUntil(lambda: recent._title.key == "dashboard.recent.empty", timeout=5_000)
     window.disconnect_backend()
     qtbot.waitUntil(lambda: process.poll() is not None, timeout=20_000)
     assert process.returncode is not None
@@ -330,3 +332,23 @@ def test_navigation_rows_are_laid_out_with_the_themed_item_size(window, qtbot) -
     assert step >= 24
     gaps = [later - earlier for earlier, later in zip(tops, tops[1:], strict=False)]
     assert gaps == [step] * (len(tops) - 1)
+
+
+def test_tab_order_follows_reading_order(window) -> None:
+    """Sidebar, then the connection header, then the page, then the activity log."""
+    from PySide6.QtCore import Qt
+
+    window.navigate("scenarios")
+    start = window.navigation
+    order, widget = [], start
+    for _ in range(5000):
+        widget = widget.nextInFocusChain()
+        if widget is start:
+            break
+        tabbable = widget.focusPolicy() & Qt.FocusPolicy.TabFocus
+        if widget.isVisible() and widget.isEnabled() and tabbable and widget.objectName():
+            order.append(widget.objectName())
+    expected = ["backendUrl", "apiToken", "requestTimeout", "scenarioEditor", "experimentId"]
+    positions = [order.index(name) for name in expected]
+    assert positions == sorted(positions), order
+    assert order[-1] == "activityLog", order

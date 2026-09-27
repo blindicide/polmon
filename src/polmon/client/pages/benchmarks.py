@@ -25,6 +25,7 @@ from polmon.client.i18n import (
     Joined,
     Msg,
     bind_fn,
+    bind_suffix,
     bind_text,
     bind_tip,
     has,
@@ -50,22 +51,23 @@ TERMINAL = {"succeeded", "not_run", "aborted", "failed", "cancelled"}
 SCALAR_COLUMNS = 9
 
 
-def _spin(low: int, high: int, value: int, suffix: str = "") -> QSpinBox:
+def _spin(low: int, high: int, value: int, unit: str = "") -> QSpinBox:
+    """An integer field; ``unit`` names its localized suffix (``unit.suffix.<unit>``)."""
     box = QSpinBox()
     box.setRange(low, high)
     box.setValue(value)
-    if suffix:
-        box.setSuffix(suffix)
+    if unit:
+        bind_suffix(box, unit)
     return box
 
 
-def _double(low: float, high: float, value: float, suffix: str = " s") -> QDoubleSpinBox:
+def _double(low: float, high: float, value: float, unit: str = "s") -> QDoubleSpinBox:
     box = QDoubleSpinBox()
     box.setRange(low, high)
     box.setDecimals(1)
     box.setSingleStep(0.5)
     box.setValue(value)
-    box.setSuffix(suffix)
+    bind_suffix(box, unit)
     return box
 
 
@@ -105,7 +107,14 @@ class BenchmarksPage(Page):
         bind_fn(
             self.kind,
             lambda combo: [
-                combo.setItemText(index, tr(f"benchmark.kind.{combo.itemData(index)}"))
+                (
+                    combo.setItemText(index, tr(f"benchmark.kind_label.{combo.itemData(index)}")),
+                    combo.setItemData(
+                        index,
+                        tr(f"benchmark.kind.{combo.itemData(index)}"),
+                        Qt.ItemDataRole.ToolTipRole,
+                    ),
+                )
                 for index in range(combo.count())
             ],
             tag="items",
@@ -143,8 +152,8 @@ class BenchmarksPage(Page):
         self.max_endpoints = _spin(1, 10_000, 50)
         self.max_namespaces = _spin(0, 1_000, 0)
         self.max_run = _double(1, 3600, 120.0)
-        self.max_incremental = _spin(1, 65_536, 512, " MiB")
-        self.reserve = _spin(0, 1_048_576, 256, " MiB")
+        self.max_incremental = _spin(1, 65_536, 512, "mib")
+        self.reserve = _spin(0, 1_048_576, 256, "mib")
         _form_row(limits_form, "benchmarks.max_endpoints", self.max_endpoints, "maxEndpoints")
         _form_row(limits_form, "benchmarks.max_namespaces", self.max_namespaces, "maxNamespaces")
         _form_row(limits_form, "benchmarks.max_run", self.max_run, "maxRun")

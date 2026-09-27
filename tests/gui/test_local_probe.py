@@ -25,7 +25,8 @@ def test_gui_probe_proves_refusal_and_reaps_the_backend_on_every_exit_path(
     assert stream.getvalue().rstrip().endswith("local-backend GUI probe: PASS")
     record = json.loads(output.read_text(encoding="utf-8"))
 
-    assert record["connected"]["state_label"] == tr("connection.local_label")
+    assert tr("connection.local_label") in record["connected"]["status_bar"]
+    assert record["connected"]["fidelity_badge"] == tr("fidelity.badge.l0_only")
     assert record["connected"]["l0_only"] is True
     assert record["ui_refusal"]["key"] == "problem.l0_only"
     assert record["ui_refusal"]["message_code"] == "fidelity.l0_only"

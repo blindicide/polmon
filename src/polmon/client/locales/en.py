@@ -144,7 +144,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "log.dock": "Activity",
     "log.client_started": "polmon client {version} (Qt {qt}, PySide6 {pyside})",
     "log.language": "Language: {language}",
-    "log.theme": "Theme: {theme} ({effective})",
+    "log.theme": "Theme: {theme}",
+    "log.theme_system": "Theme: {theme} ({effective})",
     "log.started": "{name}…",
     "log.done": "{name}: done",
     "log.cancelled": "{name}: cancelled",
@@ -215,6 +216,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "unit.s": "{value} s",
     "unit.min_s": "{minutes} min {seconds} s",
     "unit.h_min": "{hours} h {minutes} min",
+    "unit.suffix.s": "s",
+    "unit.suffix.mib": "MiB",
     "activity.working": "Working: {name}",
     # -- statuses (machine values shown as words) -----------------------------------------------
     "status.disconnected": "disconnected",
@@ -671,6 +674,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "benchmark.kind_short.l0": "L0",
     "benchmark.kind_short.l1": "L1",
     "benchmark.kind_short.target": "L0 + L1",
+    "benchmark.kind_label.l0": "L0 — synthetic, rootless",
+    "benchmark.kind_label.l1": "L1 — Linux namespaces",
+    "benchmark.kind_label.target": "Phase I target: L0 + L1",
     "benchmark.kind.l0.limitation": "Synthetic L0 endpoints are lightweight protocol state in "
     "one shared process; they are not equivalent to Linux namespaces (L1) or virtual machines "
     "(L2) and are never compared as such.",

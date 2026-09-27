@@ -36,6 +36,7 @@ def test_client_has_no_hard_coded_user_facing_literals() -> None:
         'status = f"Deployed {count} nodes to the backend"',
         'MESSAGE = "The backend is not reachable"',
         'combo.addItem("Local backend")',
+        'timeout.setSuffix(" s")',
     ],
 )
 def test_lint_flags_hard_coded_text(source: str) -> None:
@@ -90,6 +91,8 @@ def test_catalogs_are_complete() -> None:
         ("ru", "common.close", "Close", "ru: common.close: untranslated words ['Close']"),
         ("en", "common.close", "Закрыть", "en: common.close: Cyrillic in the English catalog"),
         ("ru", "common.close", "  ", "ru: common.close: empty"),
+        ("ru", "common.close", "Закрыть лог", "ru: common.close: glossary: use «журнал действий»"),
+        ("ru", "common.close", "Развертывание", "ru: common.close: glossary: use «развёртывание"),
     ],
 )
 def test_completeness_detects_broken_catalogs(
@@ -122,6 +125,12 @@ def test_completeness_detects_unknown_and_unused_keys(monkeypatch: pytest.Monkey
     errors = i18n_audit.completeness()
     assert "unused key common.never_used" in errors
     assert any(error.startswith("code uses unknown key common.close") for error in errors)
+
+
+def test_ui_guide_documents_the_enforced_glossary() -> None:
+    guide = (ROOT / "docs/UI-GUIDE.md").read_text(encoding="utf-8")
+    for term, russian, _ in i18n_audit.GLOSSARY:
+        assert f"| {term} | {russian} |" in guide, term
 
 
 def test_every_backend_message_code_is_translated() -> None:

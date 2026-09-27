@@ -131,7 +131,7 @@ class DeploymentPage(Page):
         detail_card.add(section_label("deployment.details"))
         detail_card.add(self.details, 2)
         upper.addWidget(detail_card)
-        upper.setSizes([840, 440])
+        upper.setSizes([920, 360])
         splitter.addWidget(upper)
         counters = Card("deployment.counters", name="counters")
         self.tiles = ResourceTiles(context, compact=True)

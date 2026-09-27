@@ -36,15 +36,17 @@ LIMIT_ROWS = (
     ("max_data_directory_mb", "limit.max_data_directory_mb", lambda v: f"{v} MiB"),
     ("disk_free_reserve_mb", "limit.disk_free_reserve_mb", lambda v: f"{v} MiB"),
 )
+# Column-major: the first column holds the long values (URL, emulation level), the second the
+# short ones (versions, authentication, latency).
 IDENTITY_ROWS = (
     "dashboard.identity.url",
+    "dashboard.identity.fidelity",
+    "dashboard.identity.l1",
+    "dashboard.identity.hybrid",
     "dashboard.identity.backend",
     "dashboard.identity.client",
     "dashboard.identity.auth",
     "dashboard.identity.latency",
-    "dashboard.identity.fidelity",
-    "dashboard.identity.l1",
-    "dashboard.identity.hybrid",
 )
 RECENT_EXPERIMENTS = 6
 
@@ -235,6 +237,8 @@ class DashboardPage(Page):
         self.session.connection_changed.connect(self.refresh)
         self.session.resources_changed.connect(self.refresh)
         self.session.experiments_changed.connect(self._fill_recent)
+        # An empty list does not change on connect, but its empty state does (offline → none yet).
+        self.session.connection_changed.connect(lambda *_: self._fill_recent())
         self.refresh()
         self._fill_recent()
 

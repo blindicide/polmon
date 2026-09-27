@@ -81,5 +81,5 @@ def test_error_documents_carry_code_params_and_the_english_message(tmp_path) -> 
 
 def test_coded_errors_keep_json_safe_parameters() -> None:
     error = PolmonError("x", message_code="t.x", params={"items": ["a", "b"], "path": Path("/p")})
-    assert error.params == {"items": "a, b", "path": "/p"}
+    assert error.params == {"items": "a, b", "path": str(Path("/p"))}
     assert CodedValueError("x", "t.y", n=3).params == {"n": 3}

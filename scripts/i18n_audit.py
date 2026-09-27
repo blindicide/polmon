@@ -59,8 +59,7 @@ KEPT_TERMS = {
     "PySide6", "LGPLv3", "Linux", "Windows", "sudo", "iproute2", "setpriv", "ping", "ip",
     "netns", "Wireshark", "ID", "SHA-256", "systemd", "journalctl", "POLMON_API_TOKEN",
     "SmartScreen", "veth", "chmod", "stdout", "stderr", "UTF-8", "unicast", "multicast",
-    "loopback", "root", "true", "false", "tcp_probe", "icmp_probe", "detail", "self-test", "user",
-    "host", "port", "unit", "user-u", "OK", "PNG",
+    "loopback", "root", "true", "false", "tcp_probe", "icmp_probe", "self-test", "OK", "PNG",
 }
 # Messages of raised exceptions are developer diagnostics (the UI maps errors to catalog
 # problems), and these calls match text produced by other software.
@@ -150,7 +149,7 @@ def lint_source(source: str, path: str = "<source>") -> list[Finding]:
             reported.add(id(node))
             findings.append(Finding(path, node.lineno, rule, text))
 
-    # 1. Literals handed to Qt text APIs (any language, any length with letters).
+    # Exempt: messages of raised exceptions and text matched against other software's output.
     for node in ast.walk(tree):
         name = _call_name(node) if isinstance(node, ast.Call) else ""
         is_super_init = (
@@ -163,17 +162,21 @@ def lint_source(source: str, path: str = "<source>") -> list[Finding]:
             exempt.update(id(child) for child in ast.walk(node))  # diagnostics / text matching
         elif isinstance(node, ast.Raise):
             exempt.update(id(child) for child in ast.walk(node))
+    # 1. Literals handed to Qt text APIs (any language, any length with letters).
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _call_name(node) in TEXT_APIS:
+            api = _call_name(node)
             # The shown text: the first argument (after the parent for QMessageBox statics).
-            first = 1 if _call_name(node) in MESSAGE_BOX_STATICS else 0
+            first = 1 if api in MESSAGE_BOX_STATICS else 0
             candidates = node.args[first:first + 2 if first else first + 1]
             candidates += [kw.value for kw in node.keywords if kw.arg == "text"]
             for argument in candidates:
                 text = _literal_text(argument)
                 if text is None:
                     continue
-                if _words(text) or CYRILLIC.search(text):
+                # Unit suffixes and prefixes differ by language even for one-letter symbols.
+                unit_text = api in {"setSuffix", "setPrefix"} and re.search(r"[^\W\d_]", text)
+                if _words(text) or CYRILLIC.search(text) or unit_text:
                     report(argument, "literal passed to a Qt text API", text)
     # 2. Prose-like literals and composed f-strings anywhere; 3. Cyrillic outside catalogs.
     for node in ast.walk(tree):
@@ -340,7 +343,9 @@ def required_families() -> dict[str, set[str]]:
         "pages": {f"page.{key}.{part}" for key in pages for part in ("title", "subtitle")},
         "categories": {f"category.{value}" for value in CATEGORIES},
         "benchmark kinds": {
-            f"benchmark.{family}.{kind}" for kind in KINDS for family in ("kind", "kind_short")
+            f"benchmark.{family}.{kind}"
+            for kind in KINDS
+            for family in ("kind", "kind_short", "kind_label")
         } | {f"benchmark.kind.{kind}.limitation" for kind in KINDS},
         "connection": {"connection.mode.local", "connection.mode.remote"}
         | {f"connection.state.{state.value}" for state in ConnectionState},
@@ -348,6 +353,7 @@ def required_families() -> dict[str, set[str]]:
         "fidelity": {f"fidelity.{v}" for v in ("l0_only", "linux_lab")}
         | {f"fidelity.badge.{v}{tip}" for v in ("l0_only", "linux_lab") for tip in ("", ".tip")},
         "features": {f"feature.{FEATURE_TOPOLOGIES}", f"feature.{FEATURE_EXPERIMENTS}"},
+        "unit suffixes": {f"unit.suffix.{unit}" for unit in ("s", "mib")},  # bind_suffix()
         "files": {f"files.{kind}" for kind in FILE_PATTERNS},
         "documents": {f"document.{kind}" for kind in ("topology", "scenario", "report")},
         "local": {f"local.{code}" for code in local_codes},
@@ -367,6 +373,37 @@ def required_families() -> dict[str, set[str]]:
             "reserve_mb", "next_experiment_capture_limit_mb", "size_bytes")},
     }
 
+
+# The UI glossary (docs/UI-GUIDE.md): English term → the one Russian term, and variants that
+# must not appear in the Russian catalog (regular expressions, matched case-insensitively).
+GLOSSARY: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("backend", "бэкенд", (r"бекенд", r"бэкэнд", r"сервер\s+polmon")),
+    ("client", "клиент", ()),
+    ("deployment / deploy", "развёртывание / развернуть", (r"развертыв", r"деплой")),
+    ("destroy", "разобрать", (r"уничтож", r"снести")),
+    ("reset environment", "сбросить окружение", ()),
+    ("topology", "топология", ()),
+    ("node", "узел", (r"\bнод[аыуе]?\b",)),
+    ("endpoint", "конечная точка", (r"эндпоинт", r"endpoint")),
+    ("namespace", "пространство имён", (r"неймспейс", r"пространств\w* имен\b")),
+    ("scenario", "сценарий", ()),
+    ("experiment", "эксперимент", ()),
+    ("action", "действие", ()),
+    ("telemetry", "телеметрия", ()),
+    ("report", "отчёт", (r"\bотчет",)),
+    ("benchmark", "бенчмарк", (r"\bтест производительности",)),
+    ("measurement", "замер", ()),
+    ("admission control", "контроль допуска", ()),
+    ("limit", "лимит", (r"\bквот",)),
+    ("capture", "захват", (r"перехват",)),
+    ("frame", "кадр", (r"фрейм",)),
+    ("validate / validation", "проверить / проверка", (r"валидац",)),
+    ("timeout", "тайм-аут", (r"таймаут",)),
+    ("activity log", "журнал действий", (r"\bлог\b", r"\bлоги\b")),
+    ("CPU", "ЦП", (r"\bCPU\b",)),
+    ("emulation level (fidelity)", "уровень эмуляции", ()),
+    ("token", "токен", ()),
+)
 
 # Families whose members are optional (only some columns have explanations, etc.).
 OPTIONAL_PREFIXES = ("measure.", "backend.pydantic.", "backend.generic.")
@@ -413,6 +450,13 @@ def completeness() -> list[str]:
         for text in _texts(en[key]):
             if CYRILLIC.search(text):
                 errors.append(f"en: {key}: Cyrillic in the English catalog: {text!r}")
+        for text in _texts(ru[key]):
+            words = re.sub(r"\{[a-z_]+\}", " ", text)  # placeholder names are not text
+            for term, russian, variants in GLOSSARY:
+                for variant in variants:
+                    if re.search(variant, words, re.IGNORECASE):
+                        hint = f"glossary: use «{russian}» for “{term}”"
+                        errors.append(f"ru: {key}: {hint}: {text!r}")
     used = literal_keys()
     codes = backend_message_codes()
     for key, places in sorted(used.items()):

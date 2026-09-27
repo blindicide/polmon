@@ -226,7 +226,8 @@ class KeyValueGrid(QWidget):
 
     def set(self, key: str, value: object, *, tone: str = "", mono: bool = False) -> None:
         widget = self.values[key]
-        glyph = f"{theme.STATUS_GLYPHS[tone]} " if tone in theme.STATUS_GLYPHS else ""
+        # A no-break space keeps the glyph with its word when the value wraps.
+        glyph = f"{theme.STATUS_GLYPHS[tone]}\u00a0" if tone in theme.STATUS_GLYPHS else ""
         widget.setText(f"{glyph}{cell_text(value)}")
         widget.setProperty("raw", value if isinstance(value, str | int | float) else None)
         widget.setFont(monospace_font() if mono else self.font())
@@ -342,12 +343,22 @@ def fill_table(
 
 
 def fit_columns(table: QTableWidget) -> None:
-    """Size interactive columns to their content once, capped so one long cell cannot hog."""
+    """Size interactive columns to their content once, capped so one long cell cannot hog; a
+    small overflow is taken from the widest column so no scroll bar appears for a few pixels."""
     header = table.horizontalHeader()
-    for column in range(table.columnCount()):
-        if header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive:
-            table.resizeColumnToContents(column)
-            header.resizeSection(column, min(header.sectionSize(column), 360))
+    interactive = [
+        column
+        for column in range(table.columnCount())
+        if header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
+    ]
+    for column in interactive:
+        table.resizeColumnToContents(column)
+        header.resizeSection(column, min(header.sectionSize(column), 360))
+    available = table.viewport().width()
+    overflow = header.length() - available
+    if interactive and available > 0 and 0 < overflow <= 80:
+        widest = max(interactive, key=header.sectionSize)
+        header.resizeSection(widest, header.sectionSize(widest) - overflow)
 
 
 def raw_value(table: QTableWidget, row: int, column: int) -> object:
@@ -683,6 +694,9 @@ class StateView(QStackedWidget):
     def render(self) -> None:
         self.title.setText(str(self._title))  # also while hidden: no stale language
         self.text.setText(str(self._detail))
+        # A short title stays on one line; only a long one (or a narrow view) wraps.
+        width = self.title.fontMetrics().horizontalAdvance(self.title.text()) + 4
+        self.title.setMinimumWidth(min(width, 320))
         if self.state == "content":
             return
         loading = self.state == "loading"

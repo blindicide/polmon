@@ -170,6 +170,9 @@ class TopologiesPage(Page):
         self.document_name: str | None = None
         self.badge = StatusBadge()
         header.addWidget(self.document_label, 1)
+        self.save_button = button("editor.save_as", "quiet", tip="editor.save_as.tip",
+                                  name="saveAs")
+        header.addWidget(self.save_button)  # document commands sit with the document name
         header.addWidget(self.badge)
         editor_card.body.addLayout(header)
         self.editor = YamlEditor()
@@ -184,8 +187,6 @@ class TopologiesPage(Page):
         self.deploy_button = primary_button(
             "topologies.deploy", tip="topologies.deploy.tip", name="deployTopology"
         )
-        self.save_button = button("editor.save_as", "quiet", tip="editor.save_as.tip",
-                                  name="saveAs")
         self.validate_button.clicked.connect(lambda: self.validate(quiet=False))
         self.load_button.clicked.connect(self.load_to_backend)
         self.deploy_button.clicked.connect(self.deploy)
@@ -193,7 +194,6 @@ class TopologiesPage(Page):
         for widget in (self.deploy_button, self.load_button, self.validate_button):
             actions.addWidget(widget)
         actions.addStretch(1)
-        actions.addWidget(self.save_button)
         editor_card.body.addLayout(actions)
         splitter.addWidget(editor_card)
 
