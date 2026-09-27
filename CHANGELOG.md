@@ -10,6 +10,10 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   results go (default unchanged: `./var`). An unusable directory is a one-line error naming the
   path instead of a `PermissionError` traceback — e.g. the standalone Windows backend started
   from a read-only folder. The client passes its local data directory explicitly.
+- Linux: with the client and backend tarballs extracted side by side, the packaged client's
+  Local backend preset finds and owns the backend of its own version (it previously always
+  reported "no backend beside it" on Linux). Build Linux runs the packaged client's local
+  self-test, GUI probe and killed-client check against the packaged backend in that layout.
 
 ## [0.3.1] - 2026-09-27
 

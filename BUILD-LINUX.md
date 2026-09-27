@@ -56,6 +56,14 @@ tar -xzf polmon-backend-<version>-linux-x64.tar.gz
 ./polmon-backend-<version>-linux-x64/polmon-backend --host 127.0.0.1 --token-file api-token
 ```
 
+Extract both tarballs into the same directory and the client's **Local backend (L0 only)**
+preset finds the backend of the same version beside its own folder
+(`polmon-backend-<version>-linux-x64/polmon-backend`), starts it on loopback and reaps it on
+disconnect, exit or a client crash — the same owned workflow as on Windows, with no service to
+install. For L1/hybrid, run the backend as a service (below) and connect with *Remote Linux
+backend*. Build Linux proves this layout with the packaged client's local self-test, GUI probe
+and a killed-client check.
+
 `--install-desktop-entry` writes `~/.local/share/applications/polmon-client.desktop` and the icon
 (`$XDG_DATA_HOME` is honoured) pointing at the executable it was run from; run it again after
 moving the folder. It works the same for a `pip install polmon[gui]` installation.

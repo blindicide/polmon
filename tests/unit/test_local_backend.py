@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -151,3 +152,25 @@ def test_backend_leaves_when_its_client_dies_abruptly(tmp_path) -> None:
     assert not _pid_alive(int(record["pid"])), "the backend outlived its crashed client"
     log = Path(record["log_path"]).read_text(encoding="utf-8")
     assert '"event":"owner_exit"' in log or os.name == "nt"  # Windows: the job may kill first
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux tarball layout")
+def test_frozen_linux_client_finds_the_backend_tarball_extracted_beside_it(
+    tmp_path, monkeypatch
+) -> None:
+    from polmon.version import __version__
+
+    client = tmp_path / f"polmon-{__version__}-linux-x64" / "polmon-client"
+    client.parent.mkdir()
+    client.write_bytes(b"client")
+    monkeypatch.setattr(sys, "executable", str(client))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("POLMON_BACKEND_EXECUTABLE", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    with pytest.raises(LocalBackendError, match=f"polmon-backend-{__version__}-linux-x64.tar.gz"):
+        resolve_backend_command()
+
+    backend = tmp_path / f"polmon-backend-{__version__}-linux-x64" / "polmon-backend"
+    backend.parent.mkdir()
+    backend.write_bytes(b"backend")
+    assert resolve_backend_command() == [str(backend)]

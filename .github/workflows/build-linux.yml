@@ -119,6 +119,32 @@ jobs:
           if find "$scratch/$name" \( -iname '*PySide*' -o -iname '*Qt6*' \) | grep -q .; then
             echo "Qt leaked into the backend bundle" >&2; exit 1
           fi
+      - name: Drive the extracted backend from the extracted client (Local preset)
+        run: |
+          # Both tarballs extracted side by side, as a user would: the packaged client must find,
+          # own and reap the packaged backend, including when the client itself is killed.
+          version="$(python -c 'from polmon.version import __version__; print(__version__)')"
+          scratch="$(mktemp -d)"
+          tar -xzf "dist/polmon-${version}-linux-x64.tar.gz" -C "$scratch"
+          tar -xzf "dist/polmon-backend-${version}-linux-x64.tar.gz" -C "$scratch"
+          client="$scratch/polmon-${version}-linux-x64/polmon-client"
+          run() { env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$scratch" "$client" "$@"; }
+          alive() { local state; state="$(ps -o stat= -p "$1" 2>/dev/null)"; [[ -n $state && $state != Z* ]]; }
+          run --local-backend-self-test | tee linux-local-backend.txt
+          grep -q "local-backend self-test: PASS" linux-local-backend.txt
+          run --local-backend-gui-probe "$PWD/linux-gui-probe.json" | tee linux-gui-probe.txt
+          grep -q "local-backend GUI probe: PASS" linux-gui-probe.txt
+          set +e
+          run --local-backend-crash-test "$scratch/crash.json"
+          code=$?
+          set -e
+          test "$code" = 77
+          pid="$(jq .pid "$scratch/crash.json")"
+          for _ in $(seq 100); do alive "$pid" || break; sleep 0.1; done
+          if alive "$pid"; then echo "backend $pid outlived the killed client" >&2; exit 1; fi
+          if pgrep -f "$scratch/polmon-backend-"; then echo "a packaged backend was left" >&2; exit 1; fi
+          echo "Linux client + backend tarballs side by side: Local preset workflow, GUI probe and client-crash cleanup PASS" \
+            >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: polmon-linux-x64
@@ -143,6 +169,8 @@ jobs:
             linux-backend-nosudo-e2e.json
             linux-backend-nosudo.log
             linux-backend-nosudo-measurements.json
+            linux-local-backend.txt
+            linux-gui-probe.json
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
