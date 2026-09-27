@@ -57,6 +57,10 @@ def main() -> int:
     args = parser.parse_args()
     if not os.environ.get("QT_QPA_PLATFORM") and not os.environ.get("DISPLAY"):
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    if sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        # Offscreen Qt on Windows finds no fonts unless pointed at the system's.
+        windows = os.environ.get("WINDIR", r"C:\Windows")
+        os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(windows, "Fonts"))
     args.output.mkdir(parents=True, exist_ok=True)
 
     from PySide6 import __version__ as pyside_version

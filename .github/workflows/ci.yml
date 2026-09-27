@@ -169,6 +169,33 @@ jobs:
         with:
           name: ui-screenshots
           path: ui-screenshots
+
+  screenshots-windows:
+    name: UI screenshots on Windows (real renders, Windows fonts)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[gui]"
+      # The benchmark page needs Linux procfs measurements; every other screen renders here.
+      - name: Render every page from the running client against a real backend
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python scripts/ui_screenshots.py --output ui-screenshots-windows --no-benchmark
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-screenshots-windows
+          path: ui-screenshots-windows
           if-no-files-found: error
 
   dependency-audit:
