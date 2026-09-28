@@ -50,6 +50,7 @@ from polmon.client.local_backend import LocalBackendError, LocalBackendManager
 from polmon.client.locales import AUTONYMS
 from polmon.client.pages import Context, Page
 from polmon.client.pages.benchmarks import BenchmarksPage
+from polmon.client.pages.console import ConsolePage
 from polmon.client.pages.dashboard import DashboardPage
 from polmon.client.pages.deployment import DeploymentPage
 from polmon.client.pages.reports import ReportsPage
@@ -87,6 +88,7 @@ PAGES = (
     TopologiesPage,
     DeploymentPage,
     ScenariosPage,
+    ConsolePage,
     TelemetryPage,
     ReportsPage,
     BenchmarksPage,
@@ -111,7 +113,7 @@ SHORTCUTS = (
     ("Ctrl+Shift+R", "shortcut.reset"),
     ("Ctrl+R", "shortcut.run"),
     ("Esc", "shortcut.cancel"),
-    ("Ctrl+1 … Ctrl+7", "shortcut.pages"),
+    ("Ctrl+1 … Ctrl+8", "shortcut.pages"),
     ("Ctrl+Shift+T", "shortcut.theme"),
     ("Ctrl+Shift+L", "shortcut.log"),
     ("Ctrl+Shift+U", "shortcut.language"),
@@ -1235,4 +1237,3 @@ class MainWindow(QMainWindow):
             return
         self.clean_exit = self.shutdown()
         event.accept()
-

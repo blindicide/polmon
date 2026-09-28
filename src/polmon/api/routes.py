@@ -19,6 +19,7 @@ router = APIRouter(prefix="/v1")
 TopologyId = Annotated[str, Path(pattern=IDENTIFIER.pattern)]
 ExperimentId = Annotated[str, Path(pattern=EXPERIMENT_ID.pattern)]
 JobId = Annotated[str, Path(pattern=r"^[0-9a-f]{12}$")]
+SessionId = Annotated[str, Path(pattern=r"^[0-9a-f]{12}$")]
 ResultName = Annotated[str, Path(pattern=RESULT_NAME.pattern)]
 
 
@@ -32,6 +33,15 @@ class ExperimentRequest(BaseModel):
     scenario_yaml: str = Field(min_length=1, max_length=2_000_000)
     # False: return HTTP 202 once admitted; poll GET /v1/experiments/{id} for progress.
     wait: bool = True
+
+
+class ConsoleExecRequest(BaseModel):
+    argv: list[str] = Field(min_length=1, max_length=32)
+    timeout_seconds: float = Field(default=10, ge=0.1, le=60)
+
+
+class ConsoleInputRequest(BaseModel):
+    data: str = Field(min_length=1, max_length=4096)
 
 
 def control(request: Request) -> ControlPlane:
@@ -103,6 +113,97 @@ def deployment(topology_id: TopologyId, request: Request) -> dict[str, object]:
 @router.delete("/deployments/{topology_id}")
 def destroy(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).destroy(topology_id)
+
+
+@router.get("/deployments/{topology_id}/nodes/{node_id}/console/readiness")
+def console_readiness(
+    topology_id: TopologyId, node_id: TopologyId, request: Request
+) -> dict[str, object]:
+    return control(request).console_readiness(topology_id, node_id)
+
+
+@router.post("/deployments/{topology_id}/nodes/{node_id}/console/exec")
+def console_exec(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    payload: ConsoleExecRequest,
+    request: Request,
+) -> dict[str, object]:
+    return control(request).console_exec(
+        topology_id, node_id, payload.argv, payload.timeout_seconds
+    )
+
+
+@router.post("/deployments/{topology_id}/nodes/{node_id}/console/sessions")
+def console_session_create(
+    topology_id: TopologyId, node_id: TopologyId, request: Request
+) -> dict[str, object]:
+    return control(request).console_session_create(topology_id, node_id)
+
+
+@router.get("/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}")
+def console_session(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    session_id: SessionId,
+    request: Request,
+    after: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, object]:
+    del topology_id, node_id
+    return control(request).console_session(session_id, after)
+
+
+@router.get(
+    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/stream"
+)
+def console_session_stream(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    session_id: SessionId,
+    request: Request,
+    after: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, object]:
+    """Cursor polling stream; clients repeat this request with the returned cursor."""
+    del topology_id, node_id
+    return control(request).console_session(session_id, after)
+
+
+@router.post(
+    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/input"
+)
+def console_session_input(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    session_id: SessionId,
+    payload: ConsoleInputRequest,
+    request: Request,
+) -> dict[str, object]:
+    del topology_id, node_id
+    return control(request).console_session_input(session_id, payload.data)
+
+
+@router.get(
+    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/transcript"
+)
+def console_session_transcript(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    session_id: SessionId,
+    request: Request,
+) -> dict[str, object]:
+    del topology_id, node_id
+    return control(request).console_transcript(session_id)
+
+
+@router.delete("/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}")
+def console_session_delete(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    session_id: SessionId,
+    request: Request,
+) -> dict[str, object]:
+    del topology_id, node_id
+    return control(request).console_session_delete(session_id)
 
 
 @router.post("/reset")

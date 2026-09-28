@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+import secrets
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
@@ -14,6 +17,7 @@ from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
+from polmon.console import ConsoleSessions
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
 from polmon.core.errors import ConfigurationError, PolmonError
 from polmon.library import YamlLibrary
@@ -30,6 +34,22 @@ from polmon.telemetry.models import EventCategory
 from polmon.telemetry.store import EXPERIMENT_ID, TelemetrySession, TelemetryStore
 from polmon.topology import dump_topology, parse_topology
 from polmon.topology.models import NodeClass, Topology
+
+CONSOLE_ARGUMENT = re.compile(r"^[A-Za-z0-9_./:@%+=,-]{1,256}$")
+CONSOLE_COMMANDS = {
+    "hostname",
+    "cat",
+    "ip",
+    "arp",
+    "ping",
+    "ss",
+    "netstat",
+    "ps",
+    "uptime",
+    "nc",
+    "false",
+    "sleep",
+}
 
 
 class SyntheticScenarioExecutor:
@@ -70,6 +90,7 @@ class ControlPlane:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
+        self.console_sessions = ConsoleSessions(self.data_directory / "runs" / "console")
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
             parse=parse_topology,
@@ -235,7 +256,13 @@ class ControlPlane:
                 params={"checks": unavailable},
             )
         if classes == {NodeClass.L1}:
-            return NamespaceBackend()
+            return NamespaceBackend(
+                run_directory=self.data_directory
+                / "runs"
+                / "deployments"
+                / topology.id
+                / secrets.token_hex(6)
+            )
         if classes <= {NodeClass.L0, NodeClass.L1}:
             return HybridBackend()
         raise ConfigurationError(
@@ -289,6 +316,7 @@ class ControlPlane:
         }
 
     def destroy(self, topology_id: str) -> dict[str, object]:
+        self.console_sessions.close_topology(topology_id)
         with self._lock:
             control = self.deployments.get(topology_id)
             if control is not None:
@@ -296,6 +324,121 @@ class ControlPlane:
                 self.deployments.pop(topology_id, None)
                 self.deployment_seconds.pop(topology_id, None)
         return {"topology_id": topology_id, "state": "destroyed"}
+
+    def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
+        topology = self._topology(topology_id)
+        node = next((item for item in topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ConfigurationError(
+                "unknown topology node",
+                message_code="console.node_unknown",
+                params={"node": node_id},
+            )
+        sshd = shutil.which("sshd")
+        ssh = shutil.which("ssh")
+        node_supported = node.node_class is NodeClass.L1
+        service = next((item for item in node.services if item.implementation == "ssh"), None)
+        reasons = []
+        if not node_supported:
+            reasons.append("console.l1_required")
+        if sshd is None:
+            reasons.append("console.sshd_missing")
+        if ssh is None:
+            reasons.append("console.ssh_client_missing")
+        if service is None:
+            reasons.append("console.ssh_service_missing")
+        return {
+            "topology_id": topology_id,
+            "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
+            "ssh": {"available": not reasons, "port": service.port if service else None},
+            "vnc": {"available": False, "reason_code": "vnc.not_configured"},
+            "reason_codes": reasons,
+        }
+
+    @staticmethod
+    def _raise_console_reason(reason: str) -> None:
+        if reason == "console.l1_required":
+            raise ConfigurationError(
+                "SSH console access requires an L1 node", message_code="console.l1_required"
+            )
+        if reason == "console.sshd_missing":
+            raise ConfigurationError(
+                "OpenSSH server is missing", message_code="console.sshd_missing"
+            )
+        if reason == "console.ssh_client_missing":
+            raise ConfigurationError(
+                "OpenSSH client is missing", message_code="console.ssh_client_missing"
+            )
+        if reason == "console.ssh_service_missing":
+            raise ConfigurationError(
+                "the node has no ssh service", message_code="console.ssh_service_missing"
+            )
+        raise ConfigurationError(
+            "the deployment has no SSH run directory", message_code="console.ssh_unavailable"
+        )
+
+    def console_exec(
+        self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float
+    ) -> dict[str, object]:
+        if not argv or argv[0] not in CONSOLE_COMMANDS:
+            raise ConfigurationError(
+                "command is outside the bounded console catalogue",
+                message_code="console.command_not_allowed",
+            )
+        if any(not CONSOLE_ARGUMENT.fullmatch(argument) for argument in argv):
+            raise ConfigurationError(
+                "console arguments contain unsupported characters",
+                message_code="console.argument_invalid",
+            )
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["reason_codes"]
+        if reasons:
+            self._raise_console_reason(str(reasons[0]))
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        result = control.backend.ssh_command(node_id, argv, timeout=timeout_seconds)
+        node = next(item for item in self.topologies[topology_id].nodes if item.id == node_id)
+        return {
+            "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
+            "argv": argv,
+            "exit_status": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "duration_seconds": result.duration_seconds,
+            "truncated": result.truncated,
+            "timed_out": result.timed_out,
+        }
+
+    def console_session_create(self, topology_id: str, node_id: str) -> dict[str, object]:
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["reason_codes"]
+        if reasons:
+            self._raise_console_reason(str(reasons[0]))
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        result = self.console_sessions.create(topology_id, node_id, control.backend)
+        result["node"] = readiness["node"]
+        return result
+
+    def console_session(self, session_id: str, after: int = 0) -> dict[str, object]:
+        return self.console_sessions.get(session_id, after)
+
+    def console_session_input(self, session_id: str, data: str) -> dict[str, object]:
+        return self.console_sessions.input(session_id, data)
+
+    def console_session_delete(self, session_id: str) -> dict[str, object]:
+        return self.console_sessions.delete(session_id)
+
+    def console_transcript(self, session_id: str) -> dict[str, object]:
+        return self.console_sessions.transcript(session_id)
 
     def reset_all(self) -> dict[str, object]:
         """Best-effort teardown of every owned deployment while preserving definitions."""
@@ -665,6 +808,7 @@ class ControlPlane:
             engine.cancel()
         for thread in threads:
             thread.join(timeout=timeout)
+        self.console_sessions.close()
         self.benchmarks.shutdown()
         return self.reset_all()
 

@@ -69,7 +69,7 @@ class LayoutPosition(StrictModel):
 class ServiceDefinition(StrictModel):
     id: str
     protocol: Protocol
-    port: int = Field(ge=1, le=65535)
+    port: int = Field(default=22, ge=1, le=65535)
     implementation: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,31}$")
 
     _validate_id = field_validator("id")(_identifier)

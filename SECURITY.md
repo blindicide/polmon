@@ -31,6 +31,11 @@ Controls in the implementation:
   mode-600 file passed with `--api-token-file` (or in `POLMON_API_TOKEN`), and never commit it.
   The token is not logged, reported, or shown by the client. Plain HTTP exposes the token on the
   wire: across untrusted networks, reach the backend through an SSH tunnel or a TLS proxy.
+- L1 SSH consoles run a real `sshd` inside the node namespace with per-deployment Ed25519 keys,
+  passwords/PAM/root login disabled, and the existing invoking unprivileged operator account.
+  Interactive commands execute in that namespace, not on the host; sessions have bounded live
+  buffers, timeouts, retained transcripts and authenticated API access. L0/L2 and missing host
+  prerequisites are refused with stable reason codes. See `docs/CONSOLE.md`.
 - API identifiers are pattern-checked before they reach file paths; request bodies are capped at
   2 MB per document and 5 MiB per request.
 - Benchmark jobs (`POST /v1/benchmarks`) start only the fixed `polmon-benchmark` module with

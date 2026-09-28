@@ -327,6 +327,26 @@ def test_topology_library_survives_restart_and_supports_upsert_delete(tmp_path) 
     assert ControlPlane(tmp_path).topologies == {}
 
 
+def test_console_readiness_refuses_l0_and_exec_catalogue_is_closed(tmp_path) -> None:
+    client = TestClient(create_app(ControlPlane(tmp_path)))
+    topology_id = client.post("/v1/topologies", json={"yaml": l0_source()}).json()["topology_id"]
+    readiness = client.get(
+        f"/v1/deployments/{topology_id}/nodes/sensor-1/console/readiness"
+    )
+    assert readiness.status_code == 200
+    document = readiness.json()
+    assert document["node"]["name"] == "sensor-1"
+    assert document["node"]["uuid"]
+    assert document["ssh"]["available"] is False
+    assert "console.l1_required" in document["reason_codes"]
+    refused = client.post(
+        f"/v1/deployments/{topology_id}/nodes/sensor-1/console/exec",
+        json={"argv": ["sh", "-c", "id"]},
+    )
+    assert refused.status_code == 422
+    assert refused.json()["error"]["message_code"] == "console.command_not_allowed"
+
+
 def test_oversized_bodies_are_rejected_before_parsing(tmp_path) -> None:
     from polmon.api.limits import MAX_REQUEST_BYTES
 

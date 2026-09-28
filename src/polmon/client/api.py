@@ -205,6 +205,51 @@ class ApiClient:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("DELETE", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
 
+    @staticmethod
+    def _console_path(topology_id: str, node_id: str) -> str:
+        return (
+            f"/v1/deployments/{_segment(topology_id)}/nodes/{_segment(node_id)}/console"
+        )
+
+    def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict("GET", self._console_path(topology_id, node_id) + "/readiness")
+
+    def console_exec(
+        self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float = 10
+    ) -> dict[str, object]:
+        return self._dict(
+            "POST",
+            self._console_path(topology_id, node_id) + "/exec",
+            {"argv": argv, "timeout_seconds": timeout_seconds},
+            timeout=max(timeout_seconds + 5, self.timeout),
+        )
+
+    def console_session_create(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict(
+            "POST", self._console_path(topology_id, node_id) + "/sessions"
+        )
+
+    def console_session(
+        self, topology_id: str, node_id: str, session_id: str, after: int = 0
+    ) -> dict[str, object]:
+        path = (
+            self._console_path(topology_id, node_id)
+            + f"/sessions/{_segment(session_id)}/stream?after={int(after)}"
+        )
+        return self._dict("GET", path)
+
+    def console_input(
+        self, topology_id: str, node_id: str, session_id: str, data: str
+    ) -> dict[str, object]:
+        path = self._console_path(topology_id, node_id) + f"/sessions/{_segment(session_id)}/input"
+        return self._dict("POST", path, {"data": data})
+
+    def console_session_delete(
+        self, topology_id: str, node_id: str, session_id: str
+    ) -> dict[str, object]:
+        path = self._console_path(topology_id, node_id) + f"/sessions/{_segment(session_id)}"
+        return self._dict("DELETE", path)
+
     def reset_all(self) -> dict[str, object]:
         return self._dict("POST", "/v1/reset", timeout=max(DEPLOY_TIMEOUT, self.timeout))
 

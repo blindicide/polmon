@@ -1,0 +1,20 @@
+id: l1-console
+networks:
+  - id: lab
+    ipv4_subnet: 192.168.239.0/24
+nodes:
+  - id: operator
+    name: Operator workstation
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:50:4f:00:10:01", ipv4: 192.168.239.11}
+    services:
+      - {id: shell, protocol: tcp, port: 22, implementation: ssh}
+  - id: server
+    name: Application server
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: "02:50:4f:00:10:02", ipv4: 192.168.239.12}
+    services:
+      - {id: shell, protocol: tcp, port: 22, implementation: ssh}
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}

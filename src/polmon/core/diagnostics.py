@@ -186,7 +186,7 @@ def resource_snapshot(**counts: int | float | None) -> ResourceSnapshot:
 
 def collect_diagnostics() -> dict[str, object]:
     """Return an allow-listed diagnostic document that cannot include environment secrets."""
-    tool_names = ("ip", "ping", "tcpdump", "qemu-system-x86_64")
+    tool_names = ("ip", "ping", "ssh", "sshd", "ssh-keygen", "tcpdump", "qemu-system-x86_64")
     tools = {name: shutil.which(name) is not None for name in tool_names}
     return {
         "polmon_version": __version__,
@@ -225,7 +225,10 @@ def lab_readiness(
 
     Nothing is created: the only privileged call is ``sudo -n ip netns list``.
     """
-    tools = {name: shutil.which(name) for name in ("ip", "sudo", "setpriv", "ping")}
+    tools = {
+        name: shutil.which(name)
+        for name in ("ip", "sudo", "setpriv", "ping", "ssh", "sshd", "ssh-keygen")
+    }
     checks: dict[str, dict[str, object]] = {}
     for name, path in tools.items():
         checks[f"tool_{name}"] = {"ok": path is not None, "detail": path or "not installed"}
@@ -273,7 +276,15 @@ def fidelity_readiness() -> dict[str, object]:
     )
     l1_ready = all(bool(checks[name]["ok"]) for name in l1_names)  # type: ignore[index]
     hybrid_ready = l1_ready and bool(checks["tun_device"]["ok"])  # type: ignore[index]
-    return {"l1_ready": l1_ready, "hybrid_ready": hybrid_ready, "checks": checks}
+    console_ready = l1_ready and all(
+        bool(checks[f"tool_{name}"]["ok"]) for name in ("ssh", "sshd", "ssh-keygen")
+    )
+    return {
+        "l1_ready": l1_ready,
+        "hybrid_ready": hybrid_ready,
+        "console_ready": console_ready,
+        "checks": checks,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
