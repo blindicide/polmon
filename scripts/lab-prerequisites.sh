@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only prerequisite check for the L1 lab and SSH console.
+# Read-only prerequisite check for the L1 lab, SSH console and VNC stack.
 set -euo pipefail
 
 if [[ "${1:-}" == "--create-lab-account" ]]; then
@@ -9,7 +9,7 @@ if [[ "${1:-}" == "--create-lab-account" ]]; then
 fi
 
 status=0
-for tool in ip sudo setpriv ping ssh sshd ssh-keygen; do
+for tool in ip sudo setpriv ping ssh sshd ssh-keygen Xvfb x11vnc xterm; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "MISSING: $tool" >&2
     status=1

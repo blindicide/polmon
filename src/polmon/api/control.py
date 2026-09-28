@@ -347,13 +347,43 @@ class ControlPlane:
             reasons.append("console.ssh_client_missing")
         if service is None:
             reasons.append("console.ssh_service_missing")
+        checks = fidelity_readiness()["checks"]
+        vnc_reasons = [
+            f"console.{name}_missing"
+            for name in ("Xvfb", "x11vnc", "xterm")
+            if not bool(checks[f"tool_{name}"]["ok"])  # type: ignore[index]
+        ]
+        if not node_supported:
+            vnc_reasons.insert(0, "console.l1_required")
         return {
             "topology_id": topology_id,
             "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
             "ssh": {"available": not reasons, "port": service.port if service else None},
-            "vnc": {"available": False, "reason_code": "vnc.not_configured"},
+            "vnc": {
+                "available": not vnc_reasons,
+                "display_stack": "Xvfb + x11vnc + xterm",
+                "reason_codes": vnc_reasons,
+            },
             "reason_codes": reasons,
         }
+
+    def console_vnc_start(self, topology_id: str, node_id: str) -> dict[str, object]:
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["vnc"]["reason_codes"]
+        if reasons:
+            messages = {
+                "console.l1_required": "VNC requires an L1 node",
+                "console.Xvfb_missing": "Xvfb is missing",
+                "console.x11vnc_missing": "x11vnc is missing; install package x11vnc",
+                "console.xterm_missing": "xterm is missing; install package xterm",
+            }
+            reason = str(reasons[0])
+            raise ConfigurationError(
+                messages.get(reason, "VNC prerequisites are unavailable"), message_code=reason
+            )
+        raise ConfigurationError(
+            "VNC relay is not available for this deployment", message_code="console.vnc_unavailable"
+        )
 
     @staticmethod
     def _raise_console_reason(reason: str) -> None:

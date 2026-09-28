@@ -1,6 +1,6 @@
 # Phase V progress
 
-Last updated: 2026-09-28 09:15Z (resumed rig)
+Last updated: 2026-09-28 09:45Z (resumed rig)
 Branch: `phase-v-studio`
 Baseline: `main @ 634f49a` (`v0.4.1`)
 
@@ -34,6 +34,10 @@ gates are also green.
  The resumed rig ran both required gates. `scripts/privileged-tests.sh tests/integration/test_console_ssh.py`
  passed both tests and proved the host network unchanged with no lab resources remaining.
 
+**V.4 (VNC)** — prerequisite-aware readiness and coded refusal are implemented. `scripts/check.sh`
+passes **424 tests / 16 deselected**; both i18n gates pass. This host lacks `x11vnc` and `xterm`,
+so the real framebuffer gate is an honest known limitation and is not claimed.
+
 ## Exact next step
 
 Commit V.3 with a conventional-commit message and push it. The next milestone after that is V.4.
@@ -45,7 +49,7 @@ Commit V.3 with a conventional-commit message and push it. The next milestone af
 | V.1 | committed + pushed (`287f6b0`) | `ruff` + i18n clean; supervisor full-gate run on the V.3 tree: 422 passed / 1 failed (see above) |
 | V.2 | committed + pushed (`d8f42be`) | `ruff` + i18n clean; `tests/gui/test_topology_studio.py` present |
 | V.3 | **gates green, staged for commit** | `check.sh`: 423 passed / 16 deselected; privileged console tests: 2 passed; host network unchanged |
-| V.4 | not started | — |
+| V.4 | **committed, host prerequisite limitation** | `scripts/check.sh`: 424 passed / 16 deselected; i18n green; `Xvfb` present, `x11vnc` and `xterm` absent |
 | V.5 | not started | — |
 | V.6 | not started | — |
 | V.7 | not started | — |
@@ -54,3 +58,5 @@ Commit V.3 with a conventional-commit message and push it. The next milestone af
 
 - `ci.billing_blocked`: GitHub-hosted Windows jobs are unavailable; no Windows artifact will be
   claimed unless an actual build becomes available.
+- `vnc.prerequisite_missing`: this host has `Xvfb`, but Ubuntu packages `x11vnc` and `xterm` are
+  absent; no VNC session or framebuffer is claimed.

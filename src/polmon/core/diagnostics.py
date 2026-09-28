@@ -227,7 +227,10 @@ def lab_readiness(
     """
     tools = {
         name: shutil.which(name)
-        for name in ("ip", "sudo", "setpriv", "ping", "ssh", "sshd", "ssh-keygen")
+        for name in (
+            "ip", "sudo", "setpriv", "ping", "ssh", "sshd", "ssh-keygen",
+            "Xvfb", "x11vnc", "xterm",
+        )
     }
     checks: dict[str, dict[str, object]] = {}
     for name, path in tools.items():
@@ -279,10 +282,14 @@ def fidelity_readiness() -> dict[str, object]:
     console_ready = l1_ready and all(
         bool(checks[f"tool_{name}"]["ok"]) for name in ("ssh", "sshd", "ssh-keygen")
     )
+    vnc_ready = l1_ready and all(
+        bool(checks[f"tool_{name}"]["ok"]) for name in ("Xvfb", "x11vnc", "xterm")
+    )
     return {
         "l1_ready": l1_ready,
         "hybrid_ready": hybrid_ready,
         "console_ready": console_ready,
+        "vnc_ready": vnc_ready,
         "checks": checks,
     }
 

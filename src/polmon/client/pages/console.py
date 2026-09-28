@@ -113,6 +113,7 @@ class ConsolePage(Page):
         self.interrupt_button = button("console.interrupt", "quiet", name="interruptConsole")
         self.clear_button = button("console.clear", "quiet", name="clearConsole")
         self.close_button = button("console.close", "quiet", name="closeConsole")
+        self.vnc_button = button("console.vnc", "quiet", name="vncButton")
         for widget in (
             self.topology,
             self.node,
@@ -120,6 +121,7 @@ class ConsolePage(Page):
             self.interrupt_button,
             self.clear_button,
             self.close_button,
+            self.vnc_button,
         ):
             row.addWidget(widget)
         row.addStretch(1)
@@ -134,6 +136,7 @@ class ConsolePage(Page):
         self.interrupt_button.clicked.connect(lambda: self.send("\x03"))
         self.clear_button.clicked.connect(self.clear)
         self.close_button.clicked.connect(self.close_session)
+        self.vnc_button.clicked.connect(self.open_vnc)
         self.timer = QTimer(self)
         self.timer.setInterval(300)
         self.timer.timeout.connect(self.poll)
@@ -300,6 +303,18 @@ class ConsolePage(Page):
         tab.deleteLater()
         self.refresh_actions()
 
+    def open_vnc(self) -> None:
+        topology_id, node_id = self.topology.currentData(), self.node.currentData()
+        if not isinstance(topology_id, str) or not isinstance(node_id, str):
+            return
+        client = self.session.client()
+        self.context.run(
+            Msg("console.vnc_opening"),
+            lambda token, report: client.console_vnc(topology_id, node_id),
+            on_success=lambda result: None,
+            banner=self.banner,
+        )
+
     def refresh_actions(self) -> None:
         connected = self.session.connected
         selected = self.topology.currentData() is not None and self.node.currentData() is not None
@@ -308,6 +323,7 @@ class ConsolePage(Page):
         self.interrupt_button.setEnabled(connected and active)
         self.clear_button.setEnabled(active)
         self.close_button.setEnabled(active)
+        self.vnc_button.setEnabled(connected and selected)
 
     def activated(self, argument: object = None) -> None:
         del argument

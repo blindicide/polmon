@@ -214,6 +214,9 @@ class ApiClient:
     def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
         return self._dict("GET", self._console_path(topology_id, node_id) + "/readiness")
 
+    def console_vnc(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict("POST", self._console_path(topology_id, node_id) + "/vnc")
+
     def console_exec(
         self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float = 10
     ) -> dict[str, object]:

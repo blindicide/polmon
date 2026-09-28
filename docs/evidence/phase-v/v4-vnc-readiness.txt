@@ -1,0 +1,8 @@
+V.4 readiness evidence captured on 2026-09-28
+
+Available: /usr/bin/Xvfb, /usr/sbin/sshd, /usr/bin/ssh
+Missing: x11vnc (Ubuntu package x11vnc), xterm (Ubuntu package xterm)
+
+Result: VNC is not claimed as working. The readiness API reports
+console.x11vnc_missing and console.xterm_missing for an L1 node, and the
+start endpoint refuses with the first actionable code.

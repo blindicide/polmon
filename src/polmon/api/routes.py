@@ -122,6 +122,13 @@ def console_readiness(
     return control(request).console_readiness(topology_id, node_id)
 
 
+@router.post("/deployments/{topology_id}/nodes/{node_id}/console/vnc")
+def console_vnc(
+    topology_id: TopologyId, node_id: TopologyId, request: Request
+) -> dict[str, object]:
+    return control(request).console_vnc_start(topology_id, node_id)
+
+
 @router.post("/deployments/{topology_id}/nodes/{node_id}/console/exec")
 def console_exec(
     topology_id: TopologyId,
