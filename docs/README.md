@@ -14,6 +14,9 @@ Start with the repository [README](../README.md). Root documents cover the proje
 | L1 namespaces and services | [L1-NETWORKING.md](L1-NETWORKING.md) |
 | Hybrid L0/L1 TAP boundary | [HYBRID-NETWORKING.md](HYBRID-NETWORKING.md) |
 | Scenario format and execution | [SCENARIOS.md](SCENARIOS.md) |
+| Topology Studio authoring | [TOPOLOGY-STUDIO.md](TOPOLOGY-STUDIO.md) |
+| SSH and VNC console access | [CONSOLE.md](CONSOLE.md), [VNC.md](VNC.md) |
+| Detailed structured logs | [LOGS.md](LOGS.md) |
 | Telemetry, PCAP capture | [TELEMETRY.md](TELEMETRY.md) |
 | Reports, reset, interrupted-execution recovery | [REPORTING-RECOVERY.md](REPORTING-RECOVERY.md) |
 | Admission control, limits, cancellation | [RESOURCE-MANAGEMENT.md](RESOURCE-MANAGEMENT.md) |

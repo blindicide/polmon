@@ -192,7 +192,8 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
   *danger* (red outline; always confirmed), *quiet* (text only, for links such as *Все отчёты*).
   The primary action of each screen: *Подключиться* (header, while disconnected), *Развернуть…*
   (topologies), *Развернуть* (deployment), *Запустить эксперимент* (scenarios), *Экспорт CSV…*
-  (telemetry), *Сохранить Markdown…* (reports), *Запустить бенчмарк* (benchmarks); the
+  (telemetry), *Экспорт* (detailed Logs), *Сохранить Markdown…* (reports), *Запустить бенчмарк*
+  (benchmarks); the
   dashboard is read-only. While connected to the Local backend, *Отключиться* is a danger
   button: it stops the owned backend.
 - **States** (`StateView`): *empty* (○ + what to do next), *loading* (spinner + what is
@@ -229,7 +230,7 @@ tiles show a caption (11/600), one metric (22/600) and one muted detail line.
 | Ctrl+Shift+R | reset the environment |
 | Ctrl+R | run the experiment |
 | Esc | cancel the running operation |
-| Ctrl+1 … Ctrl+7 | go to a page |
+| Ctrl+1 … Ctrl+8 | go to a page |
 | Ctrl+Shift+T | cycle the theme |
 | Ctrl+Shift+L | show or hide the activity log |
 | Ctrl+Shift+U | switch the UI language |
@@ -280,6 +281,7 @@ say what to do next.
 | [ui/admission-rejected.png](ui/admission-rejected.png) | a refusal by admission control naming the limit |
 | [ui/scenarios.png](ui/scenarios.png) | Сценарии: a finished experiment with per-action status |
 | [ui/telemetry.png](ui/telemetry.png) | Телеметрия: filtered event stream, payload, capture summary |
+| Logs (headless evidence) | Подробные записи: level/source/deployment/node filters, follow, JSON detail and export; visual acceptance is deferred to the operator because the Phase V host is headless |
 | [ui/reports.png](ui/reports.png) | Отчёты: status and expected-versus-actual conditions |
 | [ui/report-markdown.png](ui/report-markdown.png) | the report rendered in Russian from its JSON |
 | [ui/benchmarks.png](ui/benchmarks.png) | Бенчмарки: a bounded job, its limits and the retained result |

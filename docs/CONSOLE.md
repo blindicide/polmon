@@ -1,4 +1,4 @@
-# SSH console
+# SSH and VNC console (v0.5.0)
 
 The Console page opens a real OpenSSH session inside a deployed L1 Linux network namespace. L0
 nodes have no application stack and are refused with `console.l1_required`; L2 remains outside the
@@ -52,3 +52,9 @@ Commands and transcripts are retained; structured per-command audit records are 
 [LOGS.md](LOGS.md). Destroy/reset closes sessions before removing namespaces. The privileged gate
 proves the default route, host interfaces and firewall state remain unchanged and that no lab
 namespace or interface survives.
+
+For graphical L1 services, the same Console page can request the VNC relay when the node declares
+the graphical prerequisites. The backend returns an authenticated WebSocket session; the client
+speaks RFB 3.8 and supports the Raw and Hextile encodings used by the namespace `x11vnc` process.
+The headless server gate validates the RFB handshake, framebuffer bytes and pointer relay; visual
+desktop acceptance remains a client-side operator check.

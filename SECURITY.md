@@ -53,6 +53,10 @@ Controls in the implementation:
   crash. Windows enforces L0-only fidelity in both UI and backend. Release EXEs are unsigned and
   may trigger SmartScreen; SHA-256 verification is the available authenticity check.
 - Telemetry redacts secret-like keys; diagnostics use an allow-list and never read the environment.
+- Detailed logs use the same allow-list discipline: structured parameters are recursively bounded,
+  keys containing token/password/secret/private_key are redacted, records and service output are
+  size-capped, and API errors never embed raw log content. `/v1/logs/files` returns metadata only;
+  use an authenticated Logs-page/API request to retrieve bounded records.
 - `scripts/privileged-tests.sh` proves each privileged run left the default route, host interfaces,
   iptables, and nft ruleset unchanged; `scripts/lab-cleanup.sh` lists or removes leftovers
   (including orphaned lab service processes) by generated name only.

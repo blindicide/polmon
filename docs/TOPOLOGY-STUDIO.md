@@ -1,4 +1,4 @@
-# Topology Studio
+# Topology Studio (v0.5.0)
 
 Topology Studio is the graphical topology authoring surface in the desktop client. Open
 **Topologies** and choose **Canvas** to begin from the empty `new-topology` document, or open an
@@ -36,3 +36,8 @@ layout, names and UUIDs. **Deploy** is enabled only for a locally or remotely va
 The canvas never asks for raw addresses, never silently widens the address profile and never
 pretends L2 execution exists. A duplicate link or exhausted address pool is refused with a stable
 code while the rest of the document remains editable.
+
+The studio is the authoring side of the Phase V workflow: save the resulting topology, add an
+`ssh` service to the L1 nodes that need Console access, then open Scenario Studio to bind an
+operator-authored scenario. Deployment and console operations remain backend-owned and are
+available through the authenticated API described in [API.md](API.md).

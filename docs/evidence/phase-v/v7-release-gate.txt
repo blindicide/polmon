@@ -1,0 +1,44 @@
+Phase V.7 headless release evidence — v0.5.0
+Date: 2026-09-28
+Branch: phase-v-studio
+
+Version contract
+  polmon-backend: polmon 0.5.0
+  polmon-client: polmon 0.5.0
+  polmon-diagnostics: polmon 0.5.0
+  polmon-topology: polmon 0.5.0
+  polmon-benchmark: polmon 0.5.0
+  polmon-demo: polmon 0.5.0
+  health.version=0.5.0
+  report_version_source=0.5.0 (report writer uses the same __version__)
+
+Local Linux packaging
+  PyInstaller: 6.22.3, Python 3.12.3, Linux x86_64/glibc 2.39
+  packaging/linux/polmon-backend.spec: Build complete
+  packaging/linux/polmon-client.spec: Build complete
+  backend bundle: polmon-backend-0.5.0-linux-x64 --version PASS
+  client bundle: polmon-0.5.0-linux-x64 --version PASS
+  backend self-test: PASS uvicorn application graph
+  backend self-test: PASS L0 deploy -> scenario -> telemetry -> report -> reset
+  polmon 0.5.0 backend self-test: PASS
+  client self-test: PASS QApplication platform offscreen
+  client self-test: PASS languages ru (1090 keys), en (1090 keys); Qt translations present
+  client self-test: PASS main window rendered 1295x760 off screen, destroyed (9 pages)
+  polmon 0.5.0 self-test: PASS
+  extracted sizes: client 128850149 bytes; backend 32705461 bytes
+
+Existing green gates carried into release
+  scripts/check.sh: 431 passed / 20 deselected / 1 warning in 146.65s
+  scripts/privileged-tests.sh: 19 passed / 432 deselected / 2 warnings in 46.51s
+  scripts/privileged-tests.sh V.6 correlation: 1 passed; host network unchanged; no platform lab
+    resources remain
+  i18n-lint: 23 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+  i18n-completeness: PASS: 1090 keys, 16 plural keys, 173 backend message codes,
+    710 literal keys in code; 0 problem(s)
+
+Packaging/CI limitation
+  reason code: v7.ci.billing_blocked
+  recorded workflow run: 36314086429
+  exact blocker: recent account payments have failed or your spending limit needs to be increased
+  consequence: no hosted Windows artifact is claimed. Linux specs were built locally; Windows
+  specs/workflows remain version-driven for a future available Windows runner.

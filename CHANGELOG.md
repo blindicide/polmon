@@ -49,6 +49,28 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).
 
+## [0.5.0] - 2026-09-28
+
+Phase V — Topology Studio & lab access.
+
+### Added
+
+- Topology Studio canvas authoring with deterministic lab-profile allocation, persisted layout,
+  copy/paste and undo/redo, normal node names, machine IDs and stable UUIDs.
+- Real L1 SSH console sessions and bounded command execution through an authenticated backend
+  relay, plus a headless-validated RFB 3.8 VNC relay with Raw/Hextile decoding and pointer input.
+- Restart-safe scenario library CRUD and a localized step-list editor for bounded ICMP, TCP,
+  `ssh_exec` and wait actions, expected timing/stdout assertions and cleanup policies.
+- Structured JSON-line logs with bounded ring/rotating files, per-node service output, console and
+  experiment correlation, cursor-filtered API/SSE access, diagnostics, and the localized Logs page.
+- Headless phase evidence under `docs/evidence/phase-v/` and a release report with resource costs
+  and explicit limitations.
+
+### Changed
+
+- The public application/package version is now `0.5.0`; health, all CLI version flags, reports,
+  telemetry metadata, client header/About and package names use the same single version source.
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed

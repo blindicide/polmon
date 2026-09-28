@@ -58,7 +58,7 @@ GPL/commercial licence conflicts with the commercial path; PySide6 is LGPLv3. On
 backend install stays free of Qt. Its measured cost is in [RESOURCE-BUDGET.md](RESOURCE-BUDGET.md).
 
 ```
-MainWindow ── ConnectionBar, navigation, 7 pages, activity dock, status bar (OperationProgress)
+MainWindow ── ConnectionBar, navigation, 9 pages, activity dock, status bar (OperationProgress)
    │ reads/writes            ▲ signals (GUI thread)
    ▼                         │
 Session (state) ◄── Context.run(work) ── TaskRunner (QThreadPool, ≤4 threads)
@@ -75,6 +75,29 @@ tracks the connection (`connected`, `unauthorized`, `lost`) and refreshes resour
 deployments. The client imports no backend implementation module (enforced by a test); the
 backend gained additive routes for inspection, live experiment progress, telemetry paging, the
 Markdown report and bounded benchmark jobs ([docs/API.md](docs/API.md)).
+
+## Phase V operator surfaces
+
+Topology Studio is a client-side authoring layer over the same normalized topology contract. Its
+canvas owns layout only; the backend remains authoritative for schema, address allocation,
+resource admission and deployment. The persistent topology and scenario libraries use atomic
+YAML replacement under the backend data directory, reload on startup, and preserve human names,
+machine IDs and UUIDs. Scenario Studio adds a closed, statically validated action catalogue for
+repeatable automation; free-form interactive work belongs to Console.
+
+The Console page is an authenticated HTTP relay. A namespace SSH session is created and owned by
+the backend, which validates node class and service readiness before starting the in-namespace
+OpenSSH process. The VNC path relays an RFB connection from the namespace's `x11vnc` process;
+Qt decodes the bounded Raw/Hextile framebuffer and sends pointer events. The desktop client never
+opens a laboratory socket or imports Linux networking code.
+
+The detailed-log pipeline is separate from telemetry: control-plane lifecycle and action callbacks
+emit allow-listed records into `StructuredLogStore`, which assigns a cursor, redacts credential-like
+parameters, keeps a 5,000-record ring and rotates bounded JSONL files. Namespace service output
+is drained into capped per-node/per-service files, while console output is retained per session.
+The API exposes bounded query, SSE follow and file-index routes; the Logs page consumes those routes
+without turning raw logs into API error payloads. Correlation contains deployment/topology,
+experiment/session and node id/name/UUID so one node UUID can reconstruct a trace across layers.
 
 ### Localization and backend text (approach (a))
 

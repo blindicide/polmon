@@ -1,13 +1,14 @@
 # Phase V progress
 
-Last updated: 2026-09-28 (Codex, headless V.6 gate complete)
+Last updated: 2026-09-28 (Codex, headless V.7 release gate complete)
 Branch: `phase-v-studio`
 Baseline: `main @ 634f49a` (`v0.4.1`)
 
-**READ THIS FIRST IF YOU ARE RESUMING:** V.4, V.5 and V.6 are green. V.4 evidence is in
+**READ THIS FIRST IF YOU ARE RESUMING:** V.4, V.5, V.6 and V.7 are green. V.4 evidence is in
 `docs/evidence/phase-v/v4-vnc-headless-gate.txt`; V.5 evidence is in
 `docs/evidence/phase-v/v5-scenario-studio-gate.txt`; V.6 evidence is in
-`docs/evidence/phase-v/v6-logs-gate.txt`. The next milestone is V.7.
+`docs/evidence/phase-v/v6-logs-gate.txt`; V.7 evidence is in
+`docs/evidence/phase-v/v7-release-gate.txt`. Phase V is complete on this branch.
 
 ## Verified
 
@@ -37,10 +38,11 @@ Baseline: `main @ 634f49a` (`v0.4.1`)
   reloaded it after a fresh control-plane instance, passed the mixed ICMP/TCP/SSH/wait run, and
   failed the deliberately wrong stdout assertion as designed; both runs cleaned up.
 
-## In flight — V.7 (release v0.5.0)
+## Complete — V.7 (release v0.5.0)
 
-V.6 is complete with headless-runnable evidence and green gates. The next work is the release
-version, documentation, packaging and phase-report flow described in the mandate.
+V.7 is complete with headless-runnable evidence, local Linux packaging, the release report and
+green rootless/privileged gates. Windows artifacts are explicitly not claimed because the recorded
+GitHub Actions workflow was billing-blocked.
 
 **V.4 evidence retained:**
 
@@ -57,10 +59,8 @@ version, documentation, packaging and phase-report flow described in the mandate
 
 ## Exact next step
 
-1. Commit and push V.6 with the green rootless and privileged gates recorded in
-   `docs/evidence/phase-v/v6-logs-gate.txt`.
-2. Implement and verify V.7 release `0.5.0`, including the phase report and honest packaging/CI
-   limitation evidence.
+1. Commit and push the V.7 release commit, then create the annotated `v0.5.0` tag on that green
+   commit. No further Phase V implementation step remains on `phase-v-studio`.
 
 ## Milestone status
 
@@ -71,8 +71,8 @@ version, documentation, packaging and phase-report flow described in the mandate
 | V.3 | committed + pushed (`4686435`), **verified green** | `check.sh` 423 passed / 16 deselected; privileged console tests 2 passed; host network unchanged; i18n clean |
 | V.4 | committed + pushed (`2decb06`), **green** | `v4-vnc-headless-gate.txt`: raw TCP + authenticated relay framebuffer/input, 424/18 rootless gate, 4 privileged tests, host network unchanged |
 | V.5 | committed + pushed (`f6af8fb`), **green** | `v5-scenario-studio-gate.txt`: API/UI authoring, restart reload, real L1 pass/fail experiment, 428/19 rootless gate, host network unchanged |
-| V.6 | **green; commit pending** | `v6-logs-gate.txt`: 431/20 rootless gate, real UUID correlation, Logs UI, bounded rotation, diagnostics, host network unchanged |
-| V.7 | not started | — |
+| V.6 | committed + pushed (`4f9431a`), **green** | `v6-logs-gate.txt`: 431/20 rootless gate, real UUID correlation, Logs UI, bounded rotation, diagnostics, host network unchanged |
+| V.7 | **green; release commit pending** | `v7-release-gate.txt` and `docs/milestones/v0.5.0.md`: version contract, local Linux bundles, full gates, honest CI/Windows limitation |
 
 ## Known limitations
 
@@ -83,3 +83,7 @@ version, documentation, packaging and phase-report flow described in the mandate
   RFB wire handshake, framebuffer bytes, and pointer relay were validated headlessly.
 - The earlier `dk.credit_exhausted` pause was an infrastructure interruption, not a feature result;
   it is retained in the prior commits' history but is no longer blocking this continuation.
+- `v7.ci.billing_blocked`: the recorded workflow run `36314086429` could not start hosted jobs;
+  no Windows artifact is claimed.
+- `v7.windows_build_unavailable_on_headless_linux_host`: Windows PyInstaller specs remain valid
+  and version-driven, but were not run on this Linux server.
