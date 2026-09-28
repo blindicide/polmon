@@ -1,14 +1,16 @@
 # Phase V progress
 
 Last updated: 2026-09-28 (Codex, V.7 release committed and tagged)
-Branch: `phase-v-studio`
+Branch: `main` (merged from `phase-v-studio`)
 Baseline: `main @ 634f49a` (`v0.4.1`)
 
-**READ THIS FIRST IF YOU ARE RESUMING:** V.4, V.5, V.6 and V.7 are green. V.4 evidence is in
+**READ THIS FIRST IF YOU ARE RESUMING:** V.4, V.5, V.6 and V.7 are green. V.7 was merged to
+`main` as no-ff commit `d75e353`; annotated tag `v0.5.0` points to that merge commit and is
+published on origin. V.4 evidence is in
 `docs/evidence/phase-v/v4-vnc-headless-gate.txt`; V.5 evidence is in
 `docs/evidence/phase-v/v5-scenario-studio-gate.txt`; V.6 evidence is in
 `docs/evidence/phase-v/v6-logs-gate.txt`; V.7 evidence is in
-`docs/evidence/phase-v/v7-release-gate.txt`. Phase V is complete on this branch.
+`docs/evidence/phase-v/v7-release-gate.txt`. Phase V is complete on published `origin/main`.
 
 ## Verified
 
@@ -59,8 +61,8 @@ GitHub Actions workflow was billing-blocked.
 
 ## Exact next step
 
-1. No further Phase V implementation step remains. V.7 is committed and pushed as `439fa13`,
-   with annotated tag `v0.5.0` pushed to the remote at that green commit.
+1. No further Phase V implementation step remains. `origin/main` is published at merge commit
+   `d75e353`; annotated tag `v0.5.0` points to the same commit.
 
 ## Milestone status
 
@@ -72,7 +74,7 @@ GitHub Actions workflow was billing-blocked.
 | V.4 | committed + pushed (`2decb06`), **green** | `v4-vnc-headless-gate.txt`: raw TCP + authenticated relay framebuffer/input, 424/18 rootless gate, 4 privileged tests, host network unchanged |
 | V.5 | committed + pushed (`f6af8fb`), **green** | `v5-scenario-studio-gate.txt`: API/UI authoring, restart reload, real L1 pass/fail experiment, 428/19 rootless gate, host network unchanged |
 | V.6 | committed + pushed (`4f9431a`), **green** | `v6-logs-gate.txt`: 431/20 rootless gate, real UUID correlation, Logs UI, bounded rotation, diagnostics, host network unchanged |
-| V.7 | committed + pushed (`439fa13`), tagged `v0.5.0`, **green** | `v7-release-gate.txt` and `docs/milestones/v0.5.0.md`: version contract, local Linux bundles, full gates, honest CI/Windows limitation |
+| V.7 | merged to `main` (`d75e353`), published and tagged `v0.5.0`, **green** | `v7-release-gate.txt` and `docs/milestones/v0.5.0.md`: version contract, local Linux bundles, full gates, honest CI/Windows limitation |
 
 ## Known limitations
 
