@@ -31,4 +31,17 @@ def test_topology_cli_explains_invalid_files_on_stderr(capsys, tmp_path) -> None
     assert captured.out == ""
     error = json.loads(captured.err)
     assert error["error"] == "configuration_error"
-    assert "controlled laboratory ranges" in json.dumps(error)
+    assert "outside address space" in json.dumps(error)
+
+
+def test_topology_cli_migrates_legacy_file_in_place(capsys, tmp_path) -> None:
+    legacy = tmp_path / "legacy.yml"
+    legacy.write_text(
+        "id: old\nnetworks: [{id: lab, ipv4_subnet: 10.20.0.0/24}]\nnodes: []\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["--migrate", str(legacy)]) == 0
+    assert json.loads(capsys.readouterr().out)["migrated"] is True
+    migrated = legacy.read_text(encoding="utf-8")
+    assert "address_space: lab-profile" in migrated
+    assert "192.168.230.0/24" in migrated

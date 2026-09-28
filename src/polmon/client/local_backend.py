@@ -37,16 +37,16 @@ SESSION_LOGS_KEPT = 20
 _L0_TOPOLOGY = """id: local-smoke
 networks:
   - id: lab
-    ipv4_subnet: 198.18.10.0/24
+    ipv4_subnet: 192.168.240.0/24
 nodes:
   - id: probe
     class: l0
     interfaces:
-      - {id: eth0, network: lab, mac: '02:10:00:00:00:01', ipv4: 198.18.10.2}
+      - {id: eth0, network: lab, mac: '02:10:00:00:00:01', ipv4: 192.168.240.2}
   - id: target
     class: l0
     interfaces:
-      - {id: eth0, network: lab, mac: '02:10:00:00:00:02', ipv4: 198.18.10.3}
+      - {id: eth0, network: lab, mac: '02:10:00:00:00:02', ipv4: 192.168.240.3}
 """
 _L0_SCENARIO = """id: local-smoke
 required_topology: local-smoke

@@ -58,7 +58,7 @@ def test_token_resolution_and_file_permissions(tmp_path) -> None:
 
 def test_non_loopback_binding_requires_a_token() -> None:
     assert is_loopback("127.0.0.1") and is_loopback("::1") and is_loopback("localhost")
-    assert not is_loopback("0.0.0.0") and not is_loopback("10.0.0.5")
+    assert not is_loopback("0.0.0.0") and not is_loopback("192.168.230.5")
     require_safe_binding("127.0.0.1", None)
     require_safe_binding("0.0.0.0", TOKEN)
     with pytest.raises(ConfigurationError, match="refusing to listen"):

@@ -9,8 +9,12 @@ the repository owner; do not include exploit details in a public issue.
 
 Controls in the implementation:
 
-- Topology subnets are restricted to RFC 1918 and RFC 2544 laboratory ranges; scenario actions can
-  only target nodes declared in the bound topology, never raw addresses or discovered hosts.
+- New topology subnets default to the explicit `192.168.230.0/24`–`192.168.240.0/24` laboratory
+  profile. Narrowing the accepted space is a safety property: unexpected addresses are rejected
+  before any privileged work and owned resources are easy to recognize. The broader RFC 1918 plus
+  RFC 2544 policy is available only through an explicit `address_space: rfc1918` compatibility
+  declaration. Scenario actions can only target nodes declared in the bound topology, never raw
+  addresses or discovered hosts.
 - Privileged operations go through one argv-only command runner (`sudo -n`, no shell) limited to
   `ip` namespace, bridge, veth, TAP, address, and in-namespace route operations on generated
   `polmon*`/`veth*` names. Every workload inside a lab namespace (built-in services, ICMP and TCP

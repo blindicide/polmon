@@ -3,7 +3,7 @@
 id: l0-office
 networks:
   - id: office
-    ipv4_subnet: 10.20.0.0/24
+    ipv4_subnet: 192.168.232.0/24
 nodes:
   - id: sensor-1
     class: l0
@@ -11,53 +11,53 @@ nodes:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:01"
-        ipv4: 10.20.0.11
+        ipv4: 192.168.232.11
   - id: ws-1
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:02"
-        ipv4: 10.20.0.12
+        ipv4: 192.168.232.12
   - id: ws-2
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:03"
-        ipv4: 10.20.0.13
+        ipv4: 192.168.232.13
   - id: ws-3
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:04"
-        ipv4: 10.20.0.14
+        ipv4: 192.168.232.14
   - id: ws-4
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:05"
-        ipv4: 10.20.0.15
+        ipv4: 192.168.232.15
   - id: printer-1
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:06"
-        ipv4: 10.20.0.16
+        ipv4: 192.168.232.16
   - id: nas-1
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:07"
-        ipv4: 10.20.0.17
+        ipv4: 192.168.232.17
   - id: badge-reader
     class: l0
     interfaces:
       - id: eth0
         network: office
         mac: "02:20:00:00:00:08"
-        ipv4: 10.20.0.18
+        ipv4: 192.168.232.18

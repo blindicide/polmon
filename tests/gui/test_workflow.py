@@ -173,7 +173,7 @@ def test_l0_only_deployment_is_refused_in_ui_with_linux_guidance(
 
 
 def test_validation_errors_point_at_the_line(window, qtbot, live_backend, tmp_path) -> None:
-    broken = l0_topology().replace("ipv4_subnet: 10.77.0.0/24", "ipv4_subnet: 8.8.8.0/24")
+    broken = l0_topology().replace("ipv4_subnet: 192.168.235.0/24", "ipv4_subnet: 8.8.8.0/24")
     assert broken != l0_topology()
     connect(qtbot, window, live_backend)
     wait_connected(qtbot, window)
@@ -185,7 +185,7 @@ def test_validation_errors_point_at_the_line(window, qtbot, live_backend, tmp_pa
     line = raw_value(page.problems, 0, 0)
     assert location.startswith("networks.0.ipv4_subnet")
     assert "8.8.8.0/24" in broken.splitlines()[line - 1]
-    assert raw_value(page.problems, 0, 2) == "backend.topology.address_outside_lab"
+    assert raw_value(page.problems, 0, 2) == "backend.topology.address_outside_profile"
     assert page.editor._error_line == line
     assert page.tabs.currentWidget() is page.problems
     assert not window.session.backend_topologies  # nothing was loaded

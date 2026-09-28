@@ -33,9 +33,9 @@ def test_two_l1_nodes_ping_service_and_teardown() -> None:
         control.validate()
         control.create()
         control.start()
-        assert backend.ping("client", "10.88.0.20")
+        assert backend.ping("client", "192.168.236.20")
         for _ in range(20):
-            if backend.probe_tcp("client", "10.88.0.20", 8080):
+            if backend.probe_tcp("client", "192.168.236.20", 8080):
                 break
             time.sleep(0.1)
         else:

@@ -80,7 +80,7 @@ def build_topology(namespace_count: int, *, service_count: int = 1) -> Topology:
                         id="eth0",
                         network="bench",
                         mac=f"02:00:00:02:00:{index:02x}",
-                        ipv4=f"10.241.0.{index + 10}",
+                        ipv4=f"192.168.240.{index + 10}",
                     )
                 ],
                 services=(
@@ -96,7 +96,7 @@ def build_topology(namespace_count: int, *, service_count: int = 1) -> Topology:
         )
     return Topology(
         id=f"benchmark-l1-{namespace_count}",
-        networks=[Network(id="bench", ipv4_subnet="10.241.0.0/24")],
+        networks=[Network(id="bench", ipv4_subnet="192.168.240.0/24")],
         nodes=nodes,
     )
 

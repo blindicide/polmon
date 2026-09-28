@@ -38,7 +38,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "connection.mode.tip": "Локальный бэкенд автономен и работает только с L0; удалённый бэкенд "
     "Linux может предоставить L1 и гибридную границу TAP",
     "connection.url": "URL",
-    "connection.url.tip": "Базовый URL бэкенда, например http://192.168.1.10:8080 (Ctrl+L); в "
+    "connection.url.tip": "Базовый URL бэкенда, например http://192.168.231.10:8080 (Ctrl+L); в "
     "списке — недавно подключённые бэкенды",
     "connection.token": "Токен",
     "connection.token.placeholder": "Токен API (если требуется)",
@@ -828,7 +828,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.settings.title": "Неверные настройки",
     "problem.settings.detail": "URL бэкенда должен быть абсолютным адресом http:// или https://, "
     "а тайм-аут — от 1 до 120 секунд.",
-    "problem.settings.hint": "Укажите URL вида http://192.168.1.10:8080.",
+    "problem.settings.hint": "Укажите URL вида http://192.168.231.10:8080.",
     "problem.unreadable.title": "Файл не читается",
     "problem.unreadable.detail": "Файл не является текстом в кодировке UTF-8.",
     "problem.file.title": "Ошибка файла",
@@ -931,7 +931,19 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "буквы и содержать только a–z, 0–9 или «-».",
     "backend.topology.address_outside_lab": "{address} вне контролируемых лабораторных "
     "диапазонов ({allowed}); внешние адреса запрещены.",
+    "backend.topology.address_outside_profile": "{address} вне лабораторного профиля "
+    "192.168.230–240.",
     "backend.topology.mac_format": "Нужен индивидуальный (unicast) MAC-адрес из шести октетов.",
+    "backend.topology.duplicate_node_names": "Имена машин должны отличаться без учёта регистра.",
+    "backend.topology.duplicate_node_uuids": "Глобальные идентификаторы машин должны быть "
+    "уникальными.",
+    "backend.topology.host_exhausted": "В этой сети не осталось доступных адресов узлов.",
+    "backend.topology.mac_exhausted": "Пул лабораторных MAC-адресов исчерпан.",
+    "backend.topology.name_control": "Имя машины не может содержать управляющие символы.",
+    "backend.topology.name_length": "Имя машины должно содержать от 1 до 64 символов.",
+    "backend.topology.subnet_exhausted": "Все сети лабораторного профиля уже используются.",
+    "backend.topology.uuid_not_v4": "Глобальный идентификатор машины должен соответствовать "
+    "стандарту 4122 версии 4.",
     "backend.topology.mac_multicast": "Групповые (multicast) MAC-адреса не годятся для конечных "
     "точек.",
     "backend.topology.duplicate_interface_ids": "У узла «{node}» повторяются идентификаторы "

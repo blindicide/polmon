@@ -1,7 +1,7 @@
 id: l1-two-node
 networks:
   - id: lab
-    ipv4_subnet: 10.88.0.0/24
+    ipv4_subnet: 192.168.236.0/24
 nodes:
   - id: client
     class: l1
@@ -9,14 +9,14 @@ nodes:
       - id: eth0
         network: lab
         mac: "02:00:00:88:00:01"
-        ipv4: 10.88.0.10
+        ipv4: 192.168.236.10
   - id: server
     class: l1
     interfaces:
       - id: eth0
         network: lab
         mac: "02:00:00:88:00:02"
-        ipv4: 10.88.0.20
+        ipv4: 192.168.236.20
     services:
       - id: web
         protocol: tcp

@@ -38,7 +38,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "connection.mode.tip": "The local backend is self-contained and L0-only; a remote Linux "
     "backend can provide L1 and the hybrid TAP boundary",
     "connection.url": "URL",
-    "connection.url.tip": "Backend base URL, e.g. http://192.168.1.10:8080 (Ctrl+L); the list "
+    "connection.url.tip": "Backend base URL, e.g. http://192.168.231.10:8080 (Ctrl+L); the list "
     "holds recently connected backends",
     "connection.token": "Token",
     "connection.token.placeholder": "API token (if required)",
@@ -772,7 +772,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "problem.settings.title": "Invalid settings",
     "problem.settings.detail": "The backend URL must be an absolute http:// or https:// address "
     "and the timeout between 1 and 120 s.",
-    "problem.settings.hint": "Use a URL such as http://192.168.1.10:8080.",
+    "problem.settings.hint": "Use a URL such as http://192.168.231.10:8080.",
     "problem.unreadable.title": "Unreadable file",
     "problem.unreadable.detail": "The file is not valid UTF-8 text.",
     "problem.file.title": "File error",
@@ -875,7 +875,17 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "contain only a–z, 0–9 or “-”.",
     "backend.topology.address_outside_lab": "{address} is outside the controlled laboratory "
     "ranges ({allowed}); external addresses are not authorised.",
+    "backend.topology.address_outside_profile": "{address} is outside the 192.168.230–240 "
+    "laboratory profile.",
     "backend.topology.mac_format": "Must be a six-octet unicast MAC address.",
+    "backend.topology.duplicate_node_names": "Machine names must be unique ignoring case.",
+    "backend.topology.duplicate_node_uuids": "Machine UUIDs must be unique.",
+    "backend.topology.host_exhausted": "No usable host address remains in this network.",
+    "backend.topology.mac_exhausted": "The laboratory MAC address pool is exhausted.",
+    "backend.topology.name_control": "Machine names cannot contain control characters.",
+    "backend.topology.name_length": "Machine names must contain 1 to 64 characters.",
+    "backend.topology.subnet_exhausted": "All laboratory profile networks are in use.",
+    "backend.topology.uuid_not_v4": "Machine UUID must be an RFC 4122 version-4 UUID.",
     "backend.topology.mac_multicast": "Multicast MAC addresses are not valid endpoint "
     "identities.",
     "backend.topology.duplicate_interface_ids": "Node “{node}” has duplicate interface "

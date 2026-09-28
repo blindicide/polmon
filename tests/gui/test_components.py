@@ -181,7 +181,7 @@ def test_yaml_editor_highlights_keys_comments_and_strings(qtbot) -> None:
     assert theme.hex_color("accent") in colours and theme.hex_color("muted") in colours
     third = editor.document().findBlockByNumber(2).layout().formats()
     assert theme.hex_color("success") in {fmt.format.foreground().color().name() for fmt in third}
-    editor.setPlainText("ipv4: 10.20.0.11\ncount: 3\n")
+    editor.setPlainText("ipv4: 192.168.232.11\ncount: 3\n")
     address = editor.document().firstBlock().layout().formats()
     assert theme.hex_color("warning") not in {f.format.foreground().color().name() for f in address}
     number = editor.document().findBlockByNumber(1).layout().formats()

@@ -238,7 +238,7 @@ def test_connected_backends_are_remembered(window, qtbot, live_backend) -> None:
     box = window.bar.url_box
     assert box.findText(live_backend.url) == 0
     window.disconnect_backend()
-    window.bar.url.setText("http://10.0.0.9:8080")
+    window.bar.url.setText("http://192.168.230.9:8080")
     box.setCurrentIndex(0)  # picking a recent entry fills the field
     assert window.bar.url.text() == live_backend.url
 
@@ -332,8 +332,8 @@ def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_
 
     monkeypatch.setattr(mainwindow, "MainWindow", isolated_window)
     monkeypatch.setattr(type(qapp), "exec", lambda self: 0)
-    assert client_app.main(["--url", "http://10.1.2.3:8080", "--theme", "dark"]) == 0
-    assert shown and shown[0].bar.url.text() == "http://10.1.2.3:8080"
+    assert client_app.main(["--url", "http://192.168.232.3:8080", "--theme", "dark"]) == 0
+    assert shown and shown[0].bar.url.text() == "http://192.168.232.3:8080"
     assert shown[0].isVisible()
     shown[0].shutdown(wait_ms=1000)
     shown[0].close()
