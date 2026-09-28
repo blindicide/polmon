@@ -157,6 +157,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "a11y.deploy_target": "Топология для развёртывания",
     "a11y.experiment_id": "ID эксперимента",
     "a11y.experiment_selector": "Эксперимент",
+    "a11y.scenario_library": "Библиотека сценариев бэкенда",
     "a11y.view": "{page}: таблица",
     # -- журнал действий и уведомления ----------------------------------------------------------
     "log.dock": "Журнал действий",
@@ -215,6 +216,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "operation.fetch_topology": "Получение топологии {topology}",
     "operation.unload": "Выгрузка топологии {topology}",
     "operation.validate_scenario": "Проверка сценария",
+    "operation.load_scenarios": "Загрузка библиотеки сценариев",
+    "operation.load_scenario": "Загрузка сценария {scenario}",
+    "operation.save_scenario": "Сохранение сценария {scenario}",
     "operation.experiment": "Эксперимент {experiment}",
     "operation.cancel_experiment": "Отмена эксперимента {experiment}",
     "operation.list_experiments": "Список экспериментов",
@@ -622,6 +626,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "scenarios.tab.summary": "Сводка",
     "scenarios.tab.sequence": "Последовательность",
     "scenarios.tab.conditions": "Условия",
+    "scenarios.tab.yaml": "YAML",
+    "scenarios.tab.steps": "Шаги",
     "scenarios.no_document": "Сценарий не открыт",
     "scenarios.no_document_hint": "Откройте сценарий из библиотеки или вставьте YAML в редактор.",
     "scenarios.not_validated": "Ещё не проверено",
@@ -629,6 +635,33 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "нажмите «Проверить»).",
     "scenarios.open.dialog": "Открыть сценарий",
     "scenarios.save.dialog": "Сохранить сценарий",
+    "scenarios.backend_refresh": "Обновить бэкенд",
+    "scenarios.backend_load": "Загрузить с бэкенда",
+    "scenarios.backend_library": "Библиотека бэкенда",
+    "scenarios.save_backend": "Сохранить на бэкенде",
+    "scenarios.save_backend.tip": "Сохранить проверенный сценарий в библиотеке бэкенда",
+    "scenarios.save_backend_id_required": "Документ YAML должен содержать корректный ID сценария.",
+    "scenarios.backend_saved": "Сценарий {scenario} сохранён на бэкенде",
+    "scenarios.step.add": "Добавить",
+    "scenarios.step.duplicate": "Дублировать",
+    "scenarios.step.remove": "Удалить",
+    "scenarios.step.up": "Выше",
+    "scenarios.step.down": "Ниже",
+    "scenarios.step.id": "ID",
+    "scenarios.step.scope": "Список шагов",
+    "scenarios.step.sequence": "Последовательность",
+    "scenarios.step.cleanup": "Очистка",
+    "scenarios.step.kind": "Тип",
+    "scenarios.step.source": "Источник",
+    "scenarios.step.target": "Цель",
+    "scenarios.step.service": "Служба",
+    "scenarios.step.command": "Команда",
+    "scenarios.step.parameters": "Параметры",
+    "scenarios.step.expected_exit": "Ожидаемый код",
+    "scenarios.step.seconds": "Секунды",
+    "scenarios.options.initial_conditions": "Начальные условия",
+    "scenarios.options.timeout": "Тайм-аут (секунды)",
+    "scenarios.options.cleanup_policy": "Политика очистки",
     "scenarios.state.not_loaded": "не загружена на бэкенд — сначала загрузите и разверните её",
     "scenarios.state.incompatible": "несовместима: {problems}",
     "scenarios.state.not_deployed": "совместима, не развёрнута — разверните её перед запуском",
@@ -1060,6 +1093,34 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "разными узлами.",
     "backend.scenario.undeclared_service": "Действие «{action}» ссылается на необъявленную "
     "службу цели «{service}».",
+    "backend.scenario.action_nodes_required": "Действию «{action}» нужны исходный и целевой "
+    "узлы.",
+    "backend.scenario.action_target_required": "Действию «{action}» нужен целевой узел.",
+    "backend.scenario.ssh_exec_no_service": "ssh_exec не принимает идентификатор службы.",
+    "backend.scenario.wait_seconds_required": "Для операции ожидания нужна положительная "
+    "длительность.",
+    "backend.scenario.wait_fields_invalid": "Операция ожидания принимает только свою "
+    "длительность.",
+    "backend.scenario.command_unknown": "Автоматизированная команда «{command}» запрещена.",
+    "backend.scenario.command_parameter_unknown": "У команды «{command}» недопустимые "
+    "параметры: {parameters}.",
+    "backend.scenario.command_parameter_invalid": "Параметр команды «{parameter}» недопустим.",
+    "backend.scenario.command_target_unknown": "Цель команды «{target}» отсутствует в "
+    "требуемой топологии.",
+    "backend.scenario.duration_needs_number": "Для условия длительности нужно число.",
+    "backend.scenario.duration_bound_required": "Для условия длительности нужна граница.",
+    "backend.scenario.duration_bounds_invalid": "Минимум длительности не может быть больше "
+    "максимума.",
+    "backend.scenario.stdout_match_required": "Для вывода программы нужно точное значение или "
+    "шаблон.",
+    "backend.scenario.stdout_pattern_invalid": "Шаблон вывода программы не является корректным "
+    "регулярным выражением.",
+    "backend.scenario.duplicate_cleanup_action_ids": "Идентификаторы очистки должны быть "
+    "уникальными и отличаться от последовательности.",
+    "backend.scenario.ssh_exec_requires_l1": "Действию «{action}» нужен целевой узел L1.",
+    "backend.scenario.ssh_service_missing": "Действие «{action}» обращается к узлу без службы "
+    "защищённого доступа.",
+    "backend.scenario.unknown": "Бэкенду неизвестен сценарий «{scenario_id}».",
     "backend.experiment.invalid_id": "Недопустимый идентификатор эксперимента (латинские буквы, "
     "цифры, «_» и «-», не более 64 символов).",
     "backend.experiment.exists": "Эксперимент «{experiment_id}» уже существует; выберите новый "
@@ -1082,6 +1143,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.experiment.action_timed_out": "Действие «{action}» превысило тайм-аут.",
     "backend.experiment.action_failed": "Действие «{action}» завершилось ошибкой ({cause}).",
     "backend.experiment.cleanup_failed": "Очистка завершилась ошибкой ({cause}).",
+    "backend.experiment.cleanup_step_failed": "Шаг очистки «{action}» завершился ошибкой "
+    "({cause}).",
     "backend.admission.topology_limits": "Топология превышает заданные лимиты ресурсов.",
     "backend.admission.experiment_limits": "Эксперимент превышает заданные лимиты ресурсов.",
     "backend.reset.incomplete": "Сброс окружения разобрал не все развёртывания.",

@@ -1,0 +1,30 @@
+id: scenario-studio
+networks:
+  - id: lab
+    ipv4_subnet: 192.168.239.0/24
+nodes:
+  - id: client
+    name: Scenario client
+    class: l1
+    interfaces:
+      - id: eth0
+        network: lab
+        mac: "02:50:4f:00:02:01"
+        ipv4: 192.168.239.21
+  - id: server
+    name: Scenario server
+    class: l1
+    interfaces:
+      - id: eth0
+        network: lab
+        mac: "02:50:4f:00:02:02"
+        ipv4: 192.168.239.22
+    services:
+      - id: web
+        protocol: tcp
+        port: 8080
+        implementation: static_http
+      - id: shell
+        protocol: tcp
+        port: 22
+        implementation: ssh

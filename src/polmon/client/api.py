@@ -194,6 +194,23 @@ class ApiClient:
     def validate_scenario(self, source: str) -> dict[str, object]:
         return self._dict("POST", "/v1/scenarios/validate", {"yaml": source})
 
+    def load_scenario(self, source: str) -> dict[str, object]:
+        return self._dict("POST", "/v1/scenarios", {"yaml": source})
+
+    def save_scenario(self, scenario_id: str, source: str) -> dict[str, object]:
+        return self._dict(
+            "PUT", f"/v1/scenarios/{_segment(scenario_id)}", {"yaml": source}
+        )
+
+    def scenarios(self) -> list[dict[str, object]]:
+        return self._list("/v1/scenarios")
+
+    def scenario(self, scenario_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/scenarios/{_segment(scenario_id)}")
+
+    def unload_scenario(self, scenario_id: str) -> dict[str, object]:
+        return self._dict("DELETE", f"/v1/scenarios/{_segment(scenario_id)}")
+
     def deploy(self, topology_id: str) -> dict[str, object]:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("POST", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))

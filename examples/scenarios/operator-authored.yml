@@ -1,0 +1,38 @@
+id: operator-authored
+required_topology: scenario-studio
+initial_conditions:
+  - topology_deployed
+  - services_started
+permitted_actions:
+  - icmp_probe
+  - tcp_probe
+  - ssh_exec
+  - wait
+sequence:
+  - id: reach-server
+    kind: icmp_probe
+    source: client
+    target: server
+  - id: inspect-web
+    kind: tcp_probe
+    source: client
+    target: server
+    service: web
+  - id: inspect-address
+    kind: ssh_exec
+    target: server
+    command: ip_addr
+  - id: pause
+    kind: wait
+    seconds: 0.1
+timeout_seconds: 20
+success_conditions:
+  - {action: reach-server, field: success, equals: true}
+  - {action: inspect-web, field: success, equals: true}
+  - {action: inspect-address, field: success, equals: true}
+  - {action: inspect-address, field: stdout, pattern: '192\.168\.239\.22'}
+  - {action: inspect-address, field: duration_seconds, minimum: 0, maximum: 10}
+  - {action: pause, field: duration_seconds, minimum: 0, maximum: 1}
+cleanup:
+  - {id: cleanup-pause, kind: wait, seconds: 0.1}
+cleanup_policy: always

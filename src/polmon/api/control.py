@@ -27,7 +27,7 @@ from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
 from polmon.resources.policy import ResourceLimitError, directory_size_bytes
-from polmon.scenarios import ScenarioEngine, parse_scenario
+from polmon.scenarios import ScenarioEngine, dump_scenario, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation, ScenarioError
 from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
 from polmon.scenarios.models import ActionKind, InitialCondition, Scenario, ScenarioAction
@@ -62,7 +62,13 @@ class SyntheticScenarioExecutor:
     def execute(
         self, action: ScenarioAction, topology: Topology, timeout_seconds: float
     ) -> Observation:
-        del timeout_seconds
+        if action.kind is ActionKind.WAIT:
+            seconds = action.seconds or 0
+            if seconds > timeout_seconds:
+                time.sleep(max(0.0, timeout_seconds))
+                raise TimeoutError
+            time.sleep(seconds)
+            return Observation(action.id, True, "waited", {"duration_seconds": seconds})
         if action.kind is not ActionKind.ICMP_PROBE:
             return Observation(action.id, False, "unsupported")
         target = next(node for node in topology.nodes if node.id == action.target)
@@ -100,6 +106,13 @@ class ControlPlane:
             identity=lambda topology: topology.id,
         )
         self.topologies: dict[str, Topology] = self.topology_library.load_all()
+        self.scenario_library = YamlLibrary(
+            self.data_directory / "library" / "scenarios",
+            parse=parse_scenario,
+            dump=dump_scenario,
+            identity=lambda scenario: scenario.id,
+        )
+        self.scenarios: dict[str, Scenario] = self.scenario_library.load_all()
         self.deployments: dict[str, Orchestrator] = {}
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
@@ -228,6 +241,60 @@ class ControlPlane:
                 "problems": problems,
             },
         }
+
+    @staticmethod
+    def _describe_scenario(scenario: Scenario) -> dict[str, object]:
+        return {
+            "valid": True,
+            "scenario_id": scenario.id,
+            "yaml": dump_scenario(scenario),
+            "scenario": scenario.model_dump(mode="json", by_alias=True, exclude_none=True),
+        }
+
+    def load_scenario(self, source: str, scenario_id: str | None = None) -> dict[str, object]:
+        scenario = parse_scenario(source)
+        requested_id = scenario_id or scenario.id
+        self.scenario_library.put(requested_id, scenario)
+        with self._lock:
+            self.scenarios[scenario.id] = scenario
+        return {**self._describe_scenario(scenario), "persisted": True}
+
+    def list_scenarios(self) -> list[dict[str, object]]:
+        with self._lock:
+            scenarios = list(self.scenarios.values())
+        return [
+            {
+                "scenario_id": scenario.id,
+                "required_topology": scenario.required_topology,
+                "action_count": len(scenario.sequence),
+                "cleanup_action_count": len(scenario.cleanup_steps),
+                "permitted_actions": sorted(action.value for action in scenario.permitted_actions),
+            }
+            for scenario in sorted(scenarios, key=lambda item: item.id)
+        ]
+
+    def scenario_detail(self, scenario_id: str) -> dict[str, object]:
+        with self._lock:
+            scenario = self.scenarios.get(scenario_id)
+        if scenario is None:
+            raise ConfigurationError(
+                f"unknown scenario '{scenario_id}'",
+                message_code="scenario.unknown",
+                params={"scenario_id": scenario_id},
+            )
+        return self._describe_scenario(scenario)
+
+    def unload_scenario(self, scenario_id: str) -> dict[str, object]:
+        with self._lock:
+            if scenario_id not in self.scenarios:
+                raise ConfigurationError(
+                    f"unknown scenario '{scenario_id}'",
+                    message_code="scenario.unknown",
+                    params={"scenario_id": scenario_id},
+                )
+            self.scenarios.pop(scenario_id)
+            self.scenario_library.delete(scenario_id)
+        return {"scenario_id": scenario_id, "state": "deleted"}
 
     def _backend(self, topology: Topology):
         classes = {node.node_class for node in topology.nodes}

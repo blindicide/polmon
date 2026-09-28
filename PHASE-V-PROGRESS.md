@@ -1,12 +1,12 @@
 # Phase V progress
 
-Last updated: 2026-09-28 12:20Z (Codex, headless V.4 gate complete)
+Last updated: 2026-09-28 (Codex, headless V.5 gate complete)
 Branch: `phase-v-studio`
 Baseline: `main @ 634f49a` (`v0.4.1`)
 
-**READ THIS FIRST IF YOU ARE RESUMING:** V.4 is green and its final evidence is in
-`docs/evidence/phase-v/v4-vnc-headless-gate.txt`. The branch contains the earlier WIP preservation
-commit plus the completing V.4 fixes; the next milestone is V.5.
+**READ THIS FIRST IF YOU ARE RESUMING:** V.4 and V.5 are green. V.4 evidence is in
+`docs/evidence/phase-v/v4-vnc-headless-gate.txt`; V.5 evidence is in
+`docs/evidence/phase-v/v5-scenario-studio-gate.txt`. The next milestone is V.6.
 
 ## Verified
 
@@ -30,12 +30,16 @@ commit plus the completing V.4 fixes; the next milestone is V.5.
   a 1024x768 framebuffer and pointer event. `scripts/check.sh` = **424 passed / 18 deselected**;
   the privileged console/VNC suite = **4 passed**, with the wrapper proving host network unchanged
   and no platform lab resources remaining; i18n lint/completeness are clean.
+- **V.5** — scenario studio is complete: persistent scenario CRUD and restart-safe YAML library,
+  bounded `ssh_exec`/wait/catalogue parameters, timing/stdout assertions, cleanup steps, localized
+  step-list editor, and documented examples. The real L1 gate created the scenario through the API,
+  reloaded it after a fresh control-plane instance, passed the mixed ICMP/TCP/SSH/wait run, and
+  failed the deliberately wrong stdout assertion as designed; both runs cleaned up.
 
-## In flight — V.5 (scenario studio)
+## In flight — V.6 (detailed logs)
 
-V.4's completing commit is being prepared with its evidence and green gates. The next work is
-persistent scenario CRUD, the bounded `ssh_exec`/wait/assertion catalogue, and the scenario builder
-flow described in the mandate.
+V.5 is complete with headless-runnable evidence and green gates. The next work is the structured
+logging and Logs-page flow described in the mandate.
 
 **V.4 evidence retained:**
 
@@ -52,9 +56,10 @@ flow described in the mandate.
 
 ## Exact next step
 
-1. Commit V.4 with a conventional message using the already captured green gates and evidence,
-   then push `phase-v-studio`, superseding the WIP preservation commit.
-2. Implement and verify V.5 scenario authoring in order, then continue V.6 and V.7.
+1. Implement structured JSON-line logs, bounded files/ring buffer, API filters/stream, and the Logs
+   page for V.6.
+2. Run the V.6 real deployment/console/experiment correlation gate, commit conventionally, and push
+   `phase-v-studio`.
 
 ## Milestone status
 
@@ -63,8 +68,8 @@ flow described in the mandate.
 | V.1 | committed + pushed (`287f6b0`) | `ruff` + i18n clean; full gate re-run by supervisor: 423 passed / 16 deselected |
 | V.2 | committed + pushed (`d8f42be`) | `ruff` + i18n clean; `tests/gui/test_topology_studio.py` present |
 | V.3 | committed + pushed (`4686435`), **verified green** | `check.sh` 423 passed / 16 deselected; privileged console tests 2 passed; host network unchanged; i18n clean |
-| V.4 | **green; completing commit pending** | `v4-vnc-headless-gate.txt`: raw TCP + authenticated relay framebuffer/input, 424/18 rootless gate, 4 privileged tests, host network unchanged |
-| V.5 | not started | — |
+| V.4 | committed + pushed (`2decb06`), **green** | `v4-vnc-headless-gate.txt`: raw TCP + authenticated relay framebuffer/input, 424/18 rootless gate, 4 privileged tests, host network unchanged |
+| V.5 | **green; commit pending** | `v5-scenario-studio-gate.txt`: API/UI authoring, restart reload, real L1 pass/fail experiment, 428/19 rootless gate, host network unchanged |
 | V.6 | not started | — |
 | V.7 | not started | — |
 

@@ -100,6 +100,38 @@ def validate_scenario(document: YamlDocument, request: Request) -> dict[str, obj
     return control(request).validate_scenario(document.yaml)
 
 
+@router.post("/scenarios")
+def load_scenario(document: YamlDocument, request: Request) -> dict[str, object]:
+    return control(request).load_scenario(document.yaml)
+
+
+@router.post("/scenarios/import")
+def import_scenario(document: YamlDocument, request: Request) -> dict[str, object]:
+    return control(request).load_scenario(document.yaml)
+
+
+@router.get("/scenarios")
+def list_scenarios(request: Request) -> list[dict[str, object]]:
+    return control(request).list_scenarios()
+
+
+@router.get("/scenarios/{scenario_id}")
+def scenario_detail(scenario_id: TopologyId, request: Request) -> dict[str, object]:
+    return control(request).scenario_detail(scenario_id)
+
+
+@router.put("/scenarios/{scenario_id}")
+def put_scenario(
+    scenario_id: TopologyId, document: YamlDocument, request: Request
+) -> dict[str, object]:
+    return control(request).load_scenario(document.yaml, scenario_id)
+
+
+@router.delete("/scenarios/{scenario_id}")
+def delete_scenario(scenario_id: TopologyId, request: Request) -> dict[str, object]:
+    return control(request).unload_scenario(scenario_id)
+
+
 @router.post("/deployments/{topology_id}")
 def deploy(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).deploy(topology_id)
