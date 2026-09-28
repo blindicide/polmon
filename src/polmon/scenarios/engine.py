@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -83,13 +84,18 @@ class ScenarioEngine:
             )
         nodes = {node.id: node for node in topology.nodes}
         for action in scenario.sequence:
-            if action.source not in nodes or action.target not in nodes:
+            if action.kind is ActionKind.WAIT:
+                continue
+            if action.target not in nodes or (
+                action.kind in {ActionKind.ICMP_PROBE, ActionKind.TCP_PROBE}
+                and action.source not in nodes
+            ):
                 raise ScenarioError(
                     f"action '{action.id}' references a node outside the designated topology",
                     message_code="scenario.node_outside_topology",
                     params={"action": action.id},
                 )
-            if action.source == action.target:
+            if action.source is not None and action.source == action.target:
                 raise ScenarioError(
                     f"action '{action.id}' must use distinct source and target nodes",
                     message_code="scenario.same_source_target",
@@ -104,6 +110,34 @@ class ScenarioEngine:
                         message_code="scenario.undeclared_service",
                         params={"action": action.id, "service": action.service},
                     )
+            if action.kind is ActionKind.SSH_EXEC:
+                node = nodes[action.target]
+                if node.node_class.value != "l1":
+                    raise ScenarioError(
+                        f"action '{action.id}' requires an L1 target node",
+                        message_code="scenario.ssh_exec_requires_l1",
+                        params={"action": action.id},
+                    )
+                if not any(service.implementation == "ssh" for service in node.services):
+                    raise ScenarioError(
+                        f"action '{action.id}' targets a node without ssh service",
+                        message_code="scenario.ssh_service_missing",
+                        params={"action": action.id},
+                    )
+                if "host" in action.parameters and action.parameters["host"] not in nodes:
+                    raise ScenarioError(
+                        f"action '{action.id}' references an unknown command target",
+                        message_code="scenario.command_target_unknown",
+                        params={"action": action.id},
+                    )
+        for action in scenario.cleanup_steps:
+            if action.kind is not ActionKind.WAIT and action.target not in nodes:
+                raise ScenarioError(
+                    f"cleanup action '{action.id}' references a node outside the designated "
+                    "topology",
+                    message_code="scenario.node_outside_topology",
+                    params={"action": action.id},
+                )
 
     def run(
         self,
@@ -200,6 +234,17 @@ class ScenarioEngine:
                         else ExecutionStatus.FAILED
                     )
         finally:
+            for cleanup_action in scenario.cleanup_steps:
+                try:
+                    executor.execute(cleanup_action, topology, max(0.1, scenario.timeout_seconds))
+                except Exception as error:
+                    failed(
+                        f"cleanup step '{cleanup_action.id}' failed: {type(error).__name__}",
+                        "experiment.cleanup_step_failed",
+                        action=cleanup_action.id,
+                        cause=type(error).__name__,
+                    )
+                    status = ExecutionStatus.FAILED
             should_clean = scenario.cleanup_policy is CleanupPolicy.ALWAYS or (
                 scenario.cleanup_policy is CleanupPolicy.ON_FAILURE
                 and status is not ExecutionStatus.SUCCEEDED
@@ -230,4 +275,21 @@ class ScenarioEngine:
     @staticmethod
     def _matches(condition: Condition, observations: dict[str, Observation]) -> bool:
         observation = observations.get(condition.action)
-        return observation is not None and getattr(observation, condition.field) == condition.equals
+        if observation is None:
+            return False
+        if condition.field in {"success", "detail"}:
+            return getattr(observation, condition.field) == condition.equals
+        actual = observation.data.get(condition.field)
+        if condition.field == "duration_seconds":
+            if not isinstance(actual, int | float):
+                return False
+            if condition.equals is not None and actual != condition.equals:
+                return False
+            if condition.minimum is not None and actual < condition.minimum:
+                return False
+            return condition.maximum is None or actual <= condition.maximum
+        if not isinstance(actual, str):
+            return False
+        if condition.equals is not None and actual != condition.equals:
+            return False
+        return condition.pattern is None or re.search(condition.pattern, actual) is not None

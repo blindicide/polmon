@@ -41,7 +41,7 @@ def build_topology(endpoint_count: int) -> Topology:
                     id="eth0",
                     network="benchmark",
                     mac=f"02:00:00:01:{index // 256:02x}:{index % 256:02x}",
-                    ipv4=f"10.240.0.{index + 1}",
+                    ipv4=f"192.168.239.{index + 1}",
                 )
             ],
         )
@@ -49,7 +49,7 @@ def build_topology(endpoint_count: int) -> Topology:
     ]
     return Topology(
         id=f"benchmark-l0-{endpoint_count}",
-        networks=[Network(id="benchmark", ipv4_subnet="10.240.0.0/24")],
+        networks=[Network(id="benchmark", ipv4_subnet="192.168.239.0/24")],
         nodes=nodes,
     )
 

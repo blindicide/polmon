@@ -8,8 +8,8 @@ from polmon.networking.ethernet import EthernetFrame
 from polmon.networking.icmp import ECHO_REPLY, ECHO_REQUEST, IcmpEcho
 from polmon.networking.ipv4 import IPv4Packet
 
-L0_IP, L0_MAC = IPv4Address("10.89.0.10"), "02:00:00:89:00:01"
-L1_IP, L1_MAC = IPv4Address("10.89.0.20"), "02:00:00:89:00:02"
+L0_IP, L0_MAC = IPv4Address("192.168.237.10"), "02:00:00:89:00:01"
+L1_IP, L1_MAC = IPv4Address("192.168.237.20"), "02:00:00:89:00:02"
 
 
 class QueueTap:
@@ -72,8 +72,8 @@ def test_ignores_frames_it_must_not_answer() -> None:
     tap = QueueTap([])
     responder = responder_for(tap)
     ignored = [
-        arp_request(IPv4Address("10.89.0.99")),  # not an L0 address
-        echo_request(L0_MAC, IPv4Address("10.89.0.99")),
+        arp_request(IPv4Address("192.168.237.99")),  # not an L0 address
+        echo_request(L0_MAC, IPv4Address("192.168.237.99")),
         echo_request("02:00:00:89:00:77", L0_IP),  # addressed to another MAC
         b"\x00" * 10,  # malformed
     ]
@@ -82,7 +82,7 @@ def test_ignores_frames_it_must_not_answer() -> None:
 
 
 def test_reader_thread_answers_and_forwards_everything_else() -> None:
-    other = arp_request(IPv4Address("10.89.0.99"))
+    other = arp_request(IPv4Address("192.168.237.99"))
     tap = QueueTap([arp_request(L0_IP), other])
     captured = []
     responder = TapResponder(tap, lambda: {L0_IP: L0_MAC}, on_frame=captured.append)

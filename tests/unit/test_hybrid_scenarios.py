@@ -38,21 +38,21 @@ TOPOLOGY = parse_topology(
     """id: mixed
 networks:
   - id: lab
-    ipv4_subnet: 10.90.0.0/24
+    ipv4_subnet: 192.168.238.0/24
 nodes:
   - id: sensor-a
     class: l0
-    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:01", ipv4: 10.90.0.1}]
+    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:01", ipv4: 192.168.238.1}]
   - id: sensor-b
     class: l0
-    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:02", ipv4: 10.90.0.2}]
+    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:02", ipv4: 192.168.238.2}]
   - id: server-a
     class: l1
-    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:11", ipv4: 10.90.0.11}]
+    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:11", ipv4: 192.168.238.11}]
     services: [{id: web, protocol: tcp, port: 8080, implementation: static_http}]
   - id: server-b
     class: l1
-    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:12", ipv4: 10.90.0.12}]
+    interfaces: [{id: eth0, network: lab, mac: "02:00:00:90:00:12", ipv4: 192.168.238.12}]
 """
 )
 
@@ -90,8 +90,8 @@ def test_hybrid_executor_routes_each_path_to_its_real_transport() -> None:
     executor.execute(action(ActionKind.ICMP_PROBE, "sensor-a", "server-a"), TOPOLOGY, 5)
     executor.execute(action(ActionKind.ICMP_PROBE, "server-a", "server-b"), TOPOLOGY, 5)
     assert calls == [
-        ("tap", "sensor-a", "10.90.0.11"),
-        ("kernel", "server-a", "10.90.0.12"),
+        ("tap", "sensor-a", "192.168.238.11"),
+        ("kernel", "server-a", "192.168.238.12"),
     ]
     backend.destroy()
 
@@ -102,7 +102,7 @@ def test_hybrid_executor_reports_unsupported_paths_instead_of_emulating() -> Non
     backend.namespace.ping = lambda source, address: calls.append((source, address)) or True
     reverse = executor.execute(action(ActionKind.ICMP_PROBE, "server-a", "sensor-a"), TOPOLOGY, 5)
     assert (reverse.success, reverse.data["path"]) == (True, "l1->l0")
-    assert calls == [("server-a", "10.90.0.1")]  # the kernel pings; the TAP responder answers
+    assert calls == [("server-a", "192.168.238.1")]  # the kernel pings; the TAP responder answers
     for source, target in (("sensor-a", "server-a"), ("server-a", "sensor-a")):
         tcp = executor.execute(action(ActionKind.TCP_PROBE, source, target, "web"), TOPOLOGY, 5)
         assert (tcp.success, tcp.detail, tcp.data["protocol"]) == (

@@ -14,7 +14,7 @@ def arp_frame() -> bytes:
     from ipaddress import IPv4Address
 
     packet = ArpPacket.request(
-        "02:00:00:00:00:01", IPv4Address("10.0.0.1"), IPv4Address("10.0.0.2")
+        "02:00:00:00:00:01", IPv4Address("192.168.230.1"), IPv4Address("192.168.230.2")
     )
     return EthernetFrame(
         "ff:ff:ff:ff:ff:ff", "02:00:00:00:00:01", 0x0806, packet.to_bytes()

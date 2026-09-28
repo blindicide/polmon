@@ -8,6 +8,7 @@ from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.engine import SyntheticEngineError
 from polmon.backends.synthetic.protocols import SyntheticProtocolNetwork
+from polmon.scenarios.catalog import command_argv
 from polmon.scenarios.engine import Observation
 from polmon.scenarios.models import ActionKind, ScenarioAction
 from polmon.topology.models import NodeClass, Topology
@@ -20,6 +21,18 @@ class NamespaceScenarioExecutor:
     def execute(
         self, action: ScenarioAction, topology: Topology, timeout_seconds: float
     ) -> Observation:
+        if action.kind is ActionKind.WAIT:
+            seconds = action.seconds or 0
+            if seconds > timeout_seconds:
+                time.sleep(max(0.0, timeout_seconds))
+                raise TimeoutError
+            time.sleep(seconds)
+            return Observation(
+                action.id,
+                True,
+                "waited",
+                {"duration_seconds": seconds},
+            )
         nodes = {node.id: node for node in topology.nodes}
         target = nodes[action.target]
         address = str(target.interfaces[0].ipv4)
@@ -30,6 +43,23 @@ class NamespaceScenarioExecutor:
                 success,
                 "reachable" if success else "unreachable",
                 {"protocol": "icmp", "target": action.target},
+            )
+        if action.kind is ActionKind.SSH_EXEC:
+            addresses = {node.id: str(node.interfaces[0].ipv4) for node in topology.nodes}
+            argv = command_argv(action.command or "", action.parameters, addresses)
+            result = self.backend.ssh_command(action.target, argv, timeout=min(timeout_seconds, 60))
+            return Observation(
+                action.id,
+                result.returncode == action.expected_exit_status,
+                f"exit_status={result.returncode}",
+                {
+                    "command": action.command,
+                    "argv": argv,
+                    "exit_status": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "duration_seconds": result.duration_seconds,
+                },
             )
         service = next(item for item in target.services if item.id == action.service)
         deadline = time.monotonic() + min(timeout_seconds, 5.0)
@@ -76,7 +106,25 @@ class HybridScenarioExecutor:
     def execute(
         self, action: ScenarioAction, topology: Topology, timeout_seconds: float
     ) -> Observation:
+        if action.kind is ActionKind.WAIT:
+            seconds = action.seconds or 0
+            if seconds > timeout_seconds:
+                time.sleep(max(0.0, timeout_seconds))
+                raise TimeoutError
+            time.sleep(seconds)
+            return Observation(action.id, True, "waited", {"duration_seconds": seconds})
         nodes = {node.id: node for node in topology.nodes}
+        if action.kind is ActionKind.SSH_EXEC:
+            target = nodes[action.target]
+            if target.node_class is not NodeClass.L1:
+                return Observation(action.id, False, "unsupported")
+            observation = self.namespace.execute(action, topology, timeout_seconds)
+            return Observation(
+                observation.action_id,
+                observation.success,
+                observation.detail,
+                {**observation.data, "path": f"{target.node_class.value}"},
+            )
         source = nodes[action.source]
         target = nodes[action.target]
         path = f"{source.node_class.value}->{target.node_class.value}"

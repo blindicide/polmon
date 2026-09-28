@@ -79,9 +79,11 @@ retries every 5 s and disables actions until it is back). An older backend conne
 | Topologies (Ctrl+2) | Open YAML from the library folder or a file (Ctrl+O), edit with highlighting, validate on the backend (automatic while typing, or Ctrl+Shift+V). Errors list the field, message and line — double-click jumps to it. Inspect nodes, interfaces, MAC and IPv4 addresses, networks, and whether the topology fits the admission limits. *Load to backend*, *Deploy…*, save (Ctrl+S). |
 | Deployment (Ctrl+3) | Deploy (Ctrl+D), destroy (Ctrl+Shift+D), reset everything (Ctrl+Shift+R). A refused deployment names each violated limit. Owned resources and backend details of the selected deployment, and the live counters. Cancelling a deployment rolls it back when the backend call returns. |
 | Scenarios (Ctrl+4) | Open and validate a scenario against its topology (loaded, deployed, compatible). *Deploy required topology* when needed, then *Run experiment* (Ctrl+R): per-action status, progress with percent, step, elapsed time and ETA. *Cancel* (Esc) asks the backend to stop after the current action; a second Esc abandons waiting. |
-| Telemetry (Ctrl+5) | The experiment's event stream, live while it runs; filter by category and text; payload of the selected event; capture summary (frames, bytes, dropped, truncated). *Export CSV…* saves the rows shown; *Save capture…* downloads the PCAP. |
-| Reports (Ctrl+6) | Experiments on the backend (including those of earlier backend runs). Overall status, expected versus actual conditions, observations, errors, resource statistics, the Markdown report and the raw JSON; save as JSON or Markdown. |
-| Benchmarks (Ctrl+7) | Run a bounded benchmark job on the backend host with explicit limits (checked against the backend's own limits; one job at a time, never during an experiment), follow its progress, cancel it, and inspect retained results. |
+| Console (Ctrl+5) | Open one real SSH tab per L1 machine through the authenticated backend relay. The tab shows the normal name, ID and UUID; use command history, the basic-command palette, custom commands and Ctrl+C. Windows local mode refuses this honestly; connect to a remote Linux backend. |
+| Telemetry (Ctrl+6) | The experiment's event stream, live while it runs; filter by category and text; payload of the selected event; capture summary (frames, bytes, dropped, truncated). *Export CSV…* saves the rows shown; *Save capture…* downloads the PCAP. |
+| Logs (Ctrl+7) | Detailed structured backend records separate from telemetry. Filter by minimum level, source, deployment, node id/name/UUID and text; follow new records; inspect full JSON, copy a row, inspect on-disk file paths/sizes, and export the bounded selection. |
+| Reports (Ctrl+8) | Experiments on the backend (including those of earlier backend runs). Overall status, expected versus actual conditions, observations, errors, resource statistics, the Markdown report and the raw JSON; save as JSON or Markdown. |
+| Benchmarks | Run a bounded benchmark job on the backend host with explicit limits (checked against the backend's own limits; one job at a time, never during an experiment), follow its progress, cancel it, and inspect retained results. |
 
 Long operations run in the background: the status bar shows what is running with percent, step,
 elapsed time, ETA and a Cancel button, and the window stays responsive. When an experiment or a
@@ -102,7 +104,7 @@ and the task bar flashes. The *Activity* dock (Ctrl+Shift+L) logs every operatio
 | Ctrl+Shift+R | Reset the environment |
 | Ctrl+R | Run the experiment |
 | Esc | Cancel the running operation (twice: abandon) |
-| Ctrl+1 … Ctrl+7 | Switch page |
+| Ctrl+1 … Ctrl+8 | Switch page |
 | Ctrl+Shift+T | Toggle light/dark theme |
 | Ctrl+Shift+L | Show or hide the activity log |
 | Ctrl+Shift+U | Switch between Russian and English |

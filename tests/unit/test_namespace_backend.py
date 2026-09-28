@@ -154,10 +154,10 @@ def test_every_in_namespace_workload_runs_as_the_owner_not_root() -> None:
     backend.validate(topology)
     backend.create(topology)
     backend.start()
-    backend.ping("client", "10.88.0.20")
-    backend.probe_tcp("client", "10.88.0.20", 8080)
+    backend.ping("client", "192.168.236.20")
+    backend.probe_tcp("client", "192.168.236.20", 8080)
     with pytest.raises(ValueError):  # the fake runner prints no ping summary
-        backend.ping_statistics("client", "10.88.0.20", count=1)
+        backend.ping_statistics("client", "192.168.236.20", count=1)
     executions = [command for command, _, _ in runner.commands if command[1:3] == ["netns", "exec"]]
     assert len(executions) == 4  # service, ping, probe, ping statistics
     for command in executions:

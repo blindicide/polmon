@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import os
 import re
+import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -59,18 +62,30 @@ class NamespaceBackend:
         require_linux: bool = True,
         owner_uid: int | None = None,
         owner_gid: int | None = None,
+        run_directory: str | Path | None = None,
+        log_directory: str | Path | None = None,
     ) -> None:
         self.runner = runner or CommandRunner()
         self.python_executable = str(Path(python_executable or sys.executable).resolve())
         self.require_linux = require_linux
         self.owner_uid = owner_uid if owner_uid is not None else self._process_id("getuid")
         self.owner_gid = owner_gid if owner_gid is not None else self._process_id("getgid")
+        self.owner_name = (
+            importlib.import_module("pwd").getpwuid(self.owner_uid).pw_name
+            if sys.platform != "win32"
+            else ""
+        )
+        self.run_directory = Path(run_directory) if run_directory else None
+        self.log_directory = Path(log_directory) if log_directory else None
         self.topology: Topology | None = None
         self.names: NamespaceNames | None = None
         self.created_namespaces: set[str] = set()
         self.created_bridges: set[str] = set()
         self.created_veths: set[str] = set()
         self.services: dict[tuple[str, str], subprocess.Popen[bytes]] = {}
+        self.vnc_processes: dict[
+            str, tuple[subprocess.Popen[bytes], subprocess.Popen[bytes], subprocess.Popen[bytes]]
+        ] = {}
         self.running = False
 
     @staticmethod
@@ -115,10 +130,12 @@ class NamespaceBackend:
             raise ValueError("every L1 node requires at least one interface")
         for node in topology.nodes:
             for service in node.services:
-                if service.implementation != "static_http":
+                if service.implementation not in {"static_http", "ssh"}:
                     raise ValueError(f"unsupported built-in service '{service.implementation}'")
                 if service.protocol != "tcp":
-                    raise ValueError("built-in service 'static_http' is TCP only")
+                    raise ValueError("built-in namespace services are TCP only")
+                if service.implementation == "ssh" and shutil.which("sshd") is None:
+                    raise ValueError("console.sshd_missing")
         if not Path(self.python_executable).is_file():
             raise ValueError("configured Python executable does not exist")
         self.names = self._names(topology)
@@ -208,10 +225,24 @@ class NamespaceBackend:
             raise RuntimeError("namespace topology has not been created")
         for node in self.topology.nodes:
             for service in node.services:
-                self._start_service(node.id, service.id, service.port, str(node.interfaces[0].ipv4))
+                if service.implementation == "ssh":
+                    self._start_ssh(node.id, service.id, service.port, str(node.interfaces[0].ipv4))
+                else:
+                    self._start_service(
+                        node.id, service.id, service.port, str(node.interfaces[0].ipv4)
+                    )
         self.running = True
 
     def stop(self) -> None:
+        for processes in list(self.vnc_processes.values()):
+            for process in processes:
+                if process.poll() is None:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                        process.wait(timeout=3)
+                    except (PermissionError, ProcessLookupError, subprocess.TimeoutExpired):
+                        pass
+        self.vnc_processes.clear()
         for process in list(self.services.values()):
             poll = process.poll()
             if poll is None:
@@ -222,6 +253,107 @@ class NamespaceBackend:
                     pass
         self.services.clear()
         self.running = False
+
+    def start_vnc(self, node_id: str) -> dict[str, object]:
+        if self.run_directory is None:
+            raise RuntimeError("console.vnc_unavailable")
+        if self.topology is None:
+            raise RuntimeError("topology is unavailable")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None or node.node_class is not NodeClass.L1:
+            raise ValueError("console.l1_required")
+        address, port = self.vnc_service(node_id)
+        directory = self.run_directory / "vnc" / node_id
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        display = f":{100 + (int(secrets.token_hex(2), 16) % 800)}"
+        display_number = display[1:]
+        log = directory / "vnc.log"
+        stream = log.open("ab")
+        namespace = self._namespace(node_id)
+        xvfb = self.runner.start(
+            self._as_owner(
+                namespace,
+                "Xvfb",
+                display,
+                "-screen",
+                "0",
+                "1024x768x24",
+                "-nolisten",
+                "tcp",
+            ),
+            privileged=True,
+        )
+        xclock = self.runner.start(
+            self._as_owner(namespace, "env", f"DISPLAY={display}", "xclock", "-digital"),
+            privileged=True,
+        )
+        x11vnc = self.runner.start(
+            self._as_owner(
+                namespace, "env", f"DISPLAY={display}", "x11vnc", "-display", display,
+                "-rfbport", str(port), "-listen", address, "-forever", "-shared",
+                "-nopw", "-o", str(log),
+            ),
+            privileged=True,
+        )
+        stream.close()
+        self.vnc_processes[node_id] = (xvfb, xclock, x11vnc)
+        return {
+            "node_id": node_id,
+            "address": address,
+            "port": port,
+            "display": display,
+            "display_number": display_number,
+        }
+
+    def vnc_service(self, node_id: str) -> tuple[str, int]:
+        if self.topology is None:
+            raise ValueError("topology is unavailable")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ValueError("console.node_unknown")
+        address = str(node.interfaces[0].ipv4)
+        return address, 5900 + node.interfaces[0].ipv4.packed[-1]
+
+    def vnc_proxy_argv(self, node_id: str) -> list[str]:
+        address, port = self.vnc_service(node_id)
+        namespace = self._namespace(node_id)
+        proxy = "\n".join(
+            (
+                "import os, selectors, socket, sys, time",
+                "s = None",
+                "for _ in range(50):",
+                "    try:",
+                "        s = socket.create_connection((sys.argv[1], int(sys.argv[2])), .2)",
+                "        break",
+                "    except OSError:",
+                "        time.sleep(.1)",
+                "if s is None:",
+                "    raise SystemExit(1)",
+                "q = selectors.DefaultSelector()",
+                "q.register(s, selectors.EVENT_READ)",
+                "q.register(sys.stdin.buffer, selectors.EVENT_READ)",
+                "while True:",
+                "    for key, _ in q.select():",
+                "        data = (",
+                "            key.fileobj.recv(65536)",
+                "            if key.fileobj is s",
+                "            else os.read(key.fileobj.fileno(), 65536)",
+                "        )",
+                "        if not data:",
+                "            raise SystemExit",
+                "        try:",
+                "            if key.fileobj is s:",
+                "                sys.stdout.buffer.write(data)",
+                "                sys.stdout.buffer.flush()",
+                "            else:",
+                "                s.sendall(data)",
+                "        except OSError:",
+                "            raise SystemExit",
+            )
+        )
+        return [
+            "ip", "netns", "exec", namespace, sys.executable, "-u", "-c", proxy, address, str(port)
+        ]
 
     def destroy(self) -> None:
         self.stop()
@@ -347,7 +479,109 @@ class NamespaceBackend:
             "--port",
             str(port),
         )
-        self.services[(node_id, service_id)] = self.runner.start(command, privileged=True)
+        self.services[(node_id, service_id)] = self.runner.start(
+            command, privileged=True, **self._service_log_kwargs(node_id, service_id)
+        )
+
+    def _service_log_kwargs(self, node_id: str, service_id: str) -> dict[str, object]:
+        if self.log_directory is None:
+            return {}
+        return {
+            "log_path": self.log_directory / str(self.topology.id) / node_id / f"{service_id}.log",
+            "max_output_bytes": 128 * 1024,
+        }
+
+    def _start_ssh(self, node_id: str, service_id: str, port: int, address: str) -> None:
+        if self.run_directory is None:
+            raise RuntimeError("SSH service requires a deployment run directory")
+        directory = self.run_directory / "console"
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(directory, 0o700)
+        host_key = directory / "ssh_host_ed25519_key"
+        client_key = directory / "id_ed25519"
+        authorized = directory / "authorized_keys"
+        if not host_key.exists():
+            self.runner.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(host_key)])
+        if not client_key.exists():
+            self.runner.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(client_key)])
+        authorized.write_text(
+            client_key.with_suffix(".pub").read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        for secret in (host_key, client_key, authorized):
+            os.chmod(secret, 0o600)
+        config = directory / f"sshd-{node_id}.conf"
+        pid_file = directory / f"sshd-{node_id}.pid"
+        config.write_text(
+            "\n".join(
+                (
+                    f"Port {port}",
+                    f"ListenAddress {address}",
+                    f"HostKey {host_key}",
+                    f"PidFile {pid_file}",
+                    f"AuthorizedKeysFile {authorized}",
+                    "PasswordAuthentication no",
+                    "KbdInteractiveAuthentication no",
+                    "PermitRootLogin no",
+                    "UsePAM no",
+                    "StrictModes no",
+                    f"AllowUsers {self.owner_name}",
+                    "LogLevel VERBOSE",
+                    "PrintMotd no",
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(config, 0o600)
+        namespace = self._namespace(node_id)
+        sshd = shutil.which("sshd")
+        if sshd is None:
+            raise RuntimeError("console.sshd_missing")
+        command = ["ip", "netns", "exec", namespace, sshd, "-D", "-e", "-f", str(config)]
+        self.services[(node_id, service_id)] = self.runner.start(
+            command, privileged=True, **self._service_log_kwargs(node_id, service_id)
+        )
+
+    def ssh_service(self, node_id: str) -> tuple[str, int]:
+        if self.topology is None:
+            raise ValueError("topology is unavailable")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ValueError(f"unknown namespace node '{node_id}'")
+        service = next((item for item in node.services if item.implementation == "ssh"), None)
+        if service is None:
+            raise ValueError("console.ssh_service_missing")
+        return str(node.interfaces[0].ipv4), service.port
+
+    def ssh_command(self, node_id: str, argv: list[str], *, timeout: float = 10):
+        command = self.ssh_argv(node_id, interactive=False) + ["--", *argv]
+        return self.runner.run_bounded(command, privileged=True, timeout=timeout)
+
+    def ssh_argv(self, node_id: str, *, interactive: bool) -> list[str]:
+        if self.run_directory is None:
+            raise ValueError("console.ssh_unavailable")
+        address, port = self.ssh_service(node_id)
+        namespace = self._namespace(node_id)
+        key = self.run_directory / "console" / "id_ed25519"
+        command = self._as_owner(
+            namespace,
+            "ssh",
+            *(["-tt"] if interactive else []),
+            "-i",
+            str(key),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "LogLevel=ERROR",
+            "-p",
+            str(port),
+            f"{self.owner_name}@{address}",
+        )
+        return command
 
     def _namespace(self, node_id: str) -> str:
         if self.names is None or node_id not in self.names.namespaces:

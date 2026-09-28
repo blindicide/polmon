@@ -15,7 +15,7 @@ def l0_topology(count: int = 3):
                         "id": "eth0",
                         "network": "lab",
                         "mac": f"02:00:00:00:00:{index:02x}",
-                        "ipv4": f"10.60.0.{index}",
+                        "ipv4": f"192.168.233.{index}",
                     }
                 ],
             }
@@ -26,7 +26,7 @@ def l0_topology(count: int = 3):
         yaml.safe_dump(
             {
                 "id": "l0-only",
-                "networks": [{"id": "lab", "ipv4_subnet": "10.60.0.0/24"}],
+                "networks": [{"id": "lab", "ipv4_subnet": "192.168.233.0/24"}],
                 "nodes": nodes,
             }
         )

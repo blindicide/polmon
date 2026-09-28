@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
+import secrets
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
@@ -14,14 +18,17 @@ from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
+from polmon.console import ConsoleSessions
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
 from polmon.core.errors import ConfigurationError, PolmonError
+from polmon.core.logstore import StructuredLogStore
+from polmon.library import YamlLibrary
 from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
 from polmon.resources.policy import ResourceLimitError, directory_size_bytes
-from polmon.scenarios import ScenarioEngine, parse_scenario
+from polmon.scenarios import ScenarioEngine, dump_scenario, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation, ScenarioError
 from polmon.scenarios.executors import HybridScenarioExecutor, NamespaceScenarioExecutor
 from polmon.scenarios.models import ActionKind, InitialCondition, Scenario, ScenarioAction
@@ -29,6 +36,22 @@ from polmon.telemetry.models import EventCategory
 from polmon.telemetry.store import EXPERIMENT_ID, TelemetrySession, TelemetryStore
 from polmon.topology import dump_topology, parse_topology
 from polmon.topology.models import NodeClass, Topology
+
+CONSOLE_ARGUMENT = re.compile(r"^[A-Za-z0-9_./:@%+=,-]{1,256}$")
+CONSOLE_COMMANDS = {
+    "hostname",
+    "cat",
+    "ip",
+    "arp",
+    "ping",
+    "ss",
+    "netstat",
+    "ps",
+    "uptime",
+    "nc",
+    "false",
+    "sleep",
+}
 
 
 class SyntheticScenarioExecutor:
@@ -40,7 +63,13 @@ class SyntheticScenarioExecutor:
     def execute(
         self, action: ScenarioAction, topology: Topology, timeout_seconds: float
     ) -> Observation:
-        del timeout_seconds
+        if action.kind is ActionKind.WAIT:
+            seconds = action.seconds or 0
+            if seconds > timeout_seconds:
+                time.sleep(max(0.0, timeout_seconds))
+                raise TimeoutError
+            time.sleep(seconds)
+            return Observation(action.id, True, "waited", {"duration_seconds": seconds})
         if action.kind is not ActionKind.ICMP_PROBE:
             return Observation(action.id, False, "unsupported")
         target = next(node for node in topology.nodes if node.id == action.target)
@@ -68,8 +97,24 @@ class ControlPlane:
     ) -> None:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
+        self.logs = StructuredLogStore(self.data_directory / "logs")
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
-        self.topologies: dict[str, Topology] = {}
+        self.console_sessions = ConsoleSessions(self.data_directory / "logs" / "console")
+        self.vnc_sessions: dict[str, tuple[str, str]] = {}
+        self.topology_library = YamlLibrary(
+            self.data_directory / "library" / "topologies",
+            parse=parse_topology,
+            dump=dump_topology,
+            identity=lambda topology: topology.id,
+        )
+        self.topologies: dict[str, Topology] = self.topology_library.load_all()
+        self.scenario_library = YamlLibrary(
+            self.data_directory / "library" / "scenarios",
+            parse=parse_scenario,
+            dump=dump_scenario,
+            identity=lambda scenario: scenario.id,
+        )
+        self.scenarios: dict[str, Scenario] = self.scenario_library.load_all()
         self.deployments: dict[str, Orchestrator] = {}
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
@@ -84,6 +129,49 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+
+    def _node_context(self, topology_id: str, node_id: str | None) -> dict[str, object] | None:
+        if node_id is None:
+            return None
+        topology = self.topologies.get(topology_id)
+        node = (
+            next((item for item in topology.nodes if item.id == node_id), None)
+            if topology
+            else None
+        )
+        if node is None:
+            return {"id": node_id}
+        return {"id": node.id, "name": node.name, "uuid": str(node.uuid)}
+
+    def _log(
+        self,
+        level: str,
+        event: str,
+        message: str,
+        *,
+        topology_id: str | None = None,
+        node_id: str | None = None,
+        experiment_id: str | None = None,
+        session_id: str | None = None,
+        params: dict[str, object] | None = None,
+    ) -> None:
+        self.logs.emit(
+            level,
+            event,
+            message,
+            params=params,
+            deployment=topology_id,
+            topology=topology_id,
+            node=self._node_context(topology_id, node_id) if topology_id else None,
+            experiment=experiment_id,
+            session=session_id,
+        )
+
+    def logs_query(self, **filters: object) -> dict[str, object]:
+        return self.logs.query(**filters)  # type: ignore[arg-type]
+
+    def logs_files(self) -> dict[str, object]:
+        return self.logs.files()
 
     def capabilities(self) -> dict[str, object]:
         """Execution fidelity advertised through health/resources responses."""
@@ -129,11 +217,13 @@ class ControlPlane:
     def validate_topology(self, source: str) -> dict[str, object]:
         return self._describe(parse_topology(source))
 
-    def load_topology(self, source: str) -> dict[str, object]:
+    def load_topology(self, source: str, topology_id: str | None = None) -> dict[str, object]:
         topology = parse_topology(source)
+        requested_id = topology_id or topology.id
+        self.topology_library.put(requested_id, topology)
         with self._lock:
             self.topologies[topology.id] = topology
-        return self._describe(topology)
+        return {**self._describe(topology), "persisted": True}
 
     def list_topologies(self) -> list[dict[str, object]]:
         with self._lock:
@@ -161,7 +251,8 @@ class ControlPlane:
                     params={"topology_id": topology_id},
                 )
             self.topologies.pop(topology_id, None)
-        return {"topology_id": topology_id, "state": "unloaded"}
+            self.topology_library.delete(topology_id)
+        return {"topology_id": topology_id, "state": "deleted"}
 
     def topology_detail(self, topology_id: str) -> dict[str, object]:
         with self._lock:
@@ -196,6 +287,60 @@ class ControlPlane:
             },
         }
 
+    @staticmethod
+    def _describe_scenario(scenario: Scenario) -> dict[str, object]:
+        return {
+            "valid": True,
+            "scenario_id": scenario.id,
+            "yaml": dump_scenario(scenario),
+            "scenario": scenario.model_dump(mode="json", by_alias=True, exclude_none=True),
+        }
+
+    def load_scenario(self, source: str, scenario_id: str | None = None) -> dict[str, object]:
+        scenario = parse_scenario(source)
+        requested_id = scenario_id or scenario.id
+        self.scenario_library.put(requested_id, scenario)
+        with self._lock:
+            self.scenarios[scenario.id] = scenario
+        return {**self._describe_scenario(scenario), "persisted": True}
+
+    def list_scenarios(self) -> list[dict[str, object]]:
+        with self._lock:
+            scenarios = list(self.scenarios.values())
+        return [
+            {
+                "scenario_id": scenario.id,
+                "required_topology": scenario.required_topology,
+                "action_count": len(scenario.sequence),
+                "cleanup_action_count": len(scenario.cleanup_steps),
+                "permitted_actions": sorted(action.value for action in scenario.permitted_actions),
+            }
+            for scenario in sorted(scenarios, key=lambda item: item.id)
+        ]
+
+    def scenario_detail(self, scenario_id: str) -> dict[str, object]:
+        with self._lock:
+            scenario = self.scenarios.get(scenario_id)
+        if scenario is None:
+            raise ConfigurationError(
+                f"unknown scenario '{scenario_id}'",
+                message_code="scenario.unknown",
+                params={"scenario_id": scenario_id},
+            )
+        return self._describe_scenario(scenario)
+
+    def unload_scenario(self, scenario_id: str) -> dict[str, object]:
+        with self._lock:
+            if scenario_id not in self.scenarios:
+                raise ConfigurationError(
+                    f"unknown scenario '{scenario_id}'",
+                    message_code="scenario.unknown",
+                    params={"scenario_id": scenario_id},
+                )
+            self.scenarios.pop(scenario_id)
+            self.scenario_library.delete(scenario_id)
+        return {"scenario_id": scenario_id, "state": "deleted"}
+
     def _backend(self, topology: Topology):
         classes = {node.node_class for node in topology.nodes}
         if classes == {NodeClass.L0}:
@@ -225,7 +370,14 @@ class ControlPlane:
                 params={"checks": unavailable},
             )
         if classes == {NodeClass.L1}:
-            return NamespaceBackend()
+            return NamespaceBackend(
+                run_directory=self.data_directory
+                / "runs"
+                / "deployments"
+                / topology.id
+                / secrets.token_hex(6),
+                log_directory=self.data_directory / "logs" / "services",
+            )
         if classes <= {NodeClass.L0, NodeClass.L1}:
             return HybridBackend()
         raise ConfigurationError(
@@ -247,6 +399,13 @@ class ControlPlane:
                 )
             deployed = [self._topology(item) for item in self.deployments]
             self.admission.admit_topology(topology, deployed)
+            self._log(
+                "INFO",
+                "lab.provision.start",
+                "provisioning topology",
+                topology_id=topology.id,
+                params={"node_count": len(topology.nodes), "network_count": len(topology.networks)},
+            )
             control = Orchestrator(topology, self._backend(topology))
             started = time.perf_counter()
             try:
@@ -258,6 +417,36 @@ class ControlPlane:
                 raise
             self.deployment_seconds[topology_id] = time.perf_counter() - started
             self.deployments[topology_id] = control
+            for node in topology.nodes:
+                self._log(
+                    "INFO",
+                    "lab.provision.complete",
+                    "node provisioned",
+                    topology_id=topology_id,
+                    node_id=node.id,
+                )
+                for interface in node.interfaces:
+                    self._log(
+                        "INFO",
+                        "lab.interface.up",
+                        "interface is up",
+                        topology_id=topology_id,
+                        node_id=node.id,
+                        params={"interface": interface.id, "network": interface.network},
+                    )
+                for service in node.services:
+                    self._log(
+                        "INFO",
+                        "lab.service.start",
+                        "service started",
+                        topology_id=topology_id,
+                        node_id=node.id,
+                        params={
+                            "service": service.id,
+                            "implementation": service.implementation,
+                            "port": service.port,
+                        },
+                    )
             return self.deployment(topology_id)
 
     def deployment(self, topology_id: str) -> dict[str, object]:
@@ -279,13 +468,269 @@ class ControlPlane:
         }
 
     def destroy(self, topology_id: str) -> dict[str, object]:
+        topology = self.topologies.get(topology_id)
+        self._log("INFO", "lab.teardown.start", "tearing down topology", topology_id=topology_id)
+        self.console_sessions.close_topology(topology_id)
         with self._lock:
             control = self.deployments.get(topology_id)
             if control is not None:
                 control.destroy()
                 self.deployments.pop(topology_id, None)
                 self.deployment_seconds.pop(topology_id, None)
+        if topology is not None:
+            for node in topology.nodes:
+                self._log(
+                    "INFO",
+                    "lab.teardown.complete",
+                    "node torn down",
+                    topology_id=topology_id,
+                    node_id=node.id,
+                )
         return {"topology_id": topology_id, "state": "destroyed"}
+
+    def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
+        topology = self._topology(topology_id)
+        node = next((item for item in topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ConfigurationError(
+                "unknown topology node",
+                message_code="console.node_unknown",
+                params={"node": node_id},
+            )
+        sshd = shutil.which("sshd")
+        ssh = shutil.which("ssh")
+        node_supported = node.node_class is NodeClass.L1
+        service = next((item for item in node.services if item.implementation == "ssh"), None)
+        reasons = []
+        if not node_supported:
+            reasons.append("console.l1_required")
+        if sshd is None:
+            reasons.append("console.sshd_missing")
+        if ssh is None:
+            reasons.append("console.ssh_client_missing")
+        if service is None:
+            reasons.append("console.ssh_service_missing")
+        checks = fidelity_readiness()["checks"]
+        vnc_reasons = [
+            f"console.{name}_missing"
+            for name in ("Xvfb", "x11vnc", "xclock")
+            if not bool(checks[f"tool_{name}"]["ok"])  # type: ignore[index]
+        ]
+        if not node_supported:
+            vnc_reasons.insert(0, "console.l1_required")
+        return {
+            "topology_id": topology_id,
+            "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
+            "ssh": {"available": not reasons, "port": service.port if service else None},
+            "vnc": {
+                "available": not vnc_reasons,
+                "display_stack": "Xvfb + x11vnc + xclock",
+                "reason_codes": vnc_reasons,
+            },
+            "reason_codes": reasons,
+        }
+
+    def console_vnc_start(self, topology_id: str, node_id: str) -> dict[str, object]:
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["vnc"]["reason_codes"]
+        if reasons:
+            messages = {
+                "console.l1_required": "VNC requires an L1 node",
+                "console.Xvfb_missing": "Xvfb is missing",
+                "console.x11vnc_missing": "x11vnc is missing; install package x11vnc",
+                "console.xclock_missing": "xclock is missing; install package x11-apps",
+            }
+            reason = str(reasons[0])
+            raise ConfigurationError(
+                messages.get(reason, "VNC prerequisites are unavailable"), message_code=reason
+            )
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        session = secrets.token_urlsafe(24)
+        display = control.backend.start_vnc(node_id)
+        self.vnc_sessions[session] = (topology_id, node_id)
+        return {
+            "session_id": session,
+            "node": readiness["node"],
+            "display": display,
+            "relay_path": f"/v1/deployments/{topology_id}/nodes/{node_id}/console/vnc/{session}",
+        }
+
+    async def console_vnc_relay(self, session_id: str, websocket) -> None:  # noqa: ANN001
+        session = self.vnc_sessions.get(session_id)
+        if session is None:
+            await websocket.close(code=4404)
+            return
+        topology_id, node_id = session
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            await websocket.close(code=4409)
+            return
+        process = await asyncio.create_subprocess_exec(
+            "sudo", "-n", *control.backend.vnc_proxy_argv(node_id),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        )
+        async def from_client() -> None:
+            while True:
+                data = await websocket.receive_bytes()
+                process.stdin.write(data)
+                await process.stdin.drain()
+        async def from_vnc() -> None:
+            while True:
+                data = await process.stdout.read(65536)
+                if not data:
+                    return
+                await websocket.send_bytes(data)
+        client_task = asyncio.create_task(from_client())
+        vnc_task = asyncio.create_task(from_vnc())
+        try:
+            await asyncio.wait(
+                (client_task, vnc_task), return_when=asyncio.FIRST_COMPLETED
+            )
+        except Exception:
+            pass
+        finally:
+            client_task.cancel()
+            vnc_task.cancel()
+            await asyncio.gather(client_task, vnc_task, return_exceptions=True)
+            if process.stdin is not None:
+                process.stdin.close()
+            if process.returncode is None:
+                process.terminate()
+            await process.wait()
+            process._transport.close()  # type: ignore[attr-defined]
+            await asyncio.sleep(0)
+
+    @staticmethod
+    def _raise_console_reason(reason: str) -> None:
+        if reason == "console.l1_required":
+            raise ConfigurationError(
+                "SSH console access requires an L1 node", message_code="console.l1_required"
+            )
+        if reason == "console.sshd_missing":
+            raise ConfigurationError(
+                "OpenSSH server is missing", message_code="console.sshd_missing"
+            )
+        if reason == "console.ssh_client_missing":
+            raise ConfigurationError(
+                "OpenSSH client is missing", message_code="console.ssh_client_missing"
+            )
+        if reason == "console.ssh_service_missing":
+            raise ConfigurationError(
+                "the node has no ssh service", message_code="console.ssh_service_missing"
+            )
+        raise ConfigurationError(
+            "the deployment has no SSH run directory", message_code="console.ssh_unavailable"
+        )
+
+    def console_exec(
+        self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float
+    ) -> dict[str, object]:
+        if not argv or argv[0] not in CONSOLE_COMMANDS:
+            raise ConfigurationError(
+                "command is outside the bounded console catalogue",
+                message_code="console.command_not_allowed",
+            )
+        if any(not CONSOLE_ARGUMENT.fullmatch(argument) for argument in argv):
+            raise ConfigurationError(
+                "console arguments contain unsupported characters",
+                message_code="console.argument_invalid",
+            )
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["reason_codes"]
+        if reasons:
+            self._raise_console_reason(str(reasons[0]))
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        result = control.backend.ssh_command(node_id, argv, timeout=timeout_seconds)
+        node = next(item for item in self.topologies[topology_id].nodes if item.id == node_id)
+        self._log(
+            "INFO",
+            "console.command",
+            "console command completed",
+            topology_id=topology_id,
+            node_id=node_id,
+            params={
+                "argv": argv,
+                "exit_status": result.returncode,
+                "duration_seconds": result.duration_seconds,
+                "stderr_excerpt": result.stderr[:1_000],
+            },
+        )
+        return {
+            "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
+            "argv": argv,
+            "exit_status": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "duration_seconds": result.duration_seconds,
+            "truncated": result.truncated,
+            "timed_out": result.timed_out,
+        }
+
+    def console_session_create(self, topology_id: str, node_id: str) -> dict[str, object]:
+        readiness = self.console_readiness(topology_id, node_id)
+        reasons = readiness["reason_codes"]
+        if reasons:
+            self._raise_console_reason(str(reasons[0]))
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        result = self.console_sessions.create(topology_id, node_id, control.backend)
+        result["node"] = readiness["node"]
+        self._log(
+            "INFO",
+            "console.session.start",
+            "interactive console session started",
+            topology_id=topology_id,
+            node_id=node_id,
+            session_id=str(result["session_id"]),
+        )
+        return result
+
+    def console_session(self, session_id: str, after: int = 0) -> dict[str, object]:
+        return self.console_sessions.get(session_id, after)
+
+    def console_session_input(self, session_id: str, data: str) -> dict[str, object]:
+        current = self.console_sessions.get(session_id)
+        result = self.console_sessions.input(session_id, data)
+        self._log(
+            "INFO",
+            "console.command",
+            "interactive console input sent",
+            topology_id=str(current["topology_id"]),
+            node_id=str(current["node_id"]),
+            session_id=session_id,
+            params={"input_excerpt": data[:1_000]},
+        )
+        return result
+
+    def console_session_delete(self, session_id: str) -> dict[str, object]:
+        current = self.console_sessions.get(session_id)
+        result = self.console_sessions.delete(session_id)
+        self._log(
+            "INFO",
+            "console.session.end",
+            "interactive console session closed",
+            topology_id=str(current["topology_id"]),
+            node_id=str(current["node_id"]),
+            session_id=session_id,
+        )
+        return result
+
+    def console_transcript(self, session_id: str) -> dict[str, object]:
+        return self.console_sessions.transcript(session_id)
 
     def reset_all(self) -> dict[str, object]:
         """Best-effort teardown of every owned deployment while preserving definitions."""
@@ -512,6 +957,19 @@ class ControlPlane:
         )
 
         def action_started(index: int, action: ScenarioAction) -> None:
+            self._log(
+                "INFO",
+                "experiment.action.start",
+                "scenario action started",
+                topology_id=topology_id,
+                node_id=action.target,
+                experiment_id=experiment_id,
+                params={
+                    "action": action.id,
+                    "kind": action.kind.value,
+                    "resolved_target": action.target,
+                },
+            )
             with self._lock:
                 progress = self.progress.get(experiment_id)
                 if progress is not None:
@@ -526,6 +984,23 @@ class ControlPlane:
                     "success": observation.success,
                     "detail": observation.detail,
                     **observation.data,
+                },
+            )
+            self._log(
+                "INFO" if observation.success else "WARNING",
+                "experiment.action.end",
+                "scenario action completed",
+                topology_id=topology_id,
+                node_id=action.target,
+                experiment_id=experiment_id,
+                params={
+                    "action": action.id,
+                    "kind": action.kind.value,
+                    "success": observation.success,
+                    "detail": observation.detail,
+                    "duration_seconds": observation.data.get("duration_seconds"),
+                    "exit_status": observation.data.get("exit_status"),
+                    "stderr_excerpt": str(observation.data.get("stderr", ""))[:1_000],
                 },
             )
             with self._lock:
@@ -655,6 +1130,7 @@ class ControlPlane:
             engine.cancel()
         for thread in threads:
             thread.join(timeout=timeout)
+        self.console_sessions.close()
         self.benchmarks.shutdown()
         return self.reset_all()
 

@@ -34,6 +34,13 @@ time, backend refusals rendered from stable message codes — and redesigns its 
 tokens, dark navigation, cards and metric tiles, empty/loading/error states, ≥ 4.5:1 contrast).
 Visual system, glossary and before/after screenshots: [docs/UI-GUIDE.md](docs/UI-GUIDE.md).
 
+Phase V (v0.5.0) adds the operator workflow: Topology Studio with persistent named-node and UUID
+identity, namespace SSH and VNC console access, an authored scenario library with bounded actions
+and assertions, and detailed structured logs with correlation, rotating service output, API
+streaming and a localized Logs page. The headless evidence, real privileged gates and known
+limitations are recorded in [docs/milestones/v0.5.0.md](docs/milestones/v0.5.0.md) and
+[docs/evidence/phase-v/](docs/evidence/phase-v/).
+
 ## Which download?
 
 Every [release](https://github.com/blindicide/polmon/releases) carries these assets and a
@@ -94,6 +101,6 @@ variables or credentials. Add `--lab` for a read-only check that this host can r
 laboratory (tools, `/dev/net/tun`, ping's `cap_net_raw`, passwordless `sudo ip`); it exits 1 when
 not ready. The backend emits structured JSON startup and shutdown logs.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md), and
-[SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
+See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
+[docs/LOGS.md](docs/LOGS.md), and [SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
 the repository owner makes an explicit licensing decision.

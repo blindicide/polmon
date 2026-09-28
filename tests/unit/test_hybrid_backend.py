@@ -145,7 +145,7 @@ class PeerTap(FakeTap):
     """A TAP whose far side behaves like one L1 host: answers ARP and ICMP echo requests."""
 
     def __init__(
-        self, name: str, *, peer_ip: str = "10.89.0.20", peer_mac: str = "02:00:00:89:00:02"
+        self, name: str, *, peer_ip: str = "192.168.237.20", peer_mac: str = "02:00:00:89:00:02"
     ):
         super().__init__(name)
         from collections import deque
@@ -211,11 +211,11 @@ def test_ping_l1_completes_arp_and_icmp_across_the_tap_and_captures_frames() -> 
         return taps[-1]
 
     backend = hybrid_with(factory)
-    assert backend.ping_l1("synthetic", "10.89.0.20") is True
+    assert backend.ping_l1("synthetic", "192.168.237.20") is True
     # ARP request, ICMP request written; unrelated frames were skipped while matching replies.
     assert len(taps[0].written) == 2
     assert len(backend.capture) >= 4
-    assert backend.ping_l1("synthetic", "10.89.0.20") is True  # repeatable
+    assert backend.ping_l1("synthetic", "192.168.237.20") is True  # repeatable
     backend.destroy()
 
 
@@ -224,11 +224,11 @@ def test_ping_l1_times_out_without_an_answer_and_rejects_unknown_sources() -> No
 
     from polmon.backends.synthetic.engine import SyntheticEngineError
 
-    backend = hybrid_with(lambda name: PeerTap(name, peer_ip="10.89.0.99"))
+    backend = hybrid_with(lambda name: PeerTap(name, peer_ip="192.168.237.99"))
     with pytest.raises(SyntheticEngineError, match="timed out"):
-        backend.ping_l1("synthetic", "10.89.0.20", timeout=0.05)
+        backend.ping_l1("synthetic", "192.168.237.20", timeout=0.05)
     with pytest.raises(SyntheticEngineError):
-        backend.ping_l1("no-such-endpoint", "10.89.0.20")
+        backend.ping_l1("no-such-endpoint", "192.168.237.20")
     backend.destroy()
 
 

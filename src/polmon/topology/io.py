@@ -88,9 +88,12 @@ def validation_errors(error: ValidationError) -> list[dict[str, object]]:
             params = {
                 name: str(context[name]) for name in CONTEXT_PARAMETERS if name in context
             }
+        location = ".".join(str(part) for part in item["loc"])
+        if code in {"topology.address_outside_profile", "topology.address_outside_lab"}:
+            location = f"networks.{params.get('network_index', 0)}.ipv4_subnet"
         items.append(
             {
-                "location": ".".join(str(part) for part in item["loc"]),
+                "location": location,
                 "message": item["msg"],
                 "message_code": code,
                 "params": params,
@@ -99,7 +102,7 @@ def validation_errors(error: ValidationError) -> list[dict[str, object]]:
     return items
 
 
-def parse_topology(text: str) -> Topology:
+def parse_topology(text: str, *, migration: bool = False) -> Topology:
     try:
         raw = yaml.load(text, Loader=UniqueKeyLoader)
         if not isinstance(raw, dict):
@@ -107,6 +110,11 @@ def parse_topology(text: str) -> Topology:
                 "topology document must be a YAML mapping",
                 message_code="topology.not_mapping",
             )
+        if migration:
+            # v0.4 documents had no discriminator and accepted the broader ranges.
+            # The migration path opts into that legacy parser context only long enough
+            # to produce a default-profile document.
+            raw.setdefault("address_space", "rfc1918")
         return Topology.model_validate(raw)
     except ConfigurationError:
         raise

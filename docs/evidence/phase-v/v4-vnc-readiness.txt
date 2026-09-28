@@ -1,0 +1,19 @@
+V.4 prerequisite evidence captured on 2026-09-28
+
+$ sudo -n apt-get install -y x11vnc
+...
+Setting up x11vnc (0.9.16-10) ...
+
+$ command -v Xvfb x11vnc xclock sshd ssh ip
+/usr/bin/Xvfb
+/usr/bin/x11vnc
+/usr/bin/xclock
+/usr/sbin/sshd
+/usr/bin/ssh
+/usr/sbin/ip
+
+VNC is installable and the real end-to-end gate is recorded in v4-vnc-headless-gate.txt.
+The server uses an authenticated relay key-only path: x11vnc is not exposed on the host, and the
+API bearer token plus opaque relay session identifier are required to start the proxy.
+Visual/interactive validation is intentionally omitted on this headless host with reason code
+v4.no_visual_validation_on_headless_server.

@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from enum import StrEnum
 from ipaddress import IPv4Address, IPv4Network
+from uuid import RFC_4122, UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from polmon.core.errors import CodedValueError
 
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
-# Controlled laboratory address space (SECURITY.md): RFC 1918 private ranges and the RFC 2544
-# benchmarking range. Public, shared (100.64.0.0/10), loopback, link-local, and multicast ranges
-# are rejected; Phase I has no configuration that authorises external addresses.
-LAB_IPV4_RANGES = (
+# Explicit compatibility address space. New documents default to the narrower eleven-/24 profile.
+RFC1918_LAB_RANGES = (
     IPv4Network("10.0.0.0/8"),
     IPv4Network("172.16.0.0/12"),
     IPv4Network("192.168.0.0/16"),
     IPv4Network("198.18.0.0/15"),
 )
+LAB_ADDRESS_PROFILE = tuple(IPv4Network(f"192.168.{octet}.0/24") for octet in range(230, 241))
 MAC_ADDRESS = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
 
 
@@ -40,6 +41,11 @@ class Protocol(StrEnum):
     UDP = "udp"
 
 
+class AddressSpace(StrEnum):
+    LAB_PROFILE = "lab-profile"
+    RFC1918 = "rfc1918"
+
+
 def _identifier(value: str) -> str:
     if not IDENTIFIER.fullmatch(value):
         raise CodedValueError(
@@ -55,10 +61,15 @@ class ResourceRequirements(StrictModel):
     disk_mb: int = Field(default=1, ge=0, le=16_777_216)
 
 
+class LayoutPosition(StrictModel):
+    x: float = Field(ge=-1_000_000, le=1_000_000)
+    y: float = Field(ge=-1_000_000, le=1_000_000)
+
+
 class ServiceDefinition(StrictModel):
     id: str
     protocol: Protocol
-    port: int = Field(ge=1, le=65535)
+    port: int = Field(default=22, ge=1, le=65535)
     implementation: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,31}$")
 
     _validate_id = field_validator("id")(_identifier)
@@ -76,20 +87,6 @@ class Network(StrictModel):
         if isinstance(value, str):
             return IPv4Network(value, strict=True)
         return value
-
-    @field_validator("ipv4_subnet")
-    @classmethod
-    def require_laboratory_range(cls, value: IPv4Network) -> IPv4Network:
-        if not any(value.subnet_of(allowed) for allowed in LAB_IPV4_RANGES):
-            allowed = ", ".join(str(item) for item in LAB_IPV4_RANGES)
-            raise CodedValueError(
-                f"{value} is outside the controlled laboratory ranges ({allowed}); external "
-                "addresses are not authorised",
-                "topology.address_outside_lab",
-                address=value, allowed=allowed,
-            )
-        return value
-
 
 class Interface(StrictModel):
     id: str
@@ -116,6 +113,9 @@ class Interface(StrictModel):
 
 class Node(StrictModel):
     id: str
+    name: str | None = None
+    uuid: UUID = Field(default_factory=uuid4)
+    layout: LayoutPosition | None = None
     node_class: NodeClass = Field(alias="class")
     interfaces: list[Interface] = Field(default_factory=list)
     resources: ResourceRequirements | None = None
@@ -123,8 +123,32 @@ class Node(StrictModel):
 
     _validate_id = field_validator("id")(_identifier)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not 1 <= len(value) <= 64:
+            raise CodedValueError(
+                "machine name must contain 1 to 64 characters", "topology.name_length"
+            )
+        if any(unicodedata.category(character).startswith("C") for character in value):
+            raise CodedValueError(
+                "machine name must not contain control characters", "topology.name_control"
+            )
+        return value
+
+    @field_validator("uuid")
+    @classmethod
+    def require_uuid4(cls, value: UUID) -> UUID:
+        if value.version != 4 or value.variant != RFC_4122:
+            raise CodedValueError("machine UUID must be RFC 4122 v4", "topology.uuid_not_v4")
+        return value
+
     @model_validator(mode="after")
     def validate_node(self) -> Node:
+        if self.name is None:
+            self.name = self.id
         interface_ids = [interface.id for interface in self.interfaces]
         if len(interface_ids) != len(set(interface_ids)):
             raise CodedValueError(
@@ -173,6 +197,7 @@ DEFAULT_RESOURCES = {
 
 class Topology(StrictModel):
     id: str
+    address_space: AddressSpace = AddressSpace.LAB_PROFILE
     networks: list[Network]
     nodes: list[Node]
 
@@ -186,6 +211,42 @@ class Topology(StrictModel):
             raise CodedValueError("duplicate network identifiers", "topology.duplicate_network_ids")
         if len(node_ids) != len(set(node_ids)):
             raise CodedValueError("duplicate node identifiers", "topology.duplicate_node_ids")
+        node_names = [node.name.casefold() for node in self.nodes if node.name is not None]
+        if len(node_names) != len(set(node_names)):
+            raise CodedValueError(
+                "machine names must be unique ignoring case", "topology.duplicate_node_names"
+            )
+        node_uuids = [node.uuid for node in self.nodes]
+        if len(node_uuids) != len(set(node_uuids)):
+            raise CodedValueError("duplicate machine UUIDs", "topology.duplicate_node_uuids")
+
+        allowed_ranges = (
+            LAB_ADDRESS_PROFILE
+            if self.address_space is AddressSpace.LAB_PROFILE
+            else RFC1918_LAB_RANGES
+        )
+        for network_index, network in enumerate(self.networks):
+            if not any(network.ipv4_subnet.subnet_of(allowed) for allowed in allowed_ranges):
+                allowed = ", ".join(str(item) for item in allowed_ranges)
+                if self.address_space is AddressSpace.LAB_PROFILE:
+                    raise CodedValueError(
+                        f"{network.ipv4_subnet} is outside address space '{self.address_space}' "
+                        f"({allowed})",
+                        "topology.address_outside_profile",
+                        address=network.ipv4_subnet,
+                        address_space=self.address_space,
+                        allowed=allowed,
+                        network_index=network_index,
+                    )
+                raise CodedValueError(
+                    f"{network.ipv4_subnet} is outside address space '{self.address_space}' "
+                    f"({allowed})",
+                    "topology.address_outside_lab",
+                    address=network.ipv4_subnet,
+                    address_space=self.address_space,
+                    allowed=allowed,
+                    network_index=network_index,
+                )
 
         for index, left in enumerate(self.networks):
             for right in self.networks[index + 1 :]:

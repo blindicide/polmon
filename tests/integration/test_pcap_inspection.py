@@ -13,7 +13,7 @@ def arp_frame() -> bytes:
     from ipaddress import IPv4Address
 
     packet = ArpPacket.request(
-        "02:00:00:00:00:01", IPv4Address("10.0.0.1"), IPv4Address("10.0.0.2")
+        "02:00:00:00:00:01", IPv4Address("192.168.230.1"), IPv4Address("192.168.230.2")
     )
     return EthernetFrame(
         "ff:ff:ff:ff:ff:ff", "02:00:00:00:00:01", 0x0806, packet.to_bytes()
@@ -37,4 +37,4 @@ def test_bounded_capture_is_inspectable_with_tcpdump(tmp_path) -> None:
         timeout=5,
     )
     assert result.returncode == 0
-    assert b"ARP, Request who-has 10.0.0.2 tell 10.0.0.1" in result.stdout
+    assert b"ARP, Request who-has 192.168.230.2 tell 192.168.230.1" in result.stdout

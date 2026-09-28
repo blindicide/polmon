@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from polmon.core.logstore import StructuredLogStore
 from polmon.version import __version__
 
 
@@ -186,7 +187,7 @@ def resource_snapshot(**counts: int | float | None) -> ResourceSnapshot:
 
 def collect_diagnostics() -> dict[str, object]:
     """Return an allow-listed diagnostic document that cannot include environment secrets."""
-    tool_names = ("ip", "ping", "tcpdump", "qemu-system-x86_64")
+    tool_names = ("ip", "ping", "ssh", "sshd", "ssh-keygen", "tcpdump", "qemu-system-x86_64")
     tools = {name: shutil.which(name) is not None for name in tool_names}
     return {
         "polmon_version": __version__,
@@ -225,7 +226,13 @@ def lab_readiness(
 
     Nothing is created: the only privileged call is ``sudo -n ip netns list``.
     """
-    tools = {name: shutil.which(name) for name in ("ip", "sudo", "setpriv", "ping")}
+    tools = {
+        name: shutil.which(name)
+        for name in (
+            "ip", "sudo", "setpriv", "ping", "ssh", "sshd", "ssh-keygen",
+            "Xvfb", "x11vnc", "xclock",
+        )
+    }
     checks: dict[str, dict[str, object]] = {}
     for name, path in tools.items():
         checks[f"tool_{name}"] = {"ok": path is not None, "detail": path or "not installed"}
@@ -273,7 +280,19 @@ def fidelity_readiness() -> dict[str, object]:
     )
     l1_ready = all(bool(checks[name]["ok"]) for name in l1_names)  # type: ignore[index]
     hybrid_ready = l1_ready and bool(checks["tun_device"]["ok"])  # type: ignore[index]
-    return {"l1_ready": l1_ready, "hybrid_ready": hybrid_ready, "checks": checks}
+    console_ready = l1_ready and all(
+        bool(checks[f"tool_{name}"]["ok"]) for name in ("ssh", "sshd", "ssh-keygen")
+    )
+    vnc_ready = l1_ready and all(
+        bool(checks[f"tool_{name}"]["ok"]) for name in ("Xvfb", "x11vnc", "xclock")
+    )
+    return {
+        "l1_ready": l1_ready,
+        "hybrid_ready": hybrid_ready,
+        "console_ready": console_ready,
+        "vnc_ready": vnc_ready,
+        "checks": checks,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -284,6 +303,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--lab",
         action="store_true",
         help="also check privileged-lab readiness (read-only); exit 1 when not ready",
+    )
+    parser.add_argument(
+        "--logs",
+        action="store_true",
+        help="include the log directory, file sizes, and the last bounded error records",
+    )
+    parser.add_argument(
+        "--data-directory",
+        default="var",
+        help="backend data directory used with --logs (default: var)",
     )
     return parser
 
@@ -296,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
         readiness = lab_readiness()
         diagnostics["lab"] = readiness
         status = 0 if readiness["ready"] else 1
+    if args.logs:
+        store = StructuredLogStore(Path(args.data_directory) / "logs")
+        diagnostics["logs"] = {**store.files(), "last_errors": store.last_errors()}
     print(json.dumps(diagnostics, indent=None if args.json else 2, sort_keys=True))
     return status
 

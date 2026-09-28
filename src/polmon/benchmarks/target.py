@@ -55,7 +55,7 @@ def build_topology(l0_count: int = 50, l1_count: int = 2) -> Topology:
                     id="eth0",
                     network="lab",
                     mac=f"02:00:00:03:00:{index:02x}",
-                    ipv4=f"10.242.0.{index + 10}",
+                    ipv4=f"192.168.240.{index + 10}",
                 )
             ],
         )
@@ -70,7 +70,7 @@ def build_topology(l0_count: int = 50, l1_count: int = 2) -> Topology:
                     id="eth0",
                     network="lab",
                     mac=f"02:00:00:03:01:{index:02x}",
-                    ipv4=f"10.242.0.{index + 220}",
+                    ipv4=f"192.168.240.{index + 220}",
                 )
             ],
             services=[
@@ -83,7 +83,7 @@ def build_topology(l0_count: int = 50, l1_count: int = 2) -> Topology:
     ]
     return Topology(
         id=f"benchmark-target-{l0_count}-{l1_count}",
-        networks=[Network(id="lab", ipv4_subnet="10.242.0.0/24")],
+        networks=[Network(id="lab", ipv4_subnet="192.168.240.0/24")],
         nodes=nodes,
     )
 

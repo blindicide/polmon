@@ -9,8 +9,12 @@ the repository owner; do not include exploit details in a public issue.
 
 Controls in the implementation:
 
-- Topology subnets are restricted to RFC 1918 and RFC 2544 laboratory ranges; scenario actions can
-  only target nodes declared in the bound topology, never raw addresses or discovered hosts.
+- New topology subnets default to the explicit `192.168.230.0/24`–`192.168.240.0/24` laboratory
+  profile. Narrowing the accepted space is a safety property: unexpected addresses are rejected
+  before any privileged work and owned resources are easy to recognize. The broader RFC 1918 plus
+  RFC 2544 policy is available only through an explicit `address_space: rfc1918` compatibility
+  declaration. Scenario actions can only target nodes declared in the bound topology, never raw
+  addresses or discovered hosts.
 - Privileged operations go through one argv-only command runner (`sudo -n`, no shell) limited to
   `ip` namespace, bridge, veth, TAP, address, and in-namespace route operations on generated
   `polmon*`/`veth*` names. Every workload inside a lab namespace (built-in services, ICMP and TCP
@@ -27,6 +31,11 @@ Controls in the implementation:
   mode-600 file passed with `--api-token-file` (or in `POLMON_API_TOKEN`), and never commit it.
   The token is not logged, reported, or shown by the client. Plain HTTP exposes the token on the
   wire: across untrusted networks, reach the backend through an SSH tunnel or a TLS proxy.
+- L1 SSH consoles run a real `sshd` inside the node namespace with per-deployment Ed25519 keys,
+  passwords/PAM/root login disabled, and the existing invoking unprivileged operator account.
+  Interactive commands execute in that namespace, not on the host; sessions have bounded live
+  buffers, timeouts, retained transcripts and authenticated API access. L0/L2 and missing host
+  prerequisites are refused with stable reason codes. See `docs/CONSOLE.md`.
 - API identifiers are pattern-checked before they reach file paths; request bodies are capped at
   2 MB per document and 5 MiB per request.
 - Benchmark jobs (`POST /v1/benchmarks`) start only the fixed `polmon-benchmark` module with
@@ -44,6 +53,10 @@ Controls in the implementation:
   crash. Windows enforces L0-only fidelity in both UI and backend. Release EXEs are unsigned and
   may trigger SmartScreen; SHA-256 verification is the available authenticity check.
 - Telemetry redacts secret-like keys; diagnostics use an allow-list and never read the environment.
+- Detailed logs use the same allow-list discipline: structured parameters are recursively bounded,
+  keys containing token/password/secret/private_key are redacted, records and service output are
+  size-capped, and API errors never embed raw log content. `/v1/logs/files` returns metadata only;
+  use an authenticated Logs-page/API request to retrieve bounded records.
 - `scripts/privileged-tests.sh` proves each privileged run left the default route, host interfaces,
   iptables, and nft ruleset unchanged; `scripts/lab-cleanup.sh` lists or removes leftovers
   (including orphaned lab service processes) by generated name only.

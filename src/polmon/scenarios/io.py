@@ -41,3 +41,9 @@ def load_scenario(path: str | Path) -> Scenario:
             "unable to read scenario", details={"reason": str(error)},
             message_code="scenario.unreadable",
         ) from error
+
+
+def dump_scenario(scenario: Scenario) -> str:
+    """Serialize a validated scenario without leaking Python enum representations."""
+    payload = scenario.model_dump(mode="json", by_alias=True, exclude_none=True)
+    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)

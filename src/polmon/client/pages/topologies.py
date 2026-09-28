@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -24,6 +25,7 @@ from polmon.client.errors import error_message, yaml_problem
 from polmon.client.formatting import format_mebibytes, format_millicores
 from polmon.client.i18n import Msg, bind_fn, bind_tip, tr
 from polmon.client.pages import Context, Page, default_folder, write_document
+from polmon.client.studio import TopologyStudio
 from polmon.client.widgets import (
     RAW_ROLE,
     Card,
@@ -31,6 +33,7 @@ from polmon.client.widgets import (
     StatusBadge,
     YamlEditor,
     button,
+    confirm,
     danger_button,
     fill_table,
     make_table,
@@ -54,8 +57,11 @@ def problem_rows(source: str, error: ApiClientError) -> list[tuple[object, objec
             if isinstance(item, dict):
                 location = str(item.get("location") or "")
                 rows.append(
-                    (locate(source, location), location or Msg("validation.document"),
-                     error_message(item))
+                    (
+                        locate(source, location),
+                        location or Msg("validation.document"),
+                        error_message(item),
+                    )
                 )
     elif "problem_code" in details or isinstance(details.get("reason"), str):
         line = details.get("line")
@@ -66,11 +72,13 @@ def problem_rows(source: str, error: ApiClientError) -> list[tuple[object, objec
         from polmon.client.errors import backend_message
 
         rows.append(
-            (None, Msg("validation.document"),
-             backend_message(error.message_code, error.params, str(error).split(": ", 1)[-1]))
+            (
+                None,
+                Msg("validation.document"),
+                backend_message(error.message_code, error.params, str(error).split(": ", 1)[-1]),
+            )
         )
     return rows
-
 
 
 def _resource_notes(resources: object) -> str:
@@ -79,6 +87,7 @@ def _resource_notes(resources: object) -> str:
         return ""
     memory = format_mebibytes(resources.get("memory_mb"))
     return f"{memory}, {format_millicores(resources.get('cpu_millicores'))}"
+
 
 class DocumentLibrary(Card):
     """YAML files of one folder; double-click (or Enter) opens one."""
@@ -98,8 +107,9 @@ class DocumentLibrary(Card):
         buttons = QHBoxLayout()
         buttons.setSpacing(theme.SPACE["sm"])
         self.open_button = button("library.open", tip="library.open.tip", name="openFile")
-        self.folder_button = button("library.folder", "quiet", tip="library.folder.tip",
-                                    name="chooseFolder")
+        self.folder_button = button(
+            "library.folder", "quiet", tip="library.folder.tip", name="chooseFolder"
+        )
         self.open_button.clicked.connect(page.open_dialog)
         self.folder_button.clicked.connect(self.choose_folder)
         buttons.addWidget(self.open_button)
@@ -180,14 +190,20 @@ class TopologiesPage(Page):
         self.document_name: str | None = None
         self.badge = StatusBadge()
         header.addWidget(self.document_label, 1)
-        self.save_button = button("editor.save_as", "quiet", tip="editor.save_as.tip",
-                                  name="saveAs")
+        self.save_button = button(
+            "editor.save_as", "quiet", tip="editor.save_as.tip", name="saveAs"
+        )
         header.addWidget(self.save_button)  # document commands sit with the document name
         header.addWidget(self.badge)
         editor_card.body.addLayout(header)
         self.editor = YamlEditor()
         self.editor.setObjectName("topologyEditor")
-        editor_card.add(self.editor, 1)
+        self.studio = TopologyStudio()
+        self.document_tabs = QTabWidget()
+        self.document_tabs.setObjectName("topologyDocumentTabs")
+        self.document_tabs.addTab(self.studio, tr("studio.tab.canvas"))
+        self.document_tabs.addTab(self.editor, tr("studio.tab.yaml"))
+        editor_card.add(self.document_tabs, 1)
         actions = QHBoxLayout()
         actions.setSpacing(theme.SPACE["sm"])
         self.validate_button = button(
@@ -212,7 +228,9 @@ class TopologiesPage(Page):
         self.tabs = QTabWidget()
         self.tabs.setObjectName("topologyTabs")
         self.summary = make_table(
-            ("column.property", "column.value", "column.admission"), stretch=1, sortable=False,
+            ("column.property", "column.value", "column.admission"),
+            stretch=1,
+            sortable=False,
             name="topologySummary",
         )
         self.nodes = QTreeWidget()
@@ -220,20 +238,31 @@ class TopologiesPage(Page):
         bind_fn(
             self.nodes,
             lambda tree: tree.setHeaderLabels(
-                [tr(key) for key in (
-                    "column.node_interface", "column.class", "column.network", "column.mac",
-                    "column.ipv4", "column.notes",
-                )]
+                [
+                    tr(key)
+                    for key in (
+                        "column.node_interface",
+                        "column.class",
+                        "column.network",
+                        "column.mac",
+                        "column.ipv4",
+                        "column.notes",
+                    )
+                ]
             ),
             tag="headers",
         )
         self.nodes.setAlternatingRowColors(True)
         self.networks = make_table(
             ("column.network", "column.subnet", "column.interfaces", "column.members"),
-            stretch=3, mono=(0, 1), name="topologyNetworks",
+            stretch=3,
+            mono=(0, 1),
+            name="topologyNetworks",
         )
         self.problems = make_table(
-            ("column.line", "column.location", "column.problem"), stretch=2, mono=(1,),
+            ("column.line", "column.location", "column.problem"),
+            stretch=2,
+            mono=(1,),
             name="topologyProblems",
         )
         self.problems.setWordWrap(True)
@@ -255,8 +284,13 @@ class TopologiesPage(Page):
         self.refresh_actions()
         # Connected last: the editor signals while the page is still being built.
         self.editor.textChanged.connect(self._edited)
+        self.studio.source_changed.connect(self._studio_edited)
 
     def retranslate(self) -> None:
+        if hasattr(self, "studio"):
+            self.studio.retranslate()
+            self.document_tabs.setTabText(0, tr("studio.tab.canvas"))
+            self.document_tabs.setTabText(1, tr("studio.tab.yaml"))
         count = len(self.problem_rows)
         titles = (
             tr("topologies.tab.summary"),
@@ -282,11 +316,13 @@ class TopologiesPage(Page):
         if self.result or self.problem_rows:
             self.summary_state.show_content()
         elif self.source().strip():
-            self.summary_state.show_empty(Msg("topologies.not_validated"),
-                                          Msg("topologies.not_validated_hint"))
+            self.summary_state.show_empty(
+                Msg("topologies.not_validated"), Msg("topologies.not_validated_hint")
+            )
         else:
-            self.summary_state.show_empty(Msg("topologies.no_document"),
-                                          Msg("topologies.no_document_hint"))
+            self.summary_state.show_empty(
+                Msg("topologies.no_document"), Msg("topologies.no_document_hint")
+            )
 
     # -- documents ----------------------------------------------------------------------------
 
@@ -316,6 +352,8 @@ class TopologiesPage(Page):
     def set_source(self, text: str, name: str | None) -> None:
         self.document_name = name
         self.editor.setPlainText(text)
+        with suppress(ValueError, TypeError):
+            self.studio.set_source(text)
         self._update_label()
         self.validate(quiet=True)
 
@@ -324,6 +362,13 @@ class TopologiesPage(Page):
 
     def open_loaded(self, item: QListWidgetItem) -> None:
         topology_id = str(item.data(Qt.ItemDataRole.UserRole))
+        if not confirm(
+            self,
+            "topologies.delete.confirm_title",
+            Msg("topologies.delete.confirm", topology=topology_id),
+            "topologies.delete.confirm_accept",
+        ):
+            return
         client = self.session.client()
         self.context.run(
             Msg("operation.fetch_topology", topology=topology_id),
@@ -380,9 +425,7 @@ class TopologiesPage(Page):
         dirty = self.path is not None and self.source() != self.saved_source
         text = name or tr("topologies.untitled")
         self.document_label.setText(f"{text} •" if dirty else text)
-        self.document_label.setToolTip(
-            tr("editor.unsaved") if dirty else str(self.path or text)
-        )
+        self.document_label.setToolTip(tr("editor.unsaved") if dirty else str(self.path or text))
 
     def _edited(self) -> None:
         self.editor.set_error_line(None)
@@ -394,6 +437,10 @@ class TopologiesPage(Page):
             self._auto.start()
         self._update_state()
         self.refresh_actions()
+
+    def _studio_edited(self, source: str) -> None:
+        if source != self.source():
+            self.editor.setPlainText(source)
 
     # -- backend actions ----------------------------------------------------------------------
 
@@ -501,9 +548,13 @@ class TopologiesPage(Page):
             )
             resources = node.get("resources")
             notes = services or _resource_notes(resources)
+            display = str(node.get("name") or node["id"])
+            if display != node["id"]:
+                display = f"{display} [{node['id']}]"
             parent = QTreeWidgetItem(
-                self.nodes, [node["id"], node["class"].upper(), "", "", "", notes]
+                self.nodes, [display, node["class"].upper(), "", "", "", notes]
             )
+            parent.setToolTip(0, str(node.get("uuid") or ""))
             if not services and isinstance(resources, dict):  # re-rendered on a language switch
                 parent.setData(5, Qt.ItemDataRole.UserRole, resources)
             parent.setFont(0, mono)
@@ -577,15 +628,21 @@ class TopologiesPage(Page):
             (
                 "summary.endpoints",
                 estimate.get("endpoint_count"),
-                fit(int(estimate.get("endpoint_count") or 0), "max_endpoint_count",
-                    "active_endpoints"),
+                fit(
+                    int(estimate.get("endpoint_count") or 0),
+                    "max_endpoint_count",
+                    "active_endpoints",
+                ),
             ),
             ("summary.l0", estimate.get("l0_endpoints"), ("", "")),
             (
                 "summary.l1",
                 estimate.get("l1_namespaces"),
-                fit(int(estimate.get("l1_namespaces") or 0), "max_active_namespaces",
-                    "active_namespaces"),
+                fit(
+                    int(estimate.get("l1_namespaces") or 0),
+                    "max_active_namespaces",
+                    "active_namespaces",
+                ),
             ),
             (
                 "summary.l2",
@@ -612,8 +669,9 @@ class TopologiesPage(Page):
             if item is not None and verdict:
                 bad = verdict == "exceeds"
                 tint(item, "danger" if bad else "success")
-                item.setText(f"{theme.STATUS_GLYPHS['danger' if bad else 'success']} "
-                             f"{item.text()}")
+                item.setText(
+                    f"{theme.STATUS_GLYPHS['danger' if bad else 'success']} " f"{item.text()}"
+                )
 
     def _refresh_loaded(self) -> None:
         self.loaded.clear()
@@ -635,8 +693,9 @@ class TopologiesPage(Page):
         if self.session.backend_topologies:
             self.loaded_state.show_content()
         elif self.session.connected:
-            self.loaded_state.show_empty(Msg("topologies.loaded.empty"),
-                                         Msg("topologies.loaded.empty_hint"))
+            self.loaded_state.show_empty(
+                Msg("topologies.loaded.empty"), Msg("topologies.loaded.empty_hint")
+            )
         else:
             self.loaded_state.show_empty(Msg("common.offline"), Msg("common.offline_hint"))
         self._refresh_summary()

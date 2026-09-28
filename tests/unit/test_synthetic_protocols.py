@@ -10,15 +10,15 @@ from polmon.networking.ipv4 import IPv4Packet
 
 def configured_engine() -> SyntheticEngine:
     engine = SyntheticEngine()
-    engine.create_endpoint("alpha", network="lab", mac="02:00:00:00:00:01", ipv4="10.0.0.1")
-    engine.create_endpoint("bravo", network="lab", mac="02:00:00:00:00:02", ipv4="10.0.0.2")
-    engine.create_endpoint("other", network="other", mac="02:00:00:00:00:03", ipv4="10.0.1.1")
+    engine.create_endpoint("alpha", network="lab", mac="02:00:00:00:00:01", ipv4="192.168.230.1")
+    engine.create_endpoint("bravo", network="lab", mac="02:00:00:00:00:02", ipv4="192.168.230.2")
+    engine.create_endpoint("other", network="other", mac="02:00:00:00:00:03", ipv4="192.168.231.1")
     return engine
 
 
 def test_ping_resolves_arp_and_exchanges_valid_icmp() -> None:
     network = SyntheticProtocolNetwork(configured_engine())
-    result = network.ping("alpha", "10.0.0.2", b"fixture")
+    result = network.ping("alpha", "192.168.230.2", b"fixture")
     assert result.payload == b"fixture"
     assert result.arp_resolved is True
     assert result.captured_frames == 4
@@ -30,9 +30,9 @@ def test_ping_resolves_arp_and_exchanges_valid_icmp() -> None:
 
 def test_cached_ping_skips_arp_and_dispatch_order_is_deterministic() -> None:
     network = SyntheticProtocolNetwork(configured_engine())
-    network.ping("alpha", "10.0.0.2")
+    network.ping("alpha", "192.168.230.2")
     first_count = len(network.capture)
-    result = network.ping("alpha", "10.0.0.2")
+    result = network.ping("alpha", "192.168.230.2")
     assert result.arp_resolved is False
     assert len(network.capture) == first_count + 2
     assert result.sequence == 2
@@ -41,7 +41,7 @@ def test_cached_ping_skips_arp_and_dispatch_order_is_deterministic() -> None:
 def test_ping_rejects_unknown_or_cross_network_address() -> None:
     network = SyntheticProtocolNetwork(configured_engine())
     with pytest.raises(SyntheticEngineError, match="no endpoint"):
-        network.ping("alpha", "10.0.1.1")
+        network.ping("alpha", "192.168.231.1")
 
 
 

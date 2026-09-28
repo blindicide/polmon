@@ -177,6 +177,11 @@ class ApiClient:
     def load_topology(self, source: str) -> dict[str, object]:
         return self._dict("POST", "/v1/topologies", {"yaml": source})
 
+    def save_topology(self, topology_id: str, source: str) -> dict[str, object]:
+        return self._dict(
+            "PUT", f"/v1/topologies/{_segment(topology_id)}", {"yaml": source}
+        )
+
     def topologies(self) -> list[dict[str, object]]:
         return self._list("/v1/topologies")
 
@@ -189,6 +194,55 @@ class ApiClient:
     def validate_scenario(self, source: str) -> dict[str, object]:
         return self._dict("POST", "/v1/scenarios/validate", {"yaml": source})
 
+    def load_scenario(self, source: str) -> dict[str, object]:
+        return self._dict("POST", "/v1/scenarios", {"yaml": source})
+
+    def save_scenario(self, scenario_id: str, source: str) -> dict[str, object]:
+        return self._dict(
+            "PUT", f"/v1/scenarios/{_segment(scenario_id)}", {"yaml": source}
+        )
+
+    def scenarios(self) -> list[dict[str, object]]:
+        return self._list("/v1/scenarios")
+
+    def scenario(self, scenario_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/scenarios/{_segment(scenario_id)}")
+
+    def unload_scenario(self, scenario_id: str) -> dict[str, object]:
+        return self._dict("DELETE", f"/v1/scenarios/{_segment(scenario_id)}")
+
+    def logs(
+        self,
+        *,
+        level: str | None = None,
+        source: str | None = None,
+        deployment: str | None = None,
+        topology: str | None = None,
+        node: str | None = None,
+        session: str | None = None,
+        experiment: str | None = None,
+        search: str | None = None,
+        since: int = 0,
+        limit: int = 200,
+    ) -> dict[str, object]:
+        values = {
+            "level": level,
+            "source": source,
+            "deployment": deployment,
+            "topology": topology,
+            "node": node,
+            "session": session,
+            "experiment": experiment,
+            "search": search,
+            "since": since,
+            "limit": limit,
+        }
+        query = urllib.parse.urlencode({key: value for key, value in values.items() if value})
+        return self._dict("GET", "/v1/logs" + (f"?{query}" if query else ""))
+
+    def log_files(self) -> dict[str, object]:
+        return self._dict("GET", "/v1/logs/files")
+
     def deploy(self, topology_id: str) -> dict[str, object]:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("POST", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
@@ -199,6 +253,63 @@ class ApiClient:
     def destroy(self, topology_id: str) -> dict[str, object]:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("DELETE", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
+
+    @staticmethod
+    def _console_path(topology_id: str, node_id: str) -> str:
+        return (
+            f"/v1/deployments/{_segment(topology_id)}/nodes/{_segment(node_id)}/console"
+        )
+
+    def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict("GET", self._console_path(topology_id, node_id) + "/readiness")
+
+    def console_vnc(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict("POST", self._console_path(topology_id, node_id) + "/vnc")
+
+    def console_vnc_url(self, relay_path: str) -> str:
+        scheme = "wss" if self.base_url.startswith("https://") else "ws"
+        parsed = urllib.parse.urlparse(self.base_url)
+        return f"{scheme}://{parsed.netloc}{relay_path}"
+
+    @property
+    def token(self) -> str | None:
+        return self._token
+
+    def console_exec(
+        self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float = 10
+    ) -> dict[str, object]:
+        return self._dict(
+            "POST",
+            self._console_path(topology_id, node_id) + "/exec",
+            {"argv": argv, "timeout_seconds": timeout_seconds},
+            timeout=max(timeout_seconds + 5, self.timeout),
+        )
+
+    def console_session_create(self, topology_id: str, node_id: str) -> dict[str, object]:
+        return self._dict(
+            "POST", self._console_path(topology_id, node_id) + "/sessions"
+        )
+
+    def console_session(
+        self, topology_id: str, node_id: str, session_id: str, after: int = 0
+    ) -> dict[str, object]:
+        path = (
+            self._console_path(topology_id, node_id)
+            + f"/sessions/{_segment(session_id)}/stream?after={int(after)}"
+        )
+        return self._dict("GET", path)
+
+    def console_input(
+        self, topology_id: str, node_id: str, session_id: str, data: str
+    ) -> dict[str, object]:
+        path = self._console_path(topology_id, node_id) + f"/sessions/{_segment(session_id)}/input"
+        return self._dict("POST", path, {"data": data})
+
+    def console_session_delete(
+        self, topology_id: str, node_id: str, session_id: str
+    ) -> dict[str, object]:
+        path = self._console_path(topology_id, node_id) + f"/sessions/{_segment(session_id)}"
+        return self._dict("DELETE", path)
 
     def reset_all(self) -> dict[str, object]:
         return self._dict("POST", "/v1/reset", timeout=max(DEPLOY_TIMEOUT, self.timeout))

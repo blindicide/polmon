@@ -1,7 +1,7 @@
 id: hybrid-small
 networks:
   - id: lab
-    ipv4_subnet: 10.77.0.0/24
+    ipv4_subnet: 192.168.235.0/24
 nodes:
   - id: sensor-1
     class: l0
@@ -9,7 +9,7 @@ nodes:
       - id: eth0
         network: lab
         mac: "02:00:00:00:00:01"
-        ipv4: 10.77.0.10
+        ipv4: 192.168.235.10
   - id: service-1
     class: l1
     resources:
@@ -20,7 +20,7 @@ nodes:
       - id: eth0
         network: lab
         mac: "02:00:00:00:01:01"
-        ipv4: 10.77.0.20
+        ipv4: 192.168.235.20
     services:
       - id: web
         protocol: tcp

@@ -23,3 +23,11 @@ def test_failures_raise_only_when_checked() -> None:
     assert CommandRunner().run(failing, check=False).returncode == 3
     with pytest.raises(RuntimeError, match=r"command failed \(3\)"):
         CommandRunner().run(failing)
+
+
+def test_bounded_runner_caps_output_and_times_out() -> None:
+    noisy = [sys.executable, "-c", "print('x' * 10000)"]
+    result = CommandRunner().run_bounded(noisy, max_output_bytes=128)
+    assert len(result.stdout.encode()) == 128 and result.truncated is True
+    sleeper = CommandRunner().run_bounded(SLEEPER, timeout=0.1)
+    assert sleeper.timed_out is True and sleeper.returncode == TIMEOUT_RETURNCODE

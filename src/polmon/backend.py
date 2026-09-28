@@ -176,16 +176,16 @@ def _self_test() -> int:
     topology = """id: self-test
 networks:
   - id: lab
-    ipv4_subnet: 198.18.0.0/24
+    ipv4_subnet: 192.168.240.0/24
 nodes:
   - id: probe
     class: l0
     interfaces:
-      - {id: eth0, network: lab, mac: '02:00:00:00:00:01', ipv4: 198.18.0.2}
+      - {id: eth0, network: lab, mac: '02:00:00:00:00:01', ipv4: 192.168.240.2}
   - id: target
     class: l0
     interfaces:
-      - {id: eth0, network: lab, mac: '02:00:00:00:00:02', ipv4: 198.18.0.3}
+      - {id: eth0, network: lab, mac: '02:00:00:00:00:02', ipv4: 192.168.240.3}
 """
     scenario = """id: self-test
 required_topology: self-test

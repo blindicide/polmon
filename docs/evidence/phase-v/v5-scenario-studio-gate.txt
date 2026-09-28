@@ -1,0 +1,35 @@
+Phase V.5 — scenario studio headless evidence
+Captured: 2026-09-28
+Branch: phase-v-studio
+
+Headless UI/API coverage:
+SCENARIO-UI-STEP-EDITOR-OK add duplicate reorder remove
+The Qt suite ran with the host's offscreen/headless configuration. No human visual acceptance is
+claimed on this server; the V.4 visual limitation remains recorded separately as
+v4.no_visual_validation_on_headless_server.
+
+Real privileged L1 gate:
+Command: scripts/privileged-tests.sh tests/integration/test_scenario_studio.py -s
+SCENARIO-API-CREATED operator-authored ICMP TCP SSH WAIT CLEANUP
+SCENARIO-LIBRARY-RESTART-OK operator-authored
+SCENARIO-PASS status=succeeded actions=4 observations=4 stdout=192.168.239.22 timing=bounded cleanup=true
+SCENARIO-FAIL status=failed output-assertion=false cleanup=true
+1 passed, 1 warning in 3.47s
+host network unchanged; no platform lab resources remain
+
+The scenario was created through POST /v1/scenarios, listed, fetched after a fresh ControlPlane
+instance, deployed on two real L1 namespaces, and run with ICMP, TCP service, ssh_exec, wait,
+stdout-pattern, and duration assertions. The second run used an impossible output pattern and failed
+as designed. Both runs executed cleanup and left no platform resources.
+
+Rootless repository gate:
+Command: scripts/check.sh
+ruff: All checks passed!
+428 passed, 19 deselected, 1 warning in 136.98s (0:02:16)
+
+Localization gates:
+i18n-lint: 22 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+i18n-completeness: PASS: 1055 keys, 16 plural keys, 173 backend message codes, 677 literal keys in code; 0 problem(s)
+
+The single warning is the existing httpx/Starlette deprecation warning from the test client. It is
+non-fatal and does not alter the green result.

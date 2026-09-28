@@ -71,7 +71,9 @@ class BearerTokenAuth:
         self._expected = f"Bearer {token}".encode()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("path") in PUBLIC_PATHS:
+        if scope["type"] not in {"http", "websocket"} or (
+            scope["type"] == "http" and scope.get("path") in PUBLIC_PATHS
+        ):
             await self.app(scope, receive, send)
             return
         supplied = dict(scope.get("headers") or []).get(b"authorization", b"")

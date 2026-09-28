@@ -43,6 +43,18 @@ The Qt desktop client performs every HTTP call on a bounded worker-thread pool a
 on the GUI thread (see [UI-PLAN.md](UI-PLAN.md)). It never imports Linux networking code and does
 not require a backend to launch or to run its headless self-test.
 
+## Detailed logs (v0.5.0)
+
+`GET /v1/logs` returns bounded structured JSON records for lab operations. Optional filters are
+`level` (minimum `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`), `source`, `deployment`,
+`topology`, `node` (id/name/UUID substring), `session`, `experiment`, `search`, `since` (cursor),
+and `limit` (1–500). The response is `{records, next_cursor, has_more}`. `GET /v1/logs/stream`
+uses the same `since` cursor and a limit of 1–100 to return a bounded Server-Sent Events stream;
+each `log` event has an SSE `id` equal to the record cursor and JSON record data, with heartbeat
+comments while idle. `GET /v1/logs/files` returns the log directory, rotation cap and paths/sizes
+for structured, service and console files. It does not return file contents. See
+[LOGS.md](LOGS.md) for the record schema, retention and diagnostics command.
+
 ## Inspection, live progress and benchmarks (v0.2.0)
 
 These routes back the desktop client; all are additive and existing clients are unaffected.
@@ -54,6 +66,9 @@ These routes back the desktop client; all are additive and existing clients are 
 | `GET /v1/topologies/{topology_id}` | One loaded definition (`normalized_yaml`, `topology`, `resources`, `deployed`). |
 | `DELETE /v1/topologies/{topology_id}` | Forget a loaded definition; HTTP 422 while it is deployed (v0.2.4). |
 | `POST /v1/scenarios/validate` | `{"yaml": ...}` → the structured scenario (`permitted_actions` sorted) and `topology_check` (`loaded`, `deployed`, `compatible`, `problems`) against the loaded required topology. |
+| `POST /v1/scenarios`, `POST /v1/scenarios/import` | Validate and persist a scenario YAML document in the restart-safe scenario library. |
+| `GET /v1/scenarios`, `GET /v1/scenarios/{scenario_id}` | List library entries or fetch normalized YAML and the parsed scenario. |
+| `PUT /v1/scenarios/{scenario_id}`, `DELETE /v1/scenarios/{scenario_id}` | Replace or remove a persisted scenario; IDs must match the YAML document. |
 | `POST /v1/experiments` with `"wait": false` | Validation, deployment checks and admission run first (errors are returned directly); the experiment then runs on a backend thread and the call returns HTTP 202 with `status: running`. |
 | `GET /v1/experiments/{experiment_id}` | While active: `status` `running`/`cancelling` and `progress` (`total_actions`, `completed_actions`, `current_action`, `elapsed_seconds`, `timeout_seconds`). When finished: the full record plus final `progress`; a background failure is `status: error` with an `error` document. Experiments run by an earlier backend process are returned from SQLite with `persisted: true` (a run that never finished reads `interrupted`). |
 | `GET /v1/experiments?limit=N` | Persisted experiments, newest first (default 200, maximum 1000), with capture summary and `report_available`. |

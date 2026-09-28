@@ -49,9 +49,9 @@ def test_admission_rejections_list_every_limit(language) -> None:  # noqa: ANN00
 def test_transport_failures_are_actionable(language) -> None:  # noqa: ANN001
     refused = describe(
         ApiClientError("unable to reach backend: [Errno 111] Connection refused"),
-        url="http://10.0.0.5:8080",
+        url="http://192.168.230.5:8080",
     )
-    assert refused.key == "problem.refused" and "10.0.0.5" in refused.detail
+    assert refused.key == "problem.refused" and "192.168.230.5" in refused.detail
     assert refused.hint and "polmon-backend" in refused.hint
     windows_refused = describe(ApiClientError("unable to reach backend: [WinError 10061] ..."))
     assert windows_refused.key == "problem.refused"

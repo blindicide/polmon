@@ -7,8 +7,24 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSplitter, QTabWidget, QWidget
+import yaml
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QSizePolicy,
+    QSpinBox,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from polmon.client import theme
 from polmon.client.api import ApiClientError
@@ -87,6 +103,279 @@ def experiment_errors(record: dict[str, object]) -> list[object]:
     ]
 
 
+class ScenarioStepEditor(QWidget):
+    """Small offline-safe step-list editor backed by the canonical YAML document."""
+
+    source_changed = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self._document: dict[str, object] | None = None
+        self._loading = False
+        root = QVBoxLayout(self)
+        options = QFormLayout()
+        self.scope = QComboBox()
+        self.scope.setObjectName("scenarioStepScope")
+        self.scope.addItem(tr("scenarios.step.sequence"), "sequence")
+        self.scope.addItem(tr("scenarios.step.cleanup"), "cleanup")
+        self.initial_conditions = QLineEdit()
+        self.initial_conditions.setObjectName("scenarioInitialConditions")
+        self.timeout = QDoubleSpinBox()
+        self.timeout.setObjectName("scenarioTimeout")
+        self.timeout.setRange(0.1, 3600.0)
+        self.timeout.setDecimals(1)
+        self.timeout.setValue(60.0)
+        self.cleanup_policy = QComboBox()
+        self.cleanup_policy.setObjectName("scenarioCleanupPolicy")
+        for value in ("always", "on_failure", "never"):
+            self.cleanup_policy.addItem(value, value)
+        options.addRow(label("scenarios.step.scope"), self.scope)
+        options.addRow(label("scenarios.options.initial_conditions"), self.initial_conditions)
+        options.addRow(label("scenarios.options.timeout"), self.timeout)
+        options.addRow(label("scenarios.options.cleanup_policy"), self.cleanup_policy)
+        root.addLayout(options)
+        self.steps = QListWidget()
+        self.steps.setObjectName("scenarioSteps")
+        self.steps.currentRowChanged.connect(self._selected)
+        root.addWidget(self.steps, 2)
+        actions = QHBoxLayout()
+        for key, callback, name in (
+            ("scenarios.step.add", self.add_step, "addStep"),
+            ("scenarios.step.duplicate", self.duplicate_step, "duplicateStep"),
+            ("scenarios.step.remove", self.remove_step, "removeStep"),
+            ("scenarios.step.up", self.move_up, "moveStepUp"),
+            ("scenarios.step.down", self.move_down, "moveStepDown"),
+        ):
+            control = button(key, "quiet", name=name)
+            control.clicked.connect(callback)
+            actions.addWidget(control)
+        actions.addStretch(1)
+        root.addLayout(actions)
+
+        form = QFormLayout()
+        self.step_id = QLineEdit()
+        self.step_id.setObjectName("scenarioStepId")
+        self.kind = QComboBox()
+        self.kind.setObjectName("scenarioStepKind")
+        for value in ("icmp_probe", "tcp_probe", "ssh_exec", "wait"):
+            self.kind.addItem(value, value)
+        self.source = QLineEdit()
+        self.source.setObjectName("scenarioStepSource")
+        self.target = QLineEdit()
+        self.target.setObjectName("scenarioStepTarget")
+        self.service = QLineEdit()
+        self.service.setObjectName("scenarioStepService")
+        self.command = QLineEdit()
+        self.command.setObjectName("scenarioStepCommand")
+        self.parameters = QLineEdit()
+        self.parameters.setObjectName("scenarioStepParameters")
+        self.expected_exit = QSpinBox()
+        self.expected_exit.setObjectName("scenarioStepExpectedExit")
+        self.expected_exit.setRange(0, 255)
+        self.seconds = QDoubleSpinBox()
+        self.seconds.setObjectName("scenarioStepSeconds")
+        self.seconds.setRange(0.1, 60.0)
+        self.seconds.setDecimals(2)
+        self.seconds.setValue(1.0)
+        for key, field in (
+            ("scenarios.step.id", self.step_id),
+            ("scenarios.step.kind", self.kind),
+            ("scenarios.step.source", self.source),
+            ("scenarios.step.target", self.target),
+            ("scenarios.step.service", self.service),
+            ("scenarios.step.command", self.command),
+            ("scenarios.step.parameters", self.parameters),
+            ("scenarios.step.expected_exit", self.expected_exit),
+            ("scenarios.step.seconds", self.seconds),
+        ):
+            form.addRow(label(key), field)
+        root.addLayout(form)
+        self.step_id.editingFinished.connect(self._apply)
+        self.source.editingFinished.connect(self._apply)
+        self.target.editingFinished.connect(self._apply)
+        self.service.editingFinished.connect(self._apply)
+        self.command.editingFinished.connect(self._apply)
+        self.parameters.editingFinished.connect(self._apply)
+        self.expected_exit.valueChanged.connect(lambda _: self._apply())
+        self.seconds.valueChanged.connect(lambda _: self._apply())
+        self.kind.currentIndexChanged.connect(lambda _: self._apply())
+        self.scope.currentIndexChanged.connect(lambda _: self._refresh())
+        self.initial_conditions.editingFinished.connect(self._apply_options)
+        self.timeout.valueChanged.connect(lambda _: self._apply_options())
+        self.cleanup_policy.currentIndexChanged.connect(lambda _: self._apply_options())
+
+    def retranslate(self) -> None:
+        self.scope.setItemText(0, tr("scenarios.step.sequence"))
+        self.scope.setItemText(1, tr("scenarios.step.cleanup"))
+
+    def set_source(self, source: str) -> None:
+        try:
+            document = yaml.safe_load(source)
+        except yaml.YAMLError:
+            document = None
+        self._document = document if isinstance(document, dict) else None
+        self._refresh()
+        self._refresh_options()
+
+    def _emit_source(self) -> None:
+        if self._document is not None:
+            self.source_changed.emit(
+                yaml.safe_dump(self._document, sort_keys=False, allow_unicode=True)
+            )
+
+    def _sequence(self) -> list[dict[str, object]]:
+        if self._document is None:
+            return []
+        key = "cleanup" if self.scope.currentData() == "cleanup" else "sequence"
+        sequence = self._document.setdefault(key, [])
+        return sequence if isinstance(sequence, list) else []
+
+    def _refresh_options(self) -> None:
+        if self._document is None:
+            return
+        self._loading = True
+        conditions = self._document.get("initial_conditions") or []
+        self.initial_conditions.setText(", ".join(str(item) for item in conditions))
+        self.timeout.setValue(float(self._document.get("timeout_seconds", 60.0)))
+        index = self.cleanup_policy.findData(self._document.get("cleanup_policy", "always"))
+        self.cleanup_policy.setCurrentIndex(max(0, index))
+        self._loading = False
+
+    def _apply_options(self) -> None:
+        if self._loading or self._document is None:
+            return
+        self._document["initial_conditions"] = [
+            item.strip() for item in self.initial_conditions.text().split(",") if item.strip()
+        ]
+        self._document["timeout_seconds"] = self.timeout.value()
+        self._document["cleanup_policy"] = self.cleanup_policy.currentData()
+        self._emit_source()
+
+    def _refresh(self) -> None:
+        row = self.steps.currentRow()
+        self._loading = True
+        self.steps.clear()
+        for step in self._sequence():
+            if isinstance(step, dict):
+                item = QListWidgetItem(f"{step.get('id', '')} · {step.get('kind', '')}")
+                self.steps.addItem(item)
+        self._loading = False
+        if self.steps.count():
+            self.steps.setCurrentRow(min(max(row, 0), self.steps.count() - 1))
+        self._selected(self.steps.currentRow())
+
+    def _selected(self, row: int) -> None:
+        if self._loading or row < 0:
+            return
+        sequence = self._sequence()
+        if row >= len(sequence) or not isinstance(sequence[row], dict):
+            return
+        step = sequence[row]
+        self._loading = True
+        self.step_id.setText(str(step.get("id", "")))
+        index = self.kind.findData(step.get("kind", "wait"))
+        self.kind.setCurrentIndex(max(0, index))
+        self.source.setText(str(step.get("source", "")))
+        self.target.setText(str(step.get("target", "")))
+        self.service.setText(str(step.get("service", "")))
+        self.command.setText(str(step.get("command", "")))
+        parameters = step.get("parameters")
+        self.parameters.setText(
+            yaml.safe_dump(parameters, default_flow_style=True, sort_keys=False).strip()
+            if isinstance(parameters, dict)
+            else ""
+        )
+        self.expected_exit.setValue(int(step.get("expected_exit_status", 0)))
+        self.seconds.setValue(float(step.get("seconds", 1.0)))
+        self._loading = False
+
+    def _apply(self) -> None:
+        if self._loading:
+            return
+        row = self.steps.currentRow()
+        sequence = self._sequence()
+        if row < 0 or row >= len(sequence) or not isinstance(sequence[row], dict):
+            return
+        step = sequence[row]
+        kind = str(self.kind.currentData())
+        parameters: object = {}
+        if self.parameters.text().strip():
+            try:
+                parameters = yaml.safe_load(self.parameters.text())
+            except yaml.YAMLError:
+                return
+            if not isinstance(parameters, dict):
+                return
+        step.clear()
+        step.update({"id": self.step_id.text().strip(), "kind": kind})
+        if kind == "wait":
+            step["seconds"] = self.seconds.value()
+        else:
+            if self.source.text().strip():
+                step["source"] = self.source.text().strip()
+            if self.target.text().strip():
+                step["target"] = self.target.text().strip()
+            if kind == "tcp_probe" and self.service.text().strip():
+                step["service"] = self.service.text().strip()
+            if kind == "ssh_exec" and self.command.text().strip():
+                step["command"] = self.command.text().strip()
+                step["expected_exit_status"] = self.expected_exit.value()
+            if parameters:
+                step["parameters"] = parameters
+        self._refresh()
+        self._emit_source()
+
+    def add_step(self) -> None:
+        if self._document is None:
+            return
+        sequence = self._sequence()
+        existing = {str(item.get("id")) for item in sequence if isinstance(item, dict)}
+        index = 1
+        while f"step-{index}" in existing:
+            index += 1
+        sequence.append({"id": f"step-{index}", "kind": "wait", "seconds": 1.0})
+        self._refresh()
+        self.steps.setCurrentRow(len(sequence) - 1)
+        self._emit_source()
+
+    def duplicate_step(self) -> None:
+        row = self.steps.currentRow()
+        sequence = self._sequence()
+        if row < 0 or row >= len(sequence) or not isinstance(sequence[row], dict):
+            return
+        copy = dict(sequence[row])
+        copy["id"] = f"{copy.get('id', 'step')}-copy"
+        sequence.insert(row + 1, copy)
+        self._refresh()
+        self.steps.setCurrentRow(row + 1)
+        self._emit_source()
+
+    def remove_step(self) -> None:
+        row = self.steps.currentRow()
+        sequence = self._sequence()
+        if 0 <= row < len(sequence):
+            sequence.pop(row)
+            self._refresh()
+            self._emit_source()
+
+    def _move(self, delta: int) -> None:
+        row = self.steps.currentRow()
+        sequence = self._sequence()
+        target = row + delta
+        if 0 <= row < len(sequence) and 0 <= target < len(sequence):
+            sequence[row], sequence[target] = sequence[target], sequence[row]
+            self._refresh()
+            self.steps.setCurrentRow(target)
+            self._emit_source()
+
+    def move_up(self) -> None:
+        self._move(-1)
+
+    def move_down(self) -> None:
+        self._move(1)
+
+
 class ScenariosPage(Page):
     key = "scenarios"
 
@@ -127,18 +416,46 @@ class ScenariosPage(Page):
         editor_card.body.addLayout(header)
         self.editor = YamlEditor()
         self.editor.setObjectName("scenarioEditor")
-        editor_card.add(self.editor, 1)
+        self.step_editor = ScenarioStepEditor()
+        self.step_editor.setObjectName("scenarioStepEditor")
+        self.document_tabs = QTabWidget()
+        self.document_tabs.setObjectName("scenarioDocumentTabs")
+        self.document_tabs.addTab(self.editor, tr("scenarios.tab.yaml"))
+        self.document_tabs.addTab(self.step_editor, tr("scenarios.tab.steps"))
+        editor_card.add(self.document_tabs, 1)
         validate_row = QHBoxLayout()
         self.validate_button = button("editor.validate", tip="scenarios.validate.tip",
                                       name="validateButton")
         self.validate_button.clicked.connect(lambda: self.validate(quiet=False))
         validate_row.addWidget(self.validate_button)
         validate_row.addStretch(1)
+        self.backend_scenarios = QComboBox()
+        self.backend_scenarios.setObjectName("scenarioBackendLibrary")
+        self.backend_refresh = button(
+            "scenarios.backend_refresh", "quiet", name="refreshScenarios"
+        )
+        self.backend_refresh.clicked.connect(self.refresh_backend_library)
+        self.backend_load = button("scenarios.backend_load", "quiet", name="loadScenario")
+        self.backend_load.clicked.connect(self.load_from_backend)
         self.save_button = button("editor.save_as", "quiet", tip="editor.save_as.tip",
                                   name="saveAs")
         self.save_button.clicked.connect(self.save_as)
         validate_row.addWidget(self.save_button)
+        self.save_backend = button(
+            "scenarios.save_backend", "quiet", tip="scenarios.save_backend.tip",
+            name="saveScenarioBackend"
+        )
+        self.save_backend.clicked.connect(self.save_to_backend)
+        validate_row.addWidget(self.save_backend)
         editor_card.body.addLayout(validate_row)
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(label("scenarios.backend_library"))
+        self.backend_scenarios.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        accessible(self.backend_scenarios, "a11y.scenario_library")
+        backend_row.addWidget(self.backend_scenarios, 1)
+        backend_row.addWidget(self.backend_refresh)
+        backend_row.addWidget(self.backend_load)
+        editor_card.body.addLayout(backend_row)
         splitter.addWidget(editor_card)
 
         right = QSplitter(Qt.Orientation.Vertical)
@@ -232,10 +549,14 @@ class ScenariosPage(Page):
 
         self.session.deployments_changed.connect(self._refresh_summary)
         self.session.topologies_changed.connect(lambda: self.validate(quiet=True))
+        self.session.connection_changed.connect(self._refresh_backend_state)
         self.retranslate()
         self.refresh_actions()
         # Connected last: the editor signals while the page is still being built.
         self.editor.textChanged.connect(self._edited)
+        self.editor.textChanged.connect(lambda: self.step_editor.set_source(self.source()))
+        self.step_editor.source_changed.connect(self._source_from_steps)
+        self._refresh_backend_state()
 
     def retranslate(self) -> None:
         count = len(self.problem_rows)
@@ -247,6 +568,9 @@ class ScenariosPage(Page):
         )
         for index, title in enumerate(titles):
             self.tabs.setTabText(index, title)
+        self.step_editor.retranslate()
+        self.document_tabs.setTabText(0, tr("scenarios.tab.yaml"))
+        self.document_tabs.setTabText(1, tr("scenarios.tab.steps"))
         self._update_label()
         self._refresh_summary()
         if self.result:
@@ -304,6 +628,85 @@ class ScenariosPage(Page):
 
     def source(self) -> str:
         return self.editor.toPlainText()
+
+    def _source_from_steps(self, source: str) -> None:
+        if source == self.source():
+            return
+        self.editor.blockSignals(True)
+        self.editor.setPlainText(source)
+        self.editor.blockSignals(False)
+        self._edited()
+
+    def refresh_backend_library(self) -> None:
+        if not self.session.connected:
+            return
+        client = self.session.client()
+        self.context.run(
+            Msg("operation.load_scenarios"),
+            lambda token, report: client.scenarios(),
+            on_success=self._show_backend_scenarios,
+            banner=self.banner,
+            quiet=True,
+        )
+
+    def _show_backend_scenarios(self, records: object) -> None:
+        self.backend_scenarios.clear()
+        for item in records if isinstance(records, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("scenario_id"), str):
+                self.backend_scenarios.addItem(str(item["scenario_id"]))
+        self.refresh_actions()
+
+    def _refresh_backend_state(self) -> None:
+        connected = self.session.connected
+        self.backend_refresh.setEnabled(connected)
+        self.backend_load.setEnabled(connected and self.backend_scenarios.count() > 0)
+        if connected:
+            self.refresh_backend_library()
+
+    def load_from_backend(self) -> None:
+        if not self.session.connected or not self.backend_scenarios.currentText():
+            return
+        scenario_id = self.backend_scenarios.currentText()
+        client = self.session.client()
+        self.context.run(
+            Msg("operation.load_scenario"),
+            lambda token, report: client.scenario(scenario_id),
+            on_success=lambda result: self.set_source(
+                str(result.get("yaml", "")), f"{scenario_id}.yml"
+            ),
+            on_failure=lambda error: self.banner.show_problem(self.context.problem(error)),
+            banner=self.banner,
+        )
+
+    def set_source(self, source: str, name: str | None = None) -> None:
+        self.document_name = name
+        self.editor.setPlainText(source)
+        self.step_editor.set_source(source)
+        self._update_label()
+        self.validate(quiet=True)
+
+    def save_to_backend(self) -> None:
+        if not self.session.connected or not self.source().strip():
+            return
+        scenario_id = document_id(self.source())
+        if not scenario_id:
+            self.banner.show_message(
+                Msg("scenarios.save_backend"), Msg("scenarios.save_backend_id_required"), "warning"
+            )
+            return
+        client = self.session.client()
+        self.context.run(
+            Msg("operation.save_scenario"),
+            lambda token, report: client.save_scenario(scenario_id, self.source()),
+            on_success=lambda result: self._backend_saved(scenario_id),
+            banner=self.banner,
+        )
+
+    def _backend_saved(self, scenario_id: str) -> None:
+        self.saved_source = self.source()
+        self._update_label()
+        self.session.log(Msg("scenarios.backend_saved", scenario=scenario_id))
+        self.refresh_backend_library()
 
     def save(self) -> None:
         """Save to the opened file (Ctrl+S); ask for a path when there is none."""
@@ -456,16 +859,17 @@ class ScenariosPage(Page):
         assert isinstance(scenario, dict)
         rows = []
         for index, action in enumerate(scenario.get("sequence") or [], start=1):
-            status, detail = statuses.get(action["id"], ("pending", ""))
-            if action["id"] == current and status == "pending":
+            action_id = str(action.get("id", ""))
+            status, detail = statuses.get(action_id, ("pending", ""))
+            if action_id == current and status == "pending":
                 status = "running"
             rows.append(
                 (
                     index,
                     status,
-                    action["id"],
-                    action["kind"],
-                    f"{action['source']} → {action['target']}",
+                    action_id,
+                    action.get("kind", ""),
+                    f"{action.get('source', '')} → {action.get('target', '')}",
                     action.get("service"),
                     detail,
                 )
@@ -494,11 +898,13 @@ class ScenariosPage(Page):
             assert isinstance(scenario, dict)
             rows = [
                 (tr("condition.role.success_requirement"), item["action"], item["field"],
-                 cell_text(item["equals"]), "")
+                 cell_text(item.get("equals") or item.get("pattern") or item.get("minimum")
+                           or item.get("maximum") or ""), "")
                 for item in scenario.get("success_conditions") or []
             ] + [
                 (tr("condition.role.failure_trigger"), item["action"], item["field"],
-                 item["equals"], "")
+                 cell_text(item.get("equals") or item.get("pattern") or item.get("minimum")
+                           or item.get("maximum") or ""), "")
                 for item in scenario.get("failure_conditions") or []
             ]
         fill_table(self.conditions, rows, colors={4: "outcome"})
@@ -712,6 +1118,12 @@ class ScenariosPage(Page):
         self.deploy_required.setEnabled(needs_deploy and not self.context.busy)
         self.validate_button.setEnabled(self.session.connected and bool(self.source().strip()))
         self.save_button.setEnabled(bool(self.source().strip()))
+        self.backend_load.setEnabled(
+            self.session.connected and self.backend_scenarios.count() > 0 and not running
+        )
+        self.save_backend.setEnabled(
+            self.session.connected and bool(self.source().strip()) and not running
+        )
         self.run_button.setEnabled(self.ready() and not self.context.busy)
         self.cancel_button.setEnabled(running)
         has_last = self._last_id() is not None
@@ -725,4 +1137,3 @@ class ScenariosPage(Page):
             self.open_path(argument)
         elif not self.source().strip() and document_id(self.source()) is None:
             self.editor.setFocus()
-
