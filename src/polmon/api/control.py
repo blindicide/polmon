@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import secrets
@@ -91,6 +92,7 @@ class ControlPlane:
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
         self.console_sessions = ConsoleSessions(self.data_directory / "runs" / "console")
+        self.vnc_sessions: dict[str, tuple[str, str]] = {}
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
             parse=parse_topology,
@@ -350,7 +352,7 @@ class ControlPlane:
         checks = fidelity_readiness()["checks"]
         vnc_reasons = [
             f"console.{name}_missing"
-            for name in ("Xvfb", "x11vnc", "xterm")
+            for name in ("Xvfb", "x11vnc", "xclock")
             if not bool(checks[f"tool_{name}"]["ok"])  # type: ignore[index]
         ]
         if not node_supported:
@@ -361,7 +363,7 @@ class ControlPlane:
             "ssh": {"available": not reasons, "port": service.port if service else None},
             "vnc": {
                 "available": not vnc_reasons,
-                "display_stack": "Xvfb + x11vnc + xterm",
+                "display_stack": "Xvfb + x11vnc + xclock",
                 "reason_codes": vnc_reasons,
             },
             "reason_codes": reasons,
@@ -375,15 +377,67 @@ class ControlPlane:
                 "console.l1_required": "VNC requires an L1 node",
                 "console.Xvfb_missing": "Xvfb is missing",
                 "console.x11vnc_missing": "x11vnc is missing; install package x11vnc",
-                "console.xterm_missing": "xterm is missing; install package xterm",
+                "console.xclock_missing": "xclock is missing; install package x11-apps",
             }
             reason = str(reasons[0])
             raise ConfigurationError(
                 messages.get(reason, "VNC prerequisites are unavailable"), message_code=reason
             )
-        raise ConfigurationError(
-            "VNC relay is not available for this deployment", message_code="console.vnc_unavailable"
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            raise ConfigurationError(
+                "topology must be deployed on the namespace backend",
+                message_code="console.not_deployed",
+            )
+        session = secrets.token_urlsafe(24)
+        display = control.backend.start_vnc(node_id)
+        self.vnc_sessions[session] = (topology_id, node_id)
+        return {
+            "session_id": session,
+            "node": readiness["node"],
+            "display": display,
+            "relay_path": f"/v1/deployments/{topology_id}/nodes/{node_id}/console/vnc/{session}",
+        }
+
+    async def console_vnc_relay(self, session_id: str, websocket) -> None:  # noqa: ANN001
+        session = self.vnc_sessions.get(session_id)
+        if session is None:
+            await websocket.close(code=4404)
+            return
+        topology_id, node_id = session
+        control = self.deployments.get(topology_id)
+        if control is None or not isinstance(control.backend, NamespaceBackend):
+            await websocket.close(code=4409)
+            return
+        process = await asyncio.create_subprocess_exec(
+            "sudo", "-n", *control.backend.vnc_proxy_argv(node_id),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         )
+        async def from_client() -> None:
+            while True:
+                data = await websocket.receive_bytes()
+                process.stdin.write(data)
+                await process.stdin.drain()
+        async def from_vnc() -> None:
+            while True:
+                data = await process.stdout.read(65536)
+                if not data:
+                    return
+                await websocket.send_bytes(data)
+        client_task = asyncio.create_task(from_client())
+        vnc_task = asyncio.create_task(from_vnc())
+        try:
+            await asyncio.wait(
+                (client_task, vnc_task), return_when=asyncio.FIRST_COMPLETED
+            )
+        except Exception:
+            pass
+        finally:
+            client_task.cancel()
+            vnc_task.cancel()
+            if process.returncode is None:
+                process.terminate()
+                await process.wait()
 
     @staticmethod
     def _raise_console_reason(reason: str) -> None:

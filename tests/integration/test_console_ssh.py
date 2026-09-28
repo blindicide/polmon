@@ -1,4 +1,5 @@
 import shutil
+import struct
 import subprocess
 import time
 
@@ -41,6 +42,10 @@ def ssh_lab_available() -> bool:
         ["sudo", "-n", "ip", "netns", "list"], capture_output=True, check=False, timeout=3
     )
     return result.returncode == 0
+
+
+def vnc_lab_available() -> bool:
+    return ssh_lab_available() and all(shutil.which(tool) for tool in ("Xvfb", "x11vnc", "xclock"))
 
 
 @pytest.mark.integration
@@ -138,5 +143,94 @@ def test_console_api_exec_interactive_stream_interrupt_and_transcript(tmp_path) 
         transcript = client.get(session + "/transcript").json()
         assert "INTERACTIVE-OK" in transcript["text"]
         assert client.delete("/v1/deployments/console-two").status_code == 200
+    finally:
+        plane.shutdown()
+
+
+@pytest.mark.integration
+@pytest.mark.privileged
+def test_real_vnc_stack_has_framebuffer_and_tears_down(tmp_path) -> None:
+    if not vnc_lab_available():
+        pytest.skip("NOT RUN — console.vnc_prerequisite_missing")
+    source = console_topology().replace("console-two", "vnc-one").replace("bravo", "clock")
+    topology = parse_topology(source)
+    backend = NamespaceBackend(run_directory=tmp_path / "run")
+    control = Orchestrator(topology, backend)
+    try:
+        control.validate()
+        control.create()
+        control.start()
+        display = backend.start_vnc("alpha")
+        address, port = display["address"], display["port"]
+        probe = """import socket,sys,struct
+s=socket.create_connection((sys.argv[1],int(sys.argv[2])),5)
+assert s.recv(12) == b'RFB 003.008\\n'
+s.sendall(b'RFB 003.008\\n'); count=s.recv(1)[0]; types=s.recv(count); assert 1 in types
+s.sendall(b'\\x01'); assert s.recv(4) == b'\\x00\\x00\\x00\\x00'
+s.sendall(b'\\x01'); init=s.recv(24); width,height=struct.unpack('>HH',init[:4])
+assert width == 1024
+assert height == 768
+s.sendall(b'\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
+s.sendall(b'\\x02\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01')
+s.sendall(b'\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
+s.sendall(b'\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
+pixel=s.recv(16); assert len(pixel) == 16
+s.sendall(b'\\x05'+struct.pack('>xHH',400,300))
+print(f'RFB-OK {width}x{height} PIXEL-BYTES={len(pixel)} POINTER-SENT')
+"""
+        command = [
+            "sudo", "-n", "ip", "netns", "exec", backend.names.namespaces["alpha"],
+            "python3", "-c", probe, str(address), str(port),
+        ]
+        for _ in range(30):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
+            if result.returncode == 0:
+                break
+            time.sleep(0.2)
+        assert result.returncode == 0, result.stderr
+        assert "RFB-OK 1024x768" in result.stdout
+    finally:
+        control.destroy()
+    assert not backend.created_namespaces and not backend.created_veths
+    assert not backend.vnc_processes
+
+
+@pytest.mark.integration
+@pytest.mark.privileged
+def test_vnc_api_relay_delivers_framebuffer_and_input(tmp_path) -> None:
+    if not vnc_lab_available():
+        pytest.skip("NOT RUN — console.vnc_prerequisite_missing")
+    plane = ControlPlane(tmp_path)
+    client = TestClient(create_app(plane))
+    try:
+        assert client.post("/v1/topologies", json={"yaml": console_topology()}).status_code == 200
+        assert client.post("/v1/deployments/console-two").status_code == 200
+        started = client.post(
+            "/v1/deployments/console-two/nodes/alpha/console/vnc"
+        )
+        assert started.status_code == 200, started.text
+        relay = started.json()["relay_path"]
+        with client.websocket_connect(relay) as socket:
+            assert socket.receive_bytes() == b"RFB 003.008\n"
+            socket.send_bytes(b"RFB 003.008\n")
+            security = socket.receive_bytes()
+            assert security[0] == 1 and security[1:5] == b"\x00\x00\x00\x00"
+            socket.send_bytes(b"\x01")
+            assert socket.receive_bytes() == b"\x00\x00\x00\x00"
+            socket.send_bytes(b"\x01")
+            init = socket.receive_bytes()
+            width, height = struct.unpack(">HH", init[:4])
+            assert (width, height) == (1024, 768)
+            socket.send_bytes(b"\x00")
+            socket.send_bytes(b"\x02\x00\x00\x00\x01\x00\x00\x00\x01")
+            socket.send_bytes(b"\x03\x00\x00\x00\x00\x00\x00\x00\x00")
+            update = socket.receive_bytes()
+            assert update[0] == 0 and len(update) > 16
+            socket.send_bytes(b"\x05\x01" + struct.pack(">HH", 400, 300))
+        evidence = tmp_path / "vnc-relay.txt"
+        evidence.write_text(
+            "WEBSOCKET-RELAY-OK 1024x768 FRAMEBUFFER-UPDATE POINTER-EVENT SENT CLEAN-CLOSE\n",
+            encoding="utf-8",
+        )
     finally:
         plane.shutdown()

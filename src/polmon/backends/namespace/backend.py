@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import os
 import re
+import secrets
 import shutil
 import signal
 import subprocess
@@ -80,6 +81,9 @@ class NamespaceBackend:
         self.created_bridges: set[str] = set()
         self.created_veths: set[str] = set()
         self.services: dict[tuple[str, str], subprocess.Popen[bytes]] = {}
+        self.vnc_processes: dict[
+            str, tuple[subprocess.Popen[bytes], subprocess.Popen[bytes], subprocess.Popen[bytes]]
+        ] = {}
         self.running = False
 
     @staticmethod
@@ -228,6 +232,15 @@ class NamespaceBackend:
         self.running = True
 
     def stop(self) -> None:
+        for processes in list(self.vnc_processes.values()):
+            for process in processes:
+                if process.poll() is None:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                        process.wait(timeout=3)
+                    except (PermissionError, ProcessLookupError, subprocess.TimeoutExpired):
+                        pass
+        self.vnc_processes.clear()
         for process in list(self.services.values()):
             poll = process.poll()
             if poll is None:
@@ -238,6 +251,98 @@ class NamespaceBackend:
                     pass
         self.services.clear()
         self.running = False
+
+    def start_vnc(self, node_id: str) -> dict[str, object]:
+        if self.run_directory is None:
+            raise RuntimeError("console.vnc_unavailable")
+        if self.topology is None:
+            raise RuntimeError("topology is unavailable")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None or node.node_class is not NodeClass.L1:
+            raise ValueError("console.l1_required")
+        address, port = self.vnc_service(node_id)
+        directory = self.run_directory / "vnc" / node_id
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        display = f":{100 + (int(secrets.token_hex(2), 16) % 800)}"
+        display_number = display[1:]
+        log = directory / "vnc.log"
+        stream = log.open("ab")
+        namespace = self._namespace(node_id)
+        xvfb = self.runner.start(
+            self._as_owner(
+                namespace,
+                "Xvfb",
+                display,
+                "-screen",
+                "0",
+                "1024x768x24",
+                "-nolisten",
+                "tcp",
+            ),
+            privileged=True,
+        )
+        xclock = self.runner.start(
+            self._as_owner(namespace, "env", f"DISPLAY={display}", "xclock", "-digital"),
+            privileged=True,
+        )
+        x11vnc = self.runner.start(
+            self._as_owner(
+                namespace, "env", f"DISPLAY={display}", "x11vnc", "-display", display,
+                "-rfbport", str(port), "-listen", address, "-forever", "-shared",
+                "-nopw", "-o", str(log),
+            ),
+            privileged=True,
+        )
+        stream.close()
+        self.vnc_processes[node_id] = (xvfb, xclock, x11vnc)
+        return {
+            "node_id": node_id,
+            "address": address,
+            "port": port,
+            "display": display,
+            "display_number": display_number,
+        }
+
+    def vnc_service(self, node_id: str) -> tuple[str, int]:
+        if self.topology is None:
+            raise ValueError("topology is unavailable")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ValueError("console.node_unknown")
+        address = str(node.interfaces[0].ipv4)
+        return address, 5900 + node.interfaces[0].ipv4.packed[-1]
+
+    def vnc_proxy_argv(self, node_id: str) -> list[str]:
+        address, port = self.vnc_service(node_id)
+        namespace = self._namespace(node_id)
+        proxy = "\n".join(
+            (
+                "import selectors, socket, sys, time",
+                "s = None",
+                "for _ in range(50):",
+                "    try:",
+                "        s = socket.create_connection((sys.argv[1], int(sys.argv[2])), .2)",
+                "        break",
+                "    except OSError:",
+                "        time.sleep(.1)",
+                "if s is None:",
+                "    raise SystemExit(1)",
+                "q = selectors.DefaultSelector()",
+                "q.register(s, selectors.EVENT_READ)",
+                "q.register(sys.stdin.buffer, selectors.EVENT_READ)",
+                "while True:",
+                "    for key, _ in q.select():",
+                "        data = key.fileobj.recv(65536) if key.fileobj is s else key.fileobj.read(65536)",
+                "        if not data:",
+                "            raise SystemExit",
+                "        destination = sys.stdout.buffer if key.fileobj is s else s",
+                "        destination.write(data)",
+                "        destination.flush()",
+            )
+        )
+        return [
+            "ip", "netns", "exec", namespace, sys.executable, "-u", "-c", proxy, address, str(port)
+        ]
 
     def destroy(self) -> None:
         self.stop()

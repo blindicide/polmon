@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request, Response
+from fastapi import APIRouter, Path, Query, Request, Response, WebSocket
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -127,6 +127,15 @@ def console_vnc(
     topology_id: TopologyId, node_id: TopologyId, request: Request
 ) -> dict[str, object]:
     return control(request).console_vnc_start(topology_id, node_id)
+
+
+@router.websocket("/deployments/{topology_id}/nodes/{node_id}/console/vnc/{session_id}")
+async def console_vnc_relay(
+    topology_id: str, node_id: str, session_id: str, websocket: WebSocket
+) -> None:
+    del topology_id, node_id
+    await websocket.accept()
+    await websocket.app.state.control.console_vnc_relay(session_id, websocket)
 
 
 @router.post("/deployments/{topology_id}/nodes/{node_id}/console/exec")

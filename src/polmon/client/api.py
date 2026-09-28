@@ -217,6 +217,15 @@ class ApiClient:
     def console_vnc(self, topology_id: str, node_id: str) -> dict[str, object]:
         return self._dict("POST", self._console_path(topology_id, node_id) + "/vnc")
 
+    def console_vnc_url(self, relay_path: str) -> str:
+        scheme = "wss" if self.base_url.startswith("https://") else "ws"
+        parsed = urllib.parse.urlparse(self.base_url)
+        return f"{scheme}://{parsed.netloc}{relay_path}"
+
+    @property
+    def token(self) -> str | None:
+        return self._token
+
     def console_exec(
         self, topology_id: str, node_id: str, argv: list[str], timeout_seconds: float = 10
     ) -> dict[str, object]:

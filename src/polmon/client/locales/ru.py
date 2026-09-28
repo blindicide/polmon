@@ -581,6 +581,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "console.closing": "Закрытие консольного сеанса",
     "console.vnc": "Открыть графический экран",
     "console.vnc_opening": "Открытие графического экрана",
+    "console.vnc_title": "Графическая консоль",
     "topologies.tab.nodes": "Узлы",
     "topologies.tab.networks": "Сети",
     "topologies.no_document": "Топология не открыта",
@@ -993,8 +994,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.ssh_client_missing": "На хосте не установлен клиент защищённого доступа.",
     "backend.console.ssh_service_missing": "Сначала объявите на машине консольную службу.",
     "backend.console.ssh_unavailable": "У развёртывания нет каталога защищённой консоли.",
-    "backend.console.vnc_unavailable": "Для этого развёртывания ретранслятор графического "
-    "экрана недоступен.",
     "backend.topology.yaml_invalid": "Топология не является корректным YAML (строка {line}, "
     "столбец {column}).",
     "backend.topology.validation_failed": "В топологии есть ошибки проверки.",

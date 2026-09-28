@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from polmon.client.i18n import Msg, tr
 from polmon.client.pages import Context, Page
+from polmon.client.vnc import VncViewer
 from polmon.client.widgets import Card, button, monospace_font, primary_button
 
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
@@ -103,6 +104,7 @@ class ConsolePage(Page):
         super().__init__(context, parent)
         self.node_documents: dict[str, dict[str, object]] = {}
         self._polling = False
+        self.vnc_windows: list[VncViewer] = []
         controls = Card("console.target", name="consoleTarget")
         row = QHBoxLayout()
         self.topology = QComboBox()
@@ -242,10 +244,20 @@ class ConsolePage(Page):
             lambda token, report: client.console_input(
                 tab.topology_id, tab.node_id, tab.session_id, data
             ),
-            on_success=lambda result: None,
+            on_success=lambda result: self._show_vnc(result),
             banner=self.banner,
             quiet=True,
         )
+
+    def _show_vnc(self, result: object) -> None:
+        if not isinstance(result, dict) or not isinstance(result.get("relay_path"), str):
+            return
+        client = self.session.client()
+        viewer = VncViewer(client.console_vnc_url(result["relay_path"]), client.token)
+        viewer.setWindowTitle(tr("console.vnc_title"))
+        viewer.resize(1024, 768)
+        viewer.show()
+        self.vnc_windows.append(viewer)
 
     def poll(self) -> None:
         tab = self.current_tab()

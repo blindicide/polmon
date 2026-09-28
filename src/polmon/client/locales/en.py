@@ -524,6 +524,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "console.closing": "Closing console session",
     "console.vnc": "Open VNC",
     "console.vnc_opening": "Opening VNC",
+    "console.vnc_title": "VNC console",
     "topologies.tab.nodes": "Nodes",
     "topologies.tab.networks": "Networks",
     "topologies.no_document": "No topology open",
@@ -936,7 +937,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.ssh_client_missing": "OpenSSH client (ssh) is not installed on the host.",
     "backend.console.ssh_service_missing": "Declare an ssh service on this machine first.",
     "backend.console.ssh_unavailable": "This deployment has no SSH run directory.",
-    "backend.console.vnc_unavailable": "The VNC relay is not available for this deployment.",
     "backend.topology.yaml_invalid": "The topology is not valid YAML (line {line}, column "
     "{column}).",
     "backend.topology.validation_failed": "The topology has validation errors.",

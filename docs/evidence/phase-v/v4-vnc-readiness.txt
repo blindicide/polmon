@@ -1,8 +1,16 @@
-V.4 readiness evidence captured on 2026-09-28
+V.4 prerequisite evidence captured on 2026-09-28
 
-Available: /usr/bin/Xvfb, /usr/sbin/sshd, /usr/bin/ssh
-Missing: x11vnc (Ubuntu package x11vnc), xterm (Ubuntu package xterm)
+$ sudo -n apt-get install -y x11vnc
+...
+Setting up x11vnc (0.9.16-10) ...
 
-Result: VNC is not claimed as working. The readiness API reports
-console.x11vnc_missing and console.xterm_missing for an L1 node, and the
-start endpoint refuses with the first actionable code.
+$ command -v Xvfb x11vnc xclock sshd ssh ip
+/usr/bin/Xvfb
+/usr/bin/x11vnc
+/usr/bin/xclock
+/usr/sbin/sshd
+/usr/bin/ssh
+/usr/sbin/ip
+
+VNC is installable and the real end-to-end gate is in progress. No limitation
+is claimed from prerequisite absence.
