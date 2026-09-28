@@ -177,6 +177,11 @@ class ApiClient:
     def load_topology(self, source: str) -> dict[str, object]:
         return self._dict("POST", "/v1/topologies", {"yaml": source})
 
+    def save_topology(self, topology_id: str, source: str) -> dict[str, object]:
+        return self._dict(
+            "PUT", f"/v1/topologies/{_segment(topology_id)}", {"yaml": source}
+        )
+
     def topologies(self) -> list[dict[str, object]]:
         return self._list("/v1/topologies")
 

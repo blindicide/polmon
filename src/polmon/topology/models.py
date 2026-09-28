@@ -61,6 +61,11 @@ class ResourceRequirements(StrictModel):
     disk_mb: int = Field(default=1, ge=0, le=16_777_216)
 
 
+class LayoutPosition(StrictModel):
+    x: float = Field(ge=-1_000_000, le=1_000_000)
+    y: float = Field(ge=-1_000_000, le=1_000_000)
+
+
 class ServiceDefinition(StrictModel):
     id: str
     protocol: Protocol
@@ -110,6 +115,7 @@ class Node(StrictModel):
     id: str
     name: str | None = None
     uuid: UUID = Field(default_factory=uuid4)
+    layout: LayoutPosition | None = None
     node_class: NodeClass = Field(alias="class")
     interfaces: list[Interface] = Field(default_factory=list)
     resources: ResourceRequirements | None = None

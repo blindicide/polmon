@@ -395,6 +395,6 @@ def test_loaded_topologies_can_be_unloaded_unless_deployed(tmp_path) -> None:
         and "destroy the deployment" in refused.json()["error"]["message"]
     )
     client.delete("/v1/deployments/hybrid-small")
-    assert client.delete("/v1/topologies/hybrid-small").json()["state"] == "unloaded"
+    assert client.delete("/v1/topologies/hybrid-small").json()["state"] == "deleted"
     assert client.get("/v1/topologies").json() == []
     assert client.delete("/v1/topologies/hybrid-small").status_code == 422

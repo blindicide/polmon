@@ -16,6 +16,7 @@ from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
 from polmon.core.errors import ConfigurationError, PolmonError
+from polmon.library import YamlLibrary
 from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
@@ -69,7 +70,13 @@ class ControlPlane:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
-        self.topologies: dict[str, Topology] = {}
+        self.topology_library = YamlLibrary(
+            self.data_directory / "library" / "topologies",
+            parse=parse_topology,
+            dump=dump_topology,
+            identity=lambda topology: topology.id,
+        )
+        self.topologies: dict[str, Topology] = self.topology_library.load_all()
         self.deployments: dict[str, Orchestrator] = {}
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
@@ -129,11 +136,13 @@ class ControlPlane:
     def validate_topology(self, source: str) -> dict[str, object]:
         return self._describe(parse_topology(source))
 
-    def load_topology(self, source: str) -> dict[str, object]:
+    def load_topology(self, source: str, topology_id: str | None = None) -> dict[str, object]:
         topology = parse_topology(source)
+        requested_id = topology_id or topology.id
+        self.topology_library.put(requested_id, topology)
         with self._lock:
             self.topologies[topology.id] = topology
-        return self._describe(topology)
+        return {**self._describe(topology), "persisted": True}
 
     def list_topologies(self) -> list[dict[str, object]]:
         with self._lock:
@@ -161,7 +170,8 @@ class ControlPlane:
                     params={"topology_id": topology_id},
                 )
             self.topologies.pop(topology_id, None)
-        return {"topology_id": topology_id, "state": "unloaded"}
+            self.topology_library.delete(topology_id)
+        return {"topology_id": topology_id, "state": "deleted"}
 
     def topology_detail(self, topology_id: str) -> dict[str, object]:
         with self._lock:

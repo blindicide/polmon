@@ -111,7 +111,7 @@ def test_every_client_method_round_trips(backend: ApiClient) -> None:
         backend.benchmark_result("absent.json")
     assert missing.value.status == 422
     assert backend.destroy("l0-office")["state"] == "destroyed"
-    assert backend.unload_topology("l0-office")["state"] == "unloaded"
+    assert backend.unload_topology("l0-office")["state"] == "deleted"
     assert backend.reset_all()["deployments_destroyed"] == 0
 
 

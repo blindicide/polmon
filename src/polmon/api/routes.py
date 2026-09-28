@@ -58,6 +58,11 @@ def load_topology(document: YamlDocument, request: Request) -> dict[str, object]
     return control(request).load_topology(document.yaml)
 
 
+@router.post("/topologies/import")
+def import_topology(document: YamlDocument, request: Request) -> dict[str, object]:
+    return control(request).load_topology(document.yaml)
+
+
 @router.get("/topologies")
 def list_topologies(request: Request) -> list[dict[str, object]]:
     return control(request).list_topologies()
@@ -66,6 +71,13 @@ def list_topologies(request: Request) -> list[dict[str, object]]:
 @router.get("/topologies/{topology_id}")
 def topology_detail(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).topology_detail(topology_id)
+
+
+@router.put("/topologies/{topology_id}")
+def put_topology(
+    topology_id: TopologyId, document: YamlDocument, request: Request
+) -> dict[str, object]:
+    return control(request).load_topology(document.yaml, topology_id)
 
 
 @router.delete("/topologies/{topology_id}")

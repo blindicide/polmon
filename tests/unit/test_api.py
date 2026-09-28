@@ -274,7 +274,10 @@ def test_api_rejects_path_like_identifiers_before_touching_files(tmp_path) -> No
     for path in ("/v1/experiments/..escape/report", "/v1/deployments/Bad_Id"):
         assert client.get(path).status_code == 422, path
     assert not (tmp_path / "reports").exists() and not (tmp_path / "captures").exists()
-    assert all(item.name.startswith("telemetry.sqlite3") for item in tmp_path.iterdir())
+    assert all(
+        item.name.startswith("telemetry.sqlite3") or item.name == "library"
+        for item in tmp_path.iterdir()
+    )
 
 
 def test_report_writer_refuses_unsafe_identifiers(tmp_path) -> None:
@@ -296,6 +299,32 @@ def test_backend_shutdown_tears_down_every_deployment(tmp_path) -> None:
         assert control.deployments
     assert not control.deployments  # lifespan shutdown ran reset_all()
     assert topology_id in control.topologies  # definitions survive for a restart
+
+
+def test_topology_library_survives_restart_and_supports_upsert_delete(tmp_path) -> None:
+    first = TestClient(create_app(ControlPlane(tmp_path)))
+    source = l0_source()
+    created = first.post("/v1/topologies/import", json={"yaml": source})
+    assert created.status_code == 200 and created.json()["persisted"] is True
+    path = tmp_path / "library" / "topologies" / "hybrid-small.yml"
+    assert path.is_file() and not list(path.parent.glob("*.tmp"))
+
+    restarted = TestClient(create_app(ControlPlane(tmp_path)))
+    detail = restarted.get("/v1/topologies/hybrid-small")
+    assert detail.status_code == 200
+    uuid_before = detail.json()["topology"]["nodes"][0]["uuid"]
+    renamed = detail.json()["normalized_yaml"].replace("name: sensor-1", "name: Lobby sensor")
+    updated = restarted.put("/v1/topologies/hybrid-small", json={"yaml": renamed})
+    assert updated.status_code == 200
+    assert updated.json()["topology"]["nodes"][0]["uuid"] == uuid_before
+    assert ControlPlane(tmp_path).topologies["hybrid-small"].nodes[0].name == "Lobby sensor"
+
+    mismatch = restarted.put("/v1/topologies/other-id", json={"yaml": renamed})
+    assert mismatch.status_code == 422
+    assert mismatch.json()["error"]["message_code"] == "library.id_mismatch"
+    deleted = restarted.delete("/v1/topologies/hybrid-small")
+    assert deleted.json()["state"] == "deleted" and not path.exists()
+    assert ControlPlane(tmp_path).topologies == {}
 
 
 def test_oversized_bodies_are_rejected_before_parsing(tmp_path) -> None:
