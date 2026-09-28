@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, Response, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from polmon.api.benchmarks import RESULT_NAME, BenchmarkRequest
@@ -262,6 +263,65 @@ def reset(request: Request) -> dict[str, object]:
 @router.get("/resources")
 def resource_status(request: Request) -> dict[str, object]:
     return control(request).resource_status()
+
+
+@router.get("/logs")
+def logs(
+    request: Request,
+    level: str | None = None,
+    source: str | None = None,
+    deployment: str | None = None,
+    topology: str | None = None,
+    node: str | None = None,
+    session: str | None = None,
+    experiment: str | None = None,
+    search: str | None = None,
+    since: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> dict[str, object]:
+    return control(request).logs_query(
+        level=level,
+        source=source,
+        deployment=deployment,
+        topology=topology,
+        node=node,
+        session=session,
+        experiment=experiment,
+        search=search,
+        since=since,
+        limit=limit,
+    )
+
+
+@router.get("/logs/files")
+def log_files(request: Request) -> dict[str, object]:
+    return control(request).logs_files()
+
+
+@router.get("/logs/stream")
+def log_stream(
+    request: Request,
+    since: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> StreamingResponse:
+    store = control(request).logs
+
+    def events():
+        cursor = since
+        for _ in range(20):
+            result = store.wait_for(cursor, timeout=0.5)
+            records = result["records"]
+            if not isinstance(records, list) or not records:
+                yield ": heartbeat\n\n"
+                continue
+            for record in records[:limit]:
+                if not isinstance(record, dict):
+                    continue
+                cursor = int(record.get("cursor", cursor))
+                payload = json.dumps(record, ensure_ascii=False)
+                yield f"id: {cursor}\nevent: log\ndata: {payload}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.get("/experiments")

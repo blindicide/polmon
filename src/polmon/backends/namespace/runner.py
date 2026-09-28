@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock, Thread
 
 TIMEOUT_RETURNCODE = 124  # the convention of coreutils timeout(1)
@@ -60,15 +61,46 @@ class CommandRunner:
             )
         return CommandResult(completed.stdout, completed.stderr, completed.returncode)
 
-    def start(self, command: list[str], *, privileged: bool = False) -> subprocess.Popen[bytes]:
+    def start(
+        self,
+        command: list[str],
+        *,
+        privileged: bool = False,
+        log_path: str | Path | None = None,
+        max_output_bytes: int = 128 * 1024,
+    ) -> subprocess.Popen[bytes]:
         argv = ["sudo", "-n", *command] if privileged else command
-        return subprocess.Popen(
+        if log_path is None:
+            return subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        destination = Path(log_path)
+        destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        process = subprocess.Popen(
             argv,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+
+        def drain() -> None:
+            assert process.stdout is not None
+            written = 0
+            with destination.open("ab") as stream:
+                while chunk := process.stdout.read(8192):
+                    remaining = max_output_bytes - written
+                    if remaining > 0:
+                        stream.write(chunk[:remaining])
+                        stream.flush()
+                        written += min(len(chunk), remaining)
+
+        Thread(target=drain, daemon=True, name=f"service-log-{process.pid}").start()
+        return process
 
     def run_bounded(
         self,

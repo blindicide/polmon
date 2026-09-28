@@ -53,6 +53,7 @@ from polmon.client.pages.benchmarks import BenchmarksPage
 from polmon.client.pages.console import ConsolePage
 from polmon.client.pages.dashboard import DashboardPage
 from polmon.client.pages.deployment import DeploymentPage
+from polmon.client.pages.logs import LogsPage
 from polmon.client.pages.reports import ReportsPage
 from polmon.client.pages.scenarios import ScenariosPage
 from polmon.client.pages.telemetry import TelemetryPage
@@ -90,6 +91,7 @@ PAGES = (
     ScenariosPage,
     ConsolePage,
     TelemetryPage,
+    LogsPage,
     ReportsPage,
     BenchmarksPage,
 )

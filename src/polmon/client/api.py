@@ -211,6 +211,38 @@ class ApiClient:
     def unload_scenario(self, scenario_id: str) -> dict[str, object]:
         return self._dict("DELETE", f"/v1/scenarios/{_segment(scenario_id)}")
 
+    def logs(
+        self,
+        *,
+        level: str | None = None,
+        source: str | None = None,
+        deployment: str | None = None,
+        topology: str | None = None,
+        node: str | None = None,
+        session: str | None = None,
+        experiment: str | None = None,
+        search: str | None = None,
+        since: int = 0,
+        limit: int = 200,
+    ) -> dict[str, object]:
+        values = {
+            "level": level,
+            "source": source,
+            "deployment": deployment,
+            "topology": topology,
+            "node": node,
+            "session": session,
+            "experiment": experiment,
+            "search": search,
+            "since": since,
+            "limit": limit,
+        }
+        query = urllib.parse.urlencode({key: value for key, value in values.items() if value})
+        return self._dict("GET", "/v1/logs" + (f"?{query}" if query else ""))
+
+    def log_files(self) -> dict[str, object]:
+        return self._dict("GET", "/v1/logs/files")
+
     def deploy(self, topology_id: str) -> dict[str, object]:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("POST", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))

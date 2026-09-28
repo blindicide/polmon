@@ -63,6 +63,7 @@ class NamespaceBackend:
         owner_uid: int | None = None,
         owner_gid: int | None = None,
         run_directory: str | Path | None = None,
+        log_directory: str | Path | None = None,
     ) -> None:
         self.runner = runner or CommandRunner()
         self.python_executable = str(Path(python_executable or sys.executable).resolve())
@@ -75,6 +76,7 @@ class NamespaceBackend:
             else ""
         )
         self.run_directory = Path(run_directory) if run_directory else None
+        self.log_directory = Path(log_directory) if log_directory else None
         self.topology: Topology | None = None
         self.names: NamespaceNames | None = None
         self.created_namespaces: set[str] = set()
@@ -477,7 +479,17 @@ class NamespaceBackend:
             "--port",
             str(port),
         )
-        self.services[(node_id, service_id)] = self.runner.start(command, privileged=True)
+        self.services[(node_id, service_id)] = self.runner.start(
+            command, privileged=True, **self._service_log_kwargs(node_id, service_id)
+        )
+
+    def _service_log_kwargs(self, node_id: str, service_id: str) -> dict[str, object]:
+        if self.log_directory is None:
+            return {}
+        return {
+            "log_path": self.log_directory / str(self.topology.id) / node_id / f"{service_id}.log",
+            "max_output_bytes": 128 * 1024,
+        }
 
     def _start_ssh(self, node_id: str, service_id: str, port: int, address: str) -> None:
         if self.run_directory is None:
@@ -526,7 +538,9 @@ class NamespaceBackend:
         if sshd is None:
             raise RuntimeError("console.sshd_missing")
         command = ["ip", "netns", "exec", namespace, sshd, "-D", "-e", "-f", str(config)]
-        self.services[(node_id, service_id)] = self.runner.start(command, privileged=True)
+        self.services[(node_id, service_id)] = self.runner.start(
+            command, privileged=True, **self._service_log_kwargs(node_id, service_id)
+        )
 
     def ssh_service(self, node_id: str) -> tuple[str, int]:
         if self.topology is None:

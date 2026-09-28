@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from polmon.core.logstore import StructuredLogStore
 from polmon.version import __version__
 
 
@@ -303,6 +304,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also check privileged-lab readiness (read-only); exit 1 when not ready",
     )
+    parser.add_argument(
+        "--logs",
+        action="store_true",
+        help="include the log directory, file sizes, and the last bounded error records",
+    )
+    parser.add_argument(
+        "--data-directory",
+        default="var",
+        help="backend data directory used with --logs (default: var)",
+    )
     return parser
 
 
@@ -314,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
         readiness = lab_readiness()
         diagnostics["lab"] = readiness
         status = 0 if readiness["ready"] else 1
+    if args.logs:
+        store = StructuredLogStore(Path(args.data_directory) / "logs")
+        diagnostics["logs"] = {**store.files(), "last_errors": store.last_errors()}
     print(json.dumps(diagnostics, indent=None if args.json else 2, sort_keys=True))
     return status
 

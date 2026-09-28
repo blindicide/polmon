@@ -1,12 +1,13 @@
 # Phase V progress
 
-Last updated: 2026-09-28 (Codex, headless V.5 gate complete)
+Last updated: 2026-09-28 (Codex, headless V.6 gate complete)
 Branch: `phase-v-studio`
 Baseline: `main @ 634f49a` (`v0.4.1`)
 
-**READ THIS FIRST IF YOU ARE RESUMING:** V.4 and V.5 are green. V.4 evidence is in
+**READ THIS FIRST IF YOU ARE RESUMING:** V.4, V.5 and V.6 are green. V.4 evidence is in
 `docs/evidence/phase-v/v4-vnc-headless-gate.txt`; V.5 evidence is in
-`docs/evidence/phase-v/v5-scenario-studio-gate.txt`. The next milestone is V.6.
+`docs/evidence/phase-v/v5-scenario-studio-gate.txt`; V.6 evidence is in
+`docs/evidence/phase-v/v6-logs-gate.txt`. The next milestone is V.7.
 
 ## Verified
 
@@ -36,10 +37,10 @@ Baseline: `main @ 634f49a` (`v0.4.1`)
   reloaded it after a fresh control-plane instance, passed the mixed ICMP/TCP/SSH/wait run, and
   failed the deliberately wrong stdout assertion as designed; both runs cleaned up.
 
-## In flight — V.6 (detailed logs)
+## In flight — V.7 (release v0.5.0)
 
-V.5 is complete with headless-runnable evidence and green gates. The next work is the structured
-logging and Logs-page flow described in the mandate.
+V.6 is complete with headless-runnable evidence and green gates. The next work is the release
+version, documentation, packaging and phase-report flow described in the mandate.
 
 **V.4 evidence retained:**
 
@@ -56,10 +57,10 @@ logging and Logs-page flow described in the mandate.
 
 ## Exact next step
 
-1. Implement structured JSON-line logs, bounded files/ring buffer, API filters/stream, and the Logs
-   page for V.6.
-2. Run the V.6 real deployment/console/experiment correlation gate, commit conventionally, and push
-   `phase-v-studio`.
+1. Commit and push V.6 with the green rootless and privileged gates recorded in
+   `docs/evidence/phase-v/v6-logs-gate.txt`.
+2. Implement and verify V.7 release `0.5.0`, including the phase report and honest packaging/CI
+   limitation evidence.
 
 ## Milestone status
 
@@ -69,8 +70,8 @@ logging and Logs-page flow described in the mandate.
 | V.2 | committed + pushed (`d8f42be`) | `ruff` + i18n clean; `tests/gui/test_topology_studio.py` present |
 | V.3 | committed + pushed (`4686435`), **verified green** | `check.sh` 423 passed / 16 deselected; privileged console tests 2 passed; host network unchanged; i18n clean |
 | V.4 | committed + pushed (`2decb06`), **green** | `v4-vnc-headless-gate.txt`: raw TCP + authenticated relay framebuffer/input, 424/18 rootless gate, 4 privileged tests, host network unchanged |
-| V.5 | **green; commit pending** | `v5-scenario-studio-gate.txt`: API/UI authoring, restart reload, real L1 pass/fail experiment, 428/19 rootless gate, host network unchanged |
-| V.6 | not started | — |
+| V.5 | committed + pushed (`f6af8fb`), **green** | `v5-scenario-studio-gate.txt`: API/UI authoring, restart reload, real L1 pass/fail experiment, 428/19 rootless gate, host network unchanged |
+| V.6 | **green; commit pending** | `v6-logs-gate.txt`: 431/20 rootless gate, real UUID correlation, Logs UI, bounded rotation, diagnostics, host network unchanged |
 | V.7 | not started | — |
 
 ## Known limitations

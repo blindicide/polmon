@@ -43,6 +43,18 @@ The Qt desktop client performs every HTTP call on a bounded worker-thread pool a
 on the GUI thread (see [UI-PLAN.md](UI-PLAN.md)). It never imports Linux networking code and does
 not require a backend to launch or to run its headless self-test.
 
+## Detailed logs (v0.5.0)
+
+`GET /v1/logs` returns bounded structured JSON records for lab operations. Optional filters are
+`level` (minimum `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`), `source`, `deployment`,
+`topology`, `node` (id/name/UUID substring), `session`, `experiment`, `search`, `since` (cursor),
+and `limit` (1–500). The response is `{records, next_cursor, has_more}`. `GET /v1/logs/stream`
+uses the same `since` cursor and a limit of 1–100 to return a bounded Server-Sent Events stream;
+each `log` event has an SSE `id` equal to the record cursor and JSON record data, with heartbeat
+comments while idle. `GET /v1/logs/files` returns the log directory, rotation cap and paths/sizes
+for structured, service and console files. It does not return file contents. See
+[LOGS.md](LOGS.md) for the record schema, retention and diagnostics command.
+
 ## Inspection, live progress and benchmarks (v0.2.0)
 
 These routes back the desktop client; all are additive and existing clients are unaffected.

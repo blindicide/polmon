@@ -1,0 +1,48 @@
+Phase V.6 headless evidence — detailed logs
+Date: 2026-09-28
+Branch: phase-v-studio
+
+Scope
+  Structured JSON-line records, bounded in-memory ring and rotating files;
+  per-node service output capture; console and experiment correlation;
+  /v1/logs, /v1/logs/stream and /v1/logs/files;
+  localized Logs page with filters, follow, detail, copy and export;
+  polmon-diagnostics --logs.
+
+Rootless repository gate
+  scripts/check.sh
+  ruff: All checks passed!
+  pytest: 431 passed, 20 deselected, 1 warning in 143.39s
+  warning: StarletteDeprecationWarning from the installed FastAPI/TestClient dependency
+  i18n-lint: 23 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+  i18n-completeness: PASS: 1090 keys, 16 plural keys, 173 backend message codes,
+    710 literal keys in code; 0 problem(s)
+
+Real privileged correlation gate
+  Command: scripts/privileged-tests.sh tests/integration/test_log_correlation.py -s
+  LOG-CONSOLE-SESSION-OK session=7dfc1335d91e marker=LOG-COMMAND
+  LOG-CORRELATION-OK node=bravo uuid=56ae9963-0242-47fc-aa86-ccf1061d1a46
+    events=provision,service,console,experiment,teardown files=bounded
+  result: 1 passed, 1 warning in 2.11s
+  wrapper: host network unchanged; no platform lab resources remain
+
+Headless Logs page and bounded storage
+  Command: pytest -q -s tests/gui/test_logs_page.py tests/unit/test_logstore.py
+  LOGS-UI-OK filters detail copy export
+  result: 3 passed in 0.97s
+  The storage test covers filtering, redaction, record/file bounds, rotation, reload and
+  cursor waiting. No visual acceptance is claimed on this headless server.
+
+Diagnostics
+  Command: polmon-diagnostics --logs --json --data-directory /tmp/polmon-v6-empty-diagnostics
+  logs.directory=/tmp/polmon-v6-empty-diagnostics/logs
+  logs.files=[]
+  logs.last_errors=[]
+  logs.max_file_bytes=262144
+  platform=Linux architecture=x86_64 python=3.12.3
+
+Security/behavior checks in the real gate
+  A single node UUID retrieved provision, service start, console command, experiment and
+  teardown records. Service file metadata was present and bounded. The deliberately missing
+  report error did not contain the marker used in the console command, proving detailed log
+  content was not copied into an API error payload.

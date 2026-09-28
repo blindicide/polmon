@@ -21,6 +21,7 @@ from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.console import ConsoleSessions
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
 from polmon.core.errors import ConfigurationError, PolmonError
+from polmon.core.logstore import StructuredLogStore
 from polmon.library import YamlLibrary
 from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
@@ -96,8 +97,9 @@ class ControlPlane:
     ) -> None:
         self.data_directory = Path(data_directory)
         self.data_directory.mkdir(parents=True, exist_ok=True)
+        self.logs = StructuredLogStore(self.data_directory / "logs")
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
-        self.console_sessions = ConsoleSessions(self.data_directory / "runs" / "console")
+        self.console_sessions = ConsoleSessions(self.data_directory / "logs" / "console")
         self.vnc_sessions: dict[str, tuple[str, str]] = {}
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
@@ -127,6 +129,49 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+
+    def _node_context(self, topology_id: str, node_id: str | None) -> dict[str, object] | None:
+        if node_id is None:
+            return None
+        topology = self.topologies.get(topology_id)
+        node = (
+            next((item for item in topology.nodes if item.id == node_id), None)
+            if topology
+            else None
+        )
+        if node is None:
+            return {"id": node_id}
+        return {"id": node.id, "name": node.name, "uuid": str(node.uuid)}
+
+    def _log(
+        self,
+        level: str,
+        event: str,
+        message: str,
+        *,
+        topology_id: str | None = None,
+        node_id: str | None = None,
+        experiment_id: str | None = None,
+        session_id: str | None = None,
+        params: dict[str, object] | None = None,
+    ) -> None:
+        self.logs.emit(
+            level,
+            event,
+            message,
+            params=params,
+            deployment=topology_id,
+            topology=topology_id,
+            node=self._node_context(topology_id, node_id) if topology_id else None,
+            experiment=experiment_id,
+            session=session_id,
+        )
+
+    def logs_query(self, **filters: object) -> dict[str, object]:
+        return self.logs.query(**filters)  # type: ignore[arg-type]
+
+    def logs_files(self) -> dict[str, object]:
+        return self.logs.files()
 
     def capabilities(self) -> dict[str, object]:
         """Execution fidelity advertised through health/resources responses."""
@@ -330,7 +375,8 @@ class ControlPlane:
                 / "runs"
                 / "deployments"
                 / topology.id
-                / secrets.token_hex(6)
+                / secrets.token_hex(6),
+                log_directory=self.data_directory / "logs" / "services",
             )
         if classes <= {NodeClass.L0, NodeClass.L1}:
             return HybridBackend()
@@ -353,6 +399,13 @@ class ControlPlane:
                 )
             deployed = [self._topology(item) for item in self.deployments]
             self.admission.admit_topology(topology, deployed)
+            self._log(
+                "INFO",
+                "lab.provision.start",
+                "provisioning topology",
+                topology_id=topology.id,
+                params={"node_count": len(topology.nodes), "network_count": len(topology.networks)},
+            )
             control = Orchestrator(topology, self._backend(topology))
             started = time.perf_counter()
             try:
@@ -364,6 +417,36 @@ class ControlPlane:
                 raise
             self.deployment_seconds[topology_id] = time.perf_counter() - started
             self.deployments[topology_id] = control
+            for node in topology.nodes:
+                self._log(
+                    "INFO",
+                    "lab.provision.complete",
+                    "node provisioned",
+                    topology_id=topology_id,
+                    node_id=node.id,
+                )
+                for interface in node.interfaces:
+                    self._log(
+                        "INFO",
+                        "lab.interface.up",
+                        "interface is up",
+                        topology_id=topology_id,
+                        node_id=node.id,
+                        params={"interface": interface.id, "network": interface.network},
+                    )
+                for service in node.services:
+                    self._log(
+                        "INFO",
+                        "lab.service.start",
+                        "service started",
+                        topology_id=topology_id,
+                        node_id=node.id,
+                        params={
+                            "service": service.id,
+                            "implementation": service.implementation,
+                            "port": service.port,
+                        },
+                    )
             return self.deployment(topology_id)
 
     def deployment(self, topology_id: str) -> dict[str, object]:
@@ -385,6 +468,8 @@ class ControlPlane:
         }
 
     def destroy(self, topology_id: str) -> dict[str, object]:
+        topology = self.topologies.get(topology_id)
+        self._log("INFO", "lab.teardown.start", "tearing down topology", topology_id=topology_id)
         self.console_sessions.close_topology(topology_id)
         with self._lock:
             control = self.deployments.get(topology_id)
@@ -392,6 +477,15 @@ class ControlPlane:
                 control.destroy()
                 self.deployments.pop(topology_id, None)
                 self.deployment_seconds.pop(topology_id, None)
+        if topology is not None:
+            for node in topology.nodes:
+                self._log(
+                    "INFO",
+                    "lab.teardown.complete",
+                    "node torn down",
+                    topology_id=topology_id,
+                    node_id=node.id,
+                )
         return {"topology_id": topology_id, "state": "destroyed"}
 
     def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
@@ -558,6 +652,19 @@ class ControlPlane:
             )
         result = control.backend.ssh_command(node_id, argv, timeout=timeout_seconds)
         node = next(item for item in self.topologies[topology_id].nodes if item.id == node_id)
+        self._log(
+            "INFO",
+            "console.command",
+            "console command completed",
+            topology_id=topology_id,
+            node_id=node_id,
+            params={
+                "argv": argv,
+                "exit_status": result.returncode,
+                "duration_seconds": result.duration_seconds,
+                "stderr_excerpt": result.stderr[:1_000],
+            },
+        )
         return {
             "node": {"id": node.id, "name": node.name, "uuid": str(node.uuid)},
             "argv": argv,
@@ -582,16 +689,45 @@ class ControlPlane:
             )
         result = self.console_sessions.create(topology_id, node_id, control.backend)
         result["node"] = readiness["node"]
+        self._log(
+            "INFO",
+            "console.session.start",
+            "interactive console session started",
+            topology_id=topology_id,
+            node_id=node_id,
+            session_id=str(result["session_id"]),
+        )
         return result
 
     def console_session(self, session_id: str, after: int = 0) -> dict[str, object]:
         return self.console_sessions.get(session_id, after)
 
     def console_session_input(self, session_id: str, data: str) -> dict[str, object]:
-        return self.console_sessions.input(session_id, data)
+        current = self.console_sessions.get(session_id)
+        result = self.console_sessions.input(session_id, data)
+        self._log(
+            "INFO",
+            "console.command",
+            "interactive console input sent",
+            topology_id=str(current["topology_id"]),
+            node_id=str(current["node_id"]),
+            session_id=session_id,
+            params={"input_excerpt": data[:1_000]},
+        )
+        return result
 
     def console_session_delete(self, session_id: str) -> dict[str, object]:
-        return self.console_sessions.delete(session_id)
+        current = self.console_sessions.get(session_id)
+        result = self.console_sessions.delete(session_id)
+        self._log(
+            "INFO",
+            "console.session.end",
+            "interactive console session closed",
+            topology_id=str(current["topology_id"]),
+            node_id=str(current["node_id"]),
+            session_id=session_id,
+        )
+        return result
 
     def console_transcript(self, session_id: str) -> dict[str, object]:
         return self.console_sessions.transcript(session_id)
@@ -821,6 +957,19 @@ class ControlPlane:
         )
 
         def action_started(index: int, action: ScenarioAction) -> None:
+            self._log(
+                "INFO",
+                "experiment.action.start",
+                "scenario action started",
+                topology_id=topology_id,
+                node_id=action.target,
+                experiment_id=experiment_id,
+                params={
+                    "action": action.id,
+                    "kind": action.kind.value,
+                    "resolved_target": action.target,
+                },
+            )
             with self._lock:
                 progress = self.progress.get(experiment_id)
                 if progress is not None:
@@ -835,6 +984,23 @@ class ControlPlane:
                     "success": observation.success,
                     "detail": observation.detail,
                     **observation.data,
+                },
+            )
+            self._log(
+                "INFO" if observation.success else "WARNING",
+                "experiment.action.end",
+                "scenario action completed",
+                topology_id=topology_id,
+                node_id=action.target,
+                experiment_id=experiment_id,
+                params={
+                    "action": action.id,
+                    "kind": action.kind.value,
+                    "success": observation.success,
+                    "detail": observation.detail,
+                    "duration_seconds": observation.data.get("duration_seconds"),
+                    "exit_status": observation.data.get("exit_status"),
+                    "stderr_excerpt": str(observation.data.get("stderr", ""))[:1_000],
                 },
             )
             with self._lock:
