@@ -223,11 +223,14 @@ Deliver VNC as a **real** capability with an honest readiness gate:
 - **Scope honesty**: VNC is for L1 nodes where the host provides the stack; L0 and any host without
   the prerequisites are refused with a coded message. Do not manufacture a fake framebuffer.
 
-**Gate for V.4:** on this host, with the prerequisites installed, a real VNC session shows a real
-X client's window rendered in the client-side viewer, keyboard input reaches it, and the session
-tears down cleanly. If the prerequisites genuinely cannot be installed, the honest fallback is:
-implement the full path, prove everything up to the missing package, and record a reason-coded
-KNOWN LIMITATION — do **not** claim VNC works.
+**Gate for V.4:** the code, the API surface, the readiness/refusal path, and the documented
+prerequisites are honest and green, backed by evidence that is **headless-runnable on this server**:
+an API call through the authenticated relay, a TCP handshake, `RFB 003.008` observed on the wire, and
+unit/integration tests. **Do NOT attempt a visual/interactive validation on this host — it is a
+headless server with no display, and the client GUI is validated by the operator on his own Windows
+desktop.** A rendered framebuffer watched by a human (or a screenshot pipeline built to fake one) is
+explicitly NOT required and must not block the phase: if it is the only thing missing, record
+`v4.no_visual_validation_on_headless_server` as a reason-coded limitation and move to V.5.
 
 ### V.5 — Scenario studio: author your own scenarios (complaint 4)
 
@@ -318,8 +321,10 @@ rotate and stay size-bounded; log content is absent from API error payloads.
    the host-network-untouched proof, i18n scripts green.
 3. A real end-to-end demonstration on this host exists as raw captured output in
    `docs/evidence/phase-v/`: build a topology in the studio, deploy it, SSH into two machines and run
-   commands, take a VNC view (or a reason-coded limitation), run an operator-authored scenario, and
-   pull the detailed logs for one node by UUID.
+   commands, run an operator-authored scenario, and pull the detailed logs for one node by UUID. All
+   evidence must be **headless-runnable** (API calls, wire traces, test output). **No visual or
+   interactive GUI validation on this server** — the client GUI is the operator's own acceptance test
+   on his Windows desktop; VNC may be closed with `v4.no_visual_validation_on_headless_server`.
 4. `PHASE-V-PROGRESS.md` reflects reality, and every commit is pushed on `phase-v-studio`.
 5. Honest KNOWN LIMITATIONS: no fabricated passes; CI/billing blocker stated; anything not
    installable named with its package.
