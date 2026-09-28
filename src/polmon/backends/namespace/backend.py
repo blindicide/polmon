@@ -317,7 +317,7 @@ class NamespaceBackend:
         namespace = self._namespace(node_id)
         proxy = "\n".join(
             (
-                "import selectors, socket, sys, time",
+                "import os, selectors, socket, sys, time",
                 "s = None",
                 "for _ in range(50):",
                 "    try:",
@@ -332,12 +332,21 @@ class NamespaceBackend:
                 "q.register(sys.stdin.buffer, selectors.EVENT_READ)",
                 "while True:",
                 "    for key, _ in q.select():",
-                "        data = key.fileobj.recv(65536) if key.fileobj is s else key.fileobj.read(65536)",
+                "        data = (",
+                "            key.fileobj.recv(65536)",
+                "            if key.fileobj is s",
+                "            else os.read(key.fileobj.fileno(), 65536)",
+                "        )",
                 "        if not data:",
                 "            raise SystemExit",
-                "        destination = sys.stdout.buffer if key.fileobj is s else s",
-                "        destination.write(data)",
-                "        destination.flush()",
+                "        try:",
+                "            if key.fileobj is s:",
+                "                sys.stdout.buffer.write(data)",
+                "                sys.stdout.buffer.flush()",
+                "            else:",
+                "                s.sendall(data)",
+                "        except OSError:",
+                "            raise SystemExit",
             )
         )
         return [

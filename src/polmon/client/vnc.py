@@ -70,6 +70,7 @@ class RelaySocket(threading.Thread):
         self.frame_ready, self.failed = frame_ready, failed
         self.sock: socket.socket | None = None
         self.width = self.height = 0
+        self._rfb_buffer = bytearray()
         self._stop = threading.Event()
 
     def run(self) -> None:
@@ -125,7 +126,7 @@ class RelaySocket(threading.Thread):
         )
         self.sock.sendall(header + mask + encoded)
 
-    def _read_frame(self) -> bytes:
+    def _read_ws_frame(self) -> bytes:
         assert self.sock is not None
         header = self._recv(2)
         length = header[1] & 127
@@ -134,6 +135,13 @@ class RelaySocket(threading.Thread):
         elif length == 127:
             length = struct.unpack(">Q", self._recv(8))[0]
         return self._recv(length)
+
+    def _read_frame(self, amount: int) -> bytes:
+        while len(self._rfb_buffer) < amount:
+            self._rfb_buffer.extend(self._read_ws_frame())
+        result = bytes(self._rfb_buffer[:amount])
+        del self._rfb_buffer[:amount]
+        return result
 
     def _recv(self, amount: int) -> bytes:
         assert self.sock is not None
@@ -147,37 +155,92 @@ class RelaySocket(threading.Thread):
 
     def _rfb(self) -> None:
         assert self.sock is not None
-        if self._read_frame() != b"RFB 003.008\n":
+        if self._read_frame(12) != b"RFB 003.008\n":
             raise RuntimeError("rfb_version_invalid")
         self._frame(b"RFB 003.008\n")
-        security = self._read_frame()
-        if security[0] != 1 or security[1:5] != b"\x00\x00\x00\x00":
+        security_count = self._read_frame(1)[0]
+        security_types = self._read_frame(security_count)
+        if security_count != 1 or 1 not in security_types:
             raise RuntimeError("rfb_security_refused")
         self._frame(b"\x01")
-        init = self._read_frame()
+        if self._read_frame(4) != b"\x00\x00\x00\x00":
+            raise RuntimeError("rfb_security_failed")
+        self._frame(b"\x01")
+        init = self._read_frame(24)
         self.width, self.height = struct.unpack(">HH", init[:4])
-        self._frame(b"\x00")
-        self._frame(b"\x02\x00\x00\x00\x01\x00\x00\x00\x01")
-        self._frame(b"\x03\x00\x00\x00\x00\x00\x00\x00\x00")
+        name_length = struct.unpack(">I", init[20:24])[0]
+        self._read_frame(name_length)
+        self._frame(
+            b"\x00\x00\x00\x00"
+            + struct.pack(">BBBBHHHBBB3x", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+        )
+        self._frame(b"\x02\x00\x00\x02" + struct.pack(">ii", 0, 5))
+        self._frame(b"\x03\x00" + struct.pack(">HHHH", 0, 0, self.width, self.height))
         image = QImage(self.width, self.height, QImage.Format.Format_RGB32)
         while not self._stop.is_set():
-            payload = self._read_frame()
-            if payload and payload[0] == 0:
-                count = struct.unpack(">H", payload[1:3])[0]
-                offset = 3
-                for _ in range(count):
-                    x, y, width, height, encoding = struct.unpack(
-                        ">HHHHI", payload[offset : offset + 12]
+            header = self._read_frame(4)
+            if header[0] != 0:
+                raise RuntimeError("rfb_message_unsupported")
+            count = struct.unpack(">H", header[2:4])[0]
+            for _ in range(count):
+                x, y, width, height, encoding = struct.unpack(">HHHHI", self._read_frame(12))
+                if encoding == 0:
+                    self._read_raw(image, x, y, width, height)
+                elif encoding == 5:
+                    self._read_hextile(image, x, y, width, height)
+                else:
+                    raise RuntimeError("rfb_encoding_unsupported")
+            self.frame_ready.emit(image.copy())
+
+    def _read_pixel(self) -> int:
+        blue, green, red, _ = self._read_frame(4)
+        return (red << 16) | (green << 8) | blue
+
+    def _fill(self, image: QImage, x: int, y: int, width: int, height: int, color: int) -> None:
+        for row in range(y, y + height):
+            for column in range(x, x + width):
+                image.setPixel(column, row, color)
+
+    def _read_raw(self, image: QImage, x: int, y: int, width: int, height: int) -> None:
+        for row in range(y, y + height):
+            for column in range(x, x + width):
+                image.setPixel(column, row, self._read_pixel())
+
+    def _read_hextile(self, image: QImage, x: int, y: int, width: int, height: int) -> None:
+        background = 0
+        foreground = 0
+        for tile_y in range(0, height, 16):
+            tile_height = min(16, height - tile_y)
+            for tile_x in range(0, width, 16):
+                tile_width = min(16, width - tile_x)
+                subencoding = self._read_frame(1)[0]
+                tile_origin_x, tile_origin_y = x + tile_x, y + tile_y
+                if subencoding & 1:
+                    self._read_raw(image, tile_origin_x, tile_origin_y, tile_width, tile_height)
+                    continue
+                if subencoding & 2:
+                    background = self._read_pixel()
+                self._fill(image, tile_origin_x, tile_origin_y, tile_width, tile_height, background)
+                if subencoding & 4:
+                    foreground = self._read_pixel()
+                if not subencoding & 8:
+                    continue
+                subrectangles = self._read_frame(1)[0]
+                colored = bool(subencoding & 16)
+                for _ in range(subrectangles):
+                    color = self._read_pixel() if colored else foreground
+                    position = self._read_frame(1)[0]
+                    size = self._read_frame(1)[0]
+                    sub_x, sub_y = position >> 4, position & 0x0F
+                    sub_width, sub_height = (size >> 4) + 1, (size & 0x0F) + 1
+                    self._fill(
+                        image,
+                        tile_origin_x + sub_x,
+                        tile_origin_y + sub_y,
+                        sub_width,
+                        sub_height,
+                        color,
                     )
-                    offset += 12
-                    if encoding != 0:
-                        raise RuntimeError("rfb_encoding_unsupported")
-                    for row in range(height):
-                        for column in range(width):
-                            blue, green, red, _ = payload[offset:offset + 4]
-                            offset += 4
-                            image.setPixel(x + column, y + row, (red << 16) | (green << 8) | blue)
-                self.frame_ready.emit(image.copy())
 
     def pointer(self, x: float, y: float, buttons: int) -> None:
         if self.sock is not None and self.width and self.height:

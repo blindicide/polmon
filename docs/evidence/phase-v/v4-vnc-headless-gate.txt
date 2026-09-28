@@ -1,0 +1,31 @@
+V.4 headless-runnable evidence captured on 2026-09-28
+
+Visual/interactive validation was not attempted: this host is headless. The operator's Windows
+desktop remains responsible for the visual Qt acceptance check. Reason code:
+v4.no_visual_validation_on_headless_server
+
+The prerequisite transcript is in v4-vnc-readiness.txt. The real headless gate exercised both the
+raw namespace TCP listener and the authenticated backend relay. The test starts Xvfb and xclock,
+observes RFB 003.008, negotiates Raw encoding, receives framebuffer bytes, and sends a pointer
+event; no framebuffer or wire result is synthetic.
+
+$ ./.venv/bin/ruff check .
+All checks passed!
+
+$ scripts/privileged-tests.sh -- env PYTEST_ADDOPTS=-s .venv/bin/python -m pytest tests/integration/test_console_ssh.py
+RFB-OK 1024x768 PIXEL-BYTES=16 POINTER-SENT
+WEBSOCKET-RELAY-OK 1024x768 FRAMEBUFFER-UPDATE POINTER-EVENT SENT CLEAN-CLOSE
+  ======================== 4 passed, 1 warning in 15.55s ========================
+host network unchanged; no platform lab resources remain
+
+The warning is the existing httpx/Starlette deprecation plus the asyncio subprocess finalizer
+warning emitted by the TestClient teardown; the command exited 0 and the network wrapper passed.
+
+$ scripts/check.sh
+== ruff
+All checks passed!
+  ========== 424 passed, 18 deselected, 1 warning in 132.64s (0:02:12) ===========
+
+$ .venv/bin/python scripts/i18n-lint.py && .venv/bin/python scripts/i18n-completeness.py
+i18n-lint: 22 modules checked, 13 exempt, 0 hard-coded user-facing literal(s)
+i18n-completeness: PASS: 1005 keys, 16 plural keys, 154 backend message codes, 646 literal keys in code; 0 problem(s)

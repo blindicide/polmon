@@ -163,19 +163,28 @@ def test_real_vnc_stack_has_framebuffer_and_tears_down(tmp_path) -> None:
         display = backend.start_vnc("alpha")
         address, port = display["address"], display["port"]
         probe = """import socket,sys,struct
+def recv_exact(sock, amount):
+    data = b''
+    while len(data) < amount:
+        chunk = sock.recv(amount - len(data))
+        assert chunk
+        data += chunk
+    return data
 s=socket.create_connection((sys.argv[1],int(sys.argv[2])),5)
-assert s.recv(12) == b'RFB 003.008\\n'
-s.sendall(b'RFB 003.008\\n'); count=s.recv(1)[0]; types=s.recv(count); assert 1 in types
-s.sendall(b'\\x01'); assert s.recv(4) == b'\\x00\\x00\\x00\\x00'
-s.sendall(b'\\x01'); init=s.recv(24); width,height=struct.unpack('>HH',init[:4])
+assert recv_exact(s,12) == b'RFB 003.008\\n'
+s.sendall(b'RFB 003.008\\n'); security=recv_exact(s,2)
+assert security[0] == 1 and 1 in security[1:]
+s.sendall(b'\\x01'); assert recv_exact(s,4) == b'\\x00\\x00\\x00\\x00'
+s.sendall(b'\\x01'); init=recv_exact(s,24); width,height=struct.unpack('>HH',init[:4])
 assert width == 1024
 assert height == 768
-s.sendall(b'\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
-s.sendall(b'\\x02\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01')
-s.sendall(b'\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
-s.sendall(b'\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
-pixel=s.recv(16); assert len(pixel) == 16
-s.sendall(b'\\x05'+struct.pack('>xHH',400,300))
+name_length=struct.unpack('>I',init[20:24])[0]; recv_exact(s,name_length)
+s.sendall(b'\\x00\\x00\\x00\\x00'+struct.pack('>BBBBHHHBBB3x',32,24,0,1,255,255,255,16,8,0))
+s.sendall(b'\\x02\\x00\\x00\\x01'+struct.pack('>i',0))
+s.sendall(b'\\x03\\x00'+struct.pack('>HHHH',0,0,width,height))
+update=recv_exact(s,16); assert update[0] == 0 and struct.unpack('>H',update[2:4])[0] == 1
+pixel=recv_exact(s,16); assert len(pixel) == 16
+s.sendall(b'\\x05\\x00'+struct.pack('>HH',400,300))
 print(f'RFB-OK {width}x{height} PIXEL-BYTES={len(pixel)} POINTER-SENT')
 """
         command = [
@@ -189,6 +198,7 @@ print(f'RFB-OK {width}x{height} PIXEL-BYTES={len(pixel)} POINTER-SENT')
             time.sleep(0.2)
         assert result.returncode == 0, result.stderr
         assert "RFB-OK 1024x768" in result.stdout
+        print(result.stdout.strip())
     finally:
         control.destroy()
     assert not backend.created_namespaces and not backend.created_veths
@@ -213,18 +223,26 @@ def test_vnc_api_relay_delivers_framebuffer_and_input(tmp_path) -> None:
         with client.websocket_connect(relay) as socket:
             assert socket.receive_bytes() == b"RFB 003.008\n"
             socket.send_bytes(b"RFB 003.008\n")
-            security = socket.receive_bytes()
-            assert security[0] == 1 and security[1:5] == b"\x00\x00\x00\x00"
+            security_types = socket.receive_bytes()
+            assert security_types[0] == 1 and 1 in security_types[1:]
             socket.send_bytes(b"\x01")
             assert socket.receive_bytes() == b"\x00\x00\x00\x00"
             socket.send_bytes(b"\x01")
             init = socket.receive_bytes()
             width, height = struct.unpack(">HH", init[:4])
             assert (width, height) == (1024, 768)
-            socket.send_bytes(b"\x00")
-            socket.send_bytes(b"\x02\x00\x00\x00\x01\x00\x00\x00\x01")
-            socket.send_bytes(b"\x03\x00\x00\x00\x00\x00\x00\x00\x00")
+            name_length = struct.unpack(">I", init[20:24])[0]
+            while len(init) < 24 + name_length:
+                init += socket.receive_bytes()
+            socket.send_bytes(
+                b"\x00\x00\x00\x00"
+                + struct.pack(">BBBBHHHBBB3x", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+            )
+            socket.send_bytes(b"\x02\x00\x00\x01" + struct.pack(">i", 0))
+            socket.send_bytes(b"\x03\x00" + struct.pack(">HHHH", 0, 0, width, height))
             update = socket.receive_bytes()
+            while len(update) < 32:
+                update += socket.receive_bytes()
             assert update[0] == 0 and len(update) > 16
             socket.send_bytes(b"\x05\x01" + struct.pack(">HH", 400, 300))
         evidence = tmp_path / "vnc-relay.txt"
@@ -232,5 +250,6 @@ def test_vnc_api_relay_delivers_framebuffer_and_input(tmp_path) -> None:
             "WEBSOCKET-RELAY-OK 1024x768 FRAMEBUFFER-UPDATE POINTER-EVENT SENT CLEAN-CLOSE\n",
             encoding="utf-8",
         )
+        print(evidence.read_text(encoding="utf-8").strip())
     finally:
         plane.shutdown()

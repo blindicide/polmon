@@ -435,9 +435,14 @@ class ControlPlane:
         finally:
             client_task.cancel()
             vnc_task.cancel()
+            await asyncio.gather(client_task, vnc_task, return_exceptions=True)
+            if process.stdin is not None:
+                process.stdin.close()
             if process.returncode is None:
                 process.terminate()
-                await process.wait()
+            await process.wait()
+            process._transport.close()  # type: ignore[attr-defined]
+            await asyncio.sleep(0)
 
     @staticmethod
     def _raise_console_reason(reason: str) -> None:
