@@ -921,11 +921,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- local backend lifecycle ---------------------------------------------------------------
     "local.failed": "The local backend could not be started.",
     "local.override_missing": "The configured backend executable does not exist: {path}.",
-    "local.missing": "This client bundle has no backend beside it. Install or extract the "
-    "self-contained backend next to the client, set {variable}, or choose the remote Linux "
-    "backend.",
-    "local.missing_linux": "This client bundle has no backend beside it. Extract {tarball} next "
-    "to the client's folder, set {variable}, or choose the remote Linux backend.",
     "local.start_failed": "{command} could not be started: {reason}.",
     "local.not_l0_only": "The owned backend did not advertise its L0-only boundary.",
     "local.exited": "The backend exited with code {exit_code} on start attempt {attempt}. Last "

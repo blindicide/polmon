@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from polmon.client.local_backend import BACKEND_MODE_FLAG
 from polmon.version import __version__
 
 MISSING_QT = (
@@ -149,6 +150,15 @@ def run_gui(args: argparse.Namespace, qt_arguments: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw and raw[0] == BACKEND_MODE_FLAG:
+        # Embedded L0 backend: the frozen single-file client re-invokes itself in backend mode
+        # instead of shipping a separate backend executable (binding on Linux and Windows).
+        # backend.main is Qt-free, so this runs before the PySide6 import below and lets the one
+        # bundled executable serve as both the GUI client and its embedded L0 backend.
+        from polmon.backend import main as backend_main
+
+        return backend_main(raw[1:])
     args, qt_arguments = build_parser().parse_known_args(argv)
     if args.version:
         print(f"polmon {__version__}")
