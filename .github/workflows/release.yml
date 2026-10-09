@@ -71,13 +71,12 @@ jobs:
           version="${version%%+*}"
           assets=(
             "polmon-${version}-windows-x64.exe"
-            "polmon-backend-${version}-windows-x64.exe"
             "polmon-${version}-windows-x64-portable.zip"
             "polmon-${version}-linux-x64.tar.gz"
-            "polmon-backend-${version}-linux-x64.tar.gz"
             "polmon-${version}-py3-none-any.whl"
-            "polmon-backend.service"
-            "polmon-backend-bundled.service"
+            "polmon-client_${version}_amd64.deb"
+            "polmon-client-${version}-1.x86_64.rpm"
+            "package-manifest.json"
           )
           for asset in "${assets[@]}"; do
             test -f "$asset" || { echo "missing $asset for ${RELEASE_TAG}"; ls -l; exit 1; }
@@ -85,6 +84,7 @@ jobs:
           sha256sum --check --strict "polmon-${version}-linux-x64.tar.gz.sha256"
           sha256sum --check --strict "polmon-${version}-windows-x64.exe.sha256"
           sha256sum --check --strict "polmon-${version}-windows-x64-portable.zip.sha256"
+          sha256sum --check --strict SHA256SUMS-packages.txt
           sha256sum "${assets[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
           ls -l "${assets[@]}"
@@ -96,18 +96,18 @@ jobs:
         run: |
           version="${RELEASE_TAG#v}"
           version="${version%%+*}"
-          fidelity_notes="Windows client artifacts include an owned local backend: L0 synthetic fidelity only. L1/L2 is refused and requires a Linux backend host. The self-contained Linux backend needs no Python install and supports L0; L1/hybrid additionally require the documented Linux namespace privileges. Unsigned Windows executables can trigger SmartScreen."
+          fidelity_notes="The Windows and Linux clients include an embedded L0 backend with SQLite. L1/L2 require a separately configured Linux laboratory backend. Unsigned Windows executables can trigger SmartScreen. POLMON has no granted license; bundled PySide6/Qt terms apply separately."
           if [[ -n "$RELEASE_NOTES" ]]; then
             fidelity_notes="$(printf '%s\n\n%s' "$RELEASE_NOTES" "$fidelity_notes")"
           fi
           gh release create "$RELEASE_TAG" \
             "dist/polmon-${version}-windows-x64.exe" \
-            "dist/polmon-backend-${version}-windows-x64.exe" \
             "dist/polmon-${version}-windows-x64-portable.zip" \
             "dist/polmon-${version}-linux-x64.tar.gz" \
-            "dist/polmon-backend-${version}-linux-x64.tar.gz" \
             "dist/polmon-${version}-py3-none-any.whl" \
-            dist/polmon-backend.service dist/polmon-backend-bundled.service \
+            "dist/polmon-client_${version}_amd64.deb" \
+            "dist/polmon-client-${version}-1.x86_64.rpm" \
+            dist/package-manifest.json dist/SHA256SUMS-packages.txt \
             dist/SHA256SUMS.txt \
             --generate-notes --verify-tag \
             --notes "$fidelity_notes"
@@ -144,7 +144,7 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends xvfb libxcb-cursor0 \
             libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xfixes0 libegl1 \
-            libfontconfig1 libdbus-1-3
+            libfontconfig1 libdbus-1-3 libgl1
       - name: Smoke-test the published client
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -177,26 +177,18 @@ jobs:
             grep -q "smoke-start: PASS platform=windows" portable-smoke.txt
             "$client" --local-backend-self-test | tee local-backend.txt
             grep -q "local-backend self-test: PASS" local-backend.txt
-            portable_backend="portable/polmon-${version}-windows-x64-portable/polmon-backend.exe"
-            test -f "$portable_backend"
-            "$portable_backend" --self-test | tee portable-backend-selftest.txt
-            grep -q "backend self-test: PASS" portable-backend-selftest.txt
-            "./polmon-backend-${version}-windows-x64.exe" --self-test | tee backend-selftest.txt
-            grep -q "backend self-test: PASS" backend-selftest.txt
+            "$client" --polmon-run-embedded-backend --diagnostics > published-embedded-diagnostics.json
+            "$portable" --polmon-run-embedded-backend --diagnostics > published-portable-diagnostics.json
+            "$portable" --local-backend-self-test | tee portable-local-backend.txt
+            grep -q "local-backend self-test: PASS" portable-local-backend.txt
             "$client" --local-backend-gui-probe gui-probe.json | tee gui-probe.txt
             grep -q "local-backend GUI probe: PASS" gui-probe.txt
-            tasks="$(tasklist //FI "IMAGENAME eq polmon-backend.exe" //NH | tr -d '\r')"
-            echo "tasklist after the published-EXE workflows: $tasks"
-            if grep -q "polmon-backend.exe" <<< "$tasks"; then exit 1; fi
           else
-            backend_tar="polmon-backend-${version}-linux-x64.tar.gz"
-            tar -xzf "$backend_tar"
-            backend="./polmon-backend-${version}-linux-x64/polmon-backend"
-            env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --self-test \
-              | tee published-backend-selftest.txt
-            grep -q "backend self-test: PASS" published-backend-selftest.txt
-            "$GITHUB_WORKSPACE/scripts/packaged-backend-e2e.sh" "$backend" published-backend
-            jq -e '.experiment_status == "succeeded"' published-backend-e2e.json
+            test ! -e "polmon-${version}-linux-x64/polmon-backend"
+            env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$client" \
+              --polmon-run-embedded-backend --diagnostics > published-embedded-diagnostics.json
+            "$client" --local-backend-self-test | tee published-local-backend.txt
+            grep -q "local-backend self-test: PASS" published-local-backend.txt
           fi
           echo "Published ${RELEASE_TAG} client verified on ${RUNNER_OS} (platform ${platform})" \
             >> "$GITHUB_STEP_SUMMARY"
