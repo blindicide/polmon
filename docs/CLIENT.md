@@ -16,7 +16,7 @@ Published v0.5.0 assets are listed here. Phase VI packaging is described immedia
 | Linux | `polmon-<version>-linux-x64.tar.gz` | extract, run `polmon-client`; `--install-desktop-entry` adds a menu entry |
 | Any, from source | `pip install "polmon[gui]"` | `polmon-client` |
 
-On the Phase VI branch, future Windows single-file and portable clients both contain the L0
+On the Phase VI (v0.6.0) branch, Windows single-file and portable clients both contain the L0
 backend and SQLite in the client executable. The Linux tarball and native `.deb`/`.rpm` packages
 do likewise; they have no sibling backend executable. The native packages install the client in
 `/opt/polmon`, a `/usr/bin/polmon-client` launcher, a desktop entry, and an icon. They install no
@@ -89,6 +89,7 @@ retries every 5 s and disables actions until it is back). An older backend conne
 | Deployment (Ctrl+3) | Deploy (Ctrl+D), destroy (Ctrl+Shift+D), reset everything (Ctrl+Shift+R). A refused deployment names each violated limit. Owned resources and backend details of the selected deployment, and the live counters. Cancelling a deployment rolls it back when the backend call returns. |
 | Scenarios (Ctrl+4) | Open and validate a scenario against its topology (loaded, deployed, compatible). *Deploy required topology* when needed, then *Run experiment* (Ctrl+R): per-action status, progress with percent, step, elapsed time and ETA. *Cancel* (Esc) asks the backend to stop after the current action; a second Esc abandons waiting. |
 | Console (Ctrl+5) | Open one real SSH tab per L1 machine through the authenticated backend relay. The tab shows the normal name, ID and UUID; use command history, the basic-command palette, custom commands and Ctrl+C. Windows local mode refuses this honestly; connect to a remote Linux backend. |
+| Packets (Ctrl+9) | Select a deployed, isolated two-node L1 pair, a node and its lab interface; enter a complete Ethernet frame as hex and send it once without a scenario. The result shows the operation ID, interface and byte count or a refusal code. |
 | Telemetry (Ctrl+6) | The experiment's event stream, live while it runs; filter by category and text; payload of the selected event; capture summary (frames, bytes, dropped, truncated). *Export CSV…* saves the rows shown; *Save capture…* downloads the PCAP. |
 | Logs (Ctrl+7) | Detailed structured backend records separate from telemetry. Filter by minimum level, source, deployment, node id/name/UUID and text; follow new records; inspect full JSON, copy a row, inspect on-disk file paths/sizes, and export the bounded selection. |
 | Reports (Ctrl+8) | Experiments on the backend (including those of earlier backend runs). Overall status, expected versus actual conditions, observations, errors, resource statistics, the Markdown report and the raw JSON; save as JSON or Markdown. |
@@ -113,7 +114,7 @@ and the task bar flashes. The *Activity* dock (Ctrl+Shift+L) logs every operatio
 | Ctrl+Shift+R | Reset the environment |
 | Ctrl+R | Run the experiment |
 | Esc | Cancel the running operation (twice: abandon) |
-| Ctrl+1 … Ctrl+8 | Switch page |
+| Ctrl+1 … Ctrl+9 | Switch page |
 | Ctrl+Shift+T | Toggle light/dark theme |
 | Ctrl+Shift+L | Show or hide the activity log |
 | Ctrl+Shift+U | Switch between Russian and English |

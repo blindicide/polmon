@@ -43,6 +43,30 @@ The Qt desktop client performs every HTTP call on a bounded worker-thread pool a
 on the GUI thread (see [UI-PLAN.md](UI-PLAN.md)). It never imports Linux networking code and does
 not require a backend to launch or to run its headless self-test.
 
+## Isolated packet workbench (Phase VI, v0.6.0)
+
+`POST /v1/deployments/{topology_id}/nodes/{node_id}/packets` accepts
+`{"interface_id":"eth0","frame_hex":"02000088000202000088000188b5414200ff"}`. The
+normal bearer-token rule applies. The topology must be deployed as a hostless pair of two L1
+nodes, each with one interface on the same managed network. This currently excludes ordinary
+bridge-backed, hybrid and L0 deployments; a remote Linux backend with namespace privileges is
+required. The client Packets page lists eligible deployments. No scenario is required.
+
+The hex string is a complete Ethernet frame: destination MAC, source MAC, EtherType and payload.
+The backend sends its exact decoded bytes once; it does not fill fields, pad, recalculate checksums
+or rewrite malformed payloads. Length is 14–1514 bytes; the per-deployment burst limit is 20 sends
+per second. Whitespace between hex bytes is accepted. IPv4 and ARP destinations must be in the
+topology's subnet, the limited broadcast address, or IPv4 multicast; unassigned in-subnet targets
+are allowed. IPv6 is refused because this lab does not configure it. Other EtherTypes are opaque
+and may carry deliberately malformed data. The physical pair has no host bridge or uplink; the
+backend checks the owned namespace and interface, the two-link topology and absence of default
+routes before each send. This endpoint provides no host-interface or Internet transmission path.
+
+Every response has a stable `operation_id`, `topology_id`, `node_id` and `state` (`sent`, `refused`
+or `error`). A successful response includes the actual `interface` and `byte_count`; a refusal or
+error includes `message_code` and a safe message. Bounded `packet.send` structured records include
+the operation ID, selected identifiers, state and byte count, never the frame payload.
+
 ## Detailed logs (v0.5.0)
 
 `GET /v1/logs` returns bounded structured JSON records for lab operations. Optional filters are
