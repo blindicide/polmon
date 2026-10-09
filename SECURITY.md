@@ -38,6 +38,14 @@ Controls in the implementation:
   prerequisites are refused with stable reason codes. See `docs/CONSOLE.md`.
 - API identifiers are pattern-checked before they reach file paths; request bodies are capped at
   2 MB per document and 5 MiB per request.
+- The Phase VI packet workbench is backend-enforced and limited to a running, owned, hostless pair
+  of two L1 namespaces. Both veth ends live inside those namespaces; deployment creates no host
+  bridge or host veth. Before each one-shot AF_PACKET send the backend checks the selected node,
+  interface, namespace, both namespaces' link sets, and both namespaces' default routes.
+  It refuses IPv4/ARP targets outside the lab subnet (except broadcast/multicast), IPv6, oversized
+  frames and bursts over 20 per second. Opaque EtherTypes and malformed payloads remain exact
+  bytes. This does not give the client root privileges; the fixed sender runs through the existing
+  privileged namespace boundary. No packet bytes enter structured logs. See `docs/API.md`.
 - Benchmark jobs (`POST /v1/benchmarks`) start only the fixed `polmon-benchmark` module with
   validated numeric arguments (argv, no shell) in their own process group; their limits cannot
   exceed the backend's admission limits or undercut its memory reserve, only one job runs at a
