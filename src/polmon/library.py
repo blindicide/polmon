@@ -60,11 +60,12 @@ class YamlLibrary(Generic[Document]):
                 stream.flush()
                 os.fsync(stream.fileno())
             temporary.replace(destination)
-            directory_fd = os.open(self.directory, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            if os.name == "posix":
+                directory_fd = os.open(self.directory, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
         except OSError as error:
             raise ConfigurationError(
                 "unable to persist library document",
