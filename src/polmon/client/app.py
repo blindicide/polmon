@@ -151,6 +151,17 @@ def run_gui(args: argparse.Namespace, qt_arguments: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw = sys.argv[1:] if argv is None else list(argv)
+    from polmon.backends.namespace.packet_io import PACKET_MODE_FLAG
+    from polmon.backends.namespace.static_http import HTTP_MODE_FLAG
+
+    if raw and raw[0] == PACKET_MODE_FLAG:
+        from polmon.backends.namespace.packet_io import main as packet_main
+
+        return packet_main(raw[1:])
+    if raw and raw[0] == HTTP_MODE_FLAG:
+        from polmon.backends.namespace.static_http import main as http_main
+
+        return http_main(raw[1:])
     if raw and raw[0] == BACKEND_MODE_FLAG:
         # Embedded L0 backend: the frozen single-file client re-invokes itself in backend mode
         # instead of shipping a separate backend executable (binding on Linux and Windows).
