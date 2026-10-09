@@ -1,6 +1,7 @@
 # Releases
 
-After a milestone gate passes, update the central version (`src/polmon/version.py`,
+Phase VI remains on a feature branch: no tag or release is authorized until its gates pass and
+the operator issues a new order. For a future milestone, update the central version (`src/polmon/version.py`,
 `pyproject.toml`, and `uv.lock` via `uv lock --offline`; a unit test fails if they disagree) and
 the changelog, commit, and create an annotated SemVer tag on the evidence
 commit. Push the commit and the tag. `release.yml` then builds and verifies both platforms and
@@ -9,21 +10,20 @@ publishes one GitHub Release with:
 | Asset | Platform |
 |---|---|
 | `polmon-<version>-windows-x64.exe` | Windows client (one file) |
-| `polmon-backend-<version>-windows-x64.exe` | Standalone Qt-free Windows backend (L0 only) |
 | `polmon-<version>-windows-x64-portable.zip` | Windows client, one folder: faster start (from v0.2.1) |
 | `polmon-<version>-linux-x64.tar.gz` | Linux client bundle (see [BUILD-LINUX.md](BUILD-LINUX.md)) |
-| `polmon-backend-<version>-linux-x64.tar.gz` | Self-contained Linux backend; no Python install |
 | `polmon-<version>-py3-none-any.whl` | Python package: backend, CLI tools, client (with `[gui]`) |
-| `polmon-backend.service` | Example systemd user unit for the backend |
-| `polmon-backend-bundled.service` | User unit for the extracted backend bundle |
+| `polmon-client_<version>_amd64.deb` | Debian desktop client with embedded L0 and SQLite |
+| `polmon-client-<version>-1.x86_64.rpm` | RPM desktop client with embedded L0 and SQLite |
+| `package-manifest.json`, `SHA256SUMS-packages.txt` | Package metadata, limits, and build checksums |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
 
 Before publishing, the release job checks every file name against the tag version and each
 platform artifact against the checksum its build job recorded after smoke-testing it. After
 publishing, `verify-release` downloads the assets from the release itself on Windows and Linux,
-checks `SHA256SUMS.txt`, runs both client and backend self-tests, and repeats the Windows owned-
-backend workflow. Release notes always say that Windows local execution is L0-only and that Linux
-L1/hybrid execution depends on host namespace privileges.
+checks `SHA256SUMS.txt`, runs each embedded client and its L0 self-test. Release notes say that
+local execution is L0-only on both platforms and that L1/hybrid requires a separate Linux lab
+backend with namespace privileges.
 
 Verify a download yourself:
 

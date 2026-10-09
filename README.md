@@ -43,7 +43,12 @@ limitations are recorded in [docs/milestones/v0.5.0.md](docs/milestones/v0.5.0.m
 
 ## Which download?
 
-Every [release](https://github.com/blindicide/polmon/releases) carries these assets and a
+The table below describes the published v0.5.0 release. The Phase VI branch prepares future
+Linux `.deb` and `.rpm` packages and a single embedded-L0 client on both platforms; no Phase VI
+release has been published. Package builds and their manifest are produced by
+`scripts/build-linux-packages.py` and the Build Linux workflow.
+
+Published releases through v0.5.0 carry these assets and a
 `SHA256SUMS.txt` (`sha256sum --check --ignore-missing SHA256SUMS.txt`, or
 `scripts/verify-release.sh vX.Y.Z`):
 

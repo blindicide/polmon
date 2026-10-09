@@ -7,12 +7,21 @@ laboratory networking itself. Screenshots of every page, rendered from the runni
 
 ## Install and start
 
+Published v0.5.0 assets are listed here. Phase VI packaging is described immediately below.
+
 | Platform | Get it from the release | Start |
 |---|---|---|
 | Windows, single file | `polmon-<version>-windows-x64.exe` | double-click; includes the owned backend (unpacks itself on every start) |
 | Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip; `polmon-client.exe` and `polmon-backend.exe` are side by side |
 | Linux | `polmon-<version>-linux-x64.tar.gz` | extract, run `polmon-client`; `--install-desktop-entry` adds a menu entry |
 | Any, from source | `pip install "polmon[gui]"` | `polmon-client` |
+
+On the Phase VI branch, future Windows single-file and portable clients both contain the L0
+backend and SQLite in the client executable. The Linux tarball and native `.deb`/`.rpm` packages
+do likewise; they have no sibling backend executable. The native packages install the client in
+`/opt/polmon`, a `/usr/bin/polmon-client` launcher, a desktop entry, and an icon. They install no
+service or maintainer script. Uninstalling does not remove results or settings in the user's home
+directory. These artifacts have not been released yet.
 
 Verify downloads against `SHA256SUMS.txt` (`scripts/verify-release.sh vX.Y.Z`, or `Get-FileHash`
 on Windows). Linux needs glibc 2.35+ and, for X11, `libxcb-cursor0` (see
@@ -40,7 +49,7 @@ backend older than v0.4.0.
 
 Choose a connection type and press **Connect** (Ctrl+Return):
 
-- **Local backend (L0 only)** is the default. The client starts the bundled executable on a free
+- **Local backend (L0 only)** is the default. The client starts its embedded backend on a free
   `127.0.0.1` port with an ephemeral token, waits for health without blocking the window, and
   stops/reaps it on disconnect or exit. The status bar keeps the fidelity label visible. *Backend
   log* opens the captured stdout/stderr. On Windows a kill-on-close Job Object also reaps the
