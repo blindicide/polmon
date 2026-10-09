@@ -1,107 +1,53 @@
 # Linux build
 
-**Build Linux** (`.github/workflows/build-linux.yml`, also part of every release) produces:
+The Phase VI `Build Linux` workflow builds one PyInstaller client bundle with embedded L0 and
+SQLite. The client runs without Python, a source checkout, or a sibling backend executable. The
+same bundle is distributed as a tarball, a Debian package, and an RPM; a Python wheel remains
+available for source-style installations. No standalone backend bundle or service is produced.
 
-| Artifact | Content |
+| Asset | Content |
 |---|---|
-| `polmon-<version>-linux-x64.tar.gz` (+ `.sha256`) | One-folder PyInstaller bundle of the Qt client: `polmon-<version>-linux-x64/polmon-client` and its `_internal/` libraries |
-| `polmon-backend-<version>-linux-x64.tar.gz` (+ `.sha256`) | Qt-free, self-contained backend bundle; no Python, pip or venv needed |
-| `polmon-<version>-py3-none-any.whl` | The Python package (backend, CLI tools, client code; Qt via the `gui` extra) |
-| `polmon-backend.service` | The example systemd user unit (see [docs/OPERATIONS.md](docs/OPERATIONS.md)) |
-| `polmon-backend-bundled.service` | User unit targeting an extracted self-contained backend |
+| `polmon-<version>-linux-x64.tar.gz` and `.sha256` | Portable client and `_internal/` runtime |
+| `polmon-client_<version>_amd64.deb` | `/opt/polmon` client, `/usr/bin/polmon-client`, desktop entry, icon |
+| `polmon-client-<version>-1.x86_64.rpm` | Same install layout for RPM distributions |
+| `package-manifest.json`, `SHA256SUMS-packages.txt` | Dependencies, limits, license status, install/removal behavior, size and hashes |
+| `polmon-<version>-py3-none-any.whl` | Python package for separate Python installations |
 
-The bundle is built on `ubuntu-22.04`, the oldest supported hosted image, so it runs on glibc 2.35
-and newer (Ubuntu 22.04+, Debian 12+). The tarball is reproducible in its metadata: sorted
-entries, owner 0, modification time of the commit (`SOURCE_DATE_EPOCH`), `gzip -n`. The build job
-runs Ruff, the rootless tests and the GUI tests under Xvfb, extracts the tarball into an empty
-directory and runs `--version` (exact), `--self-test` with an empty environment (must list the
-bundled `qxcb` plugin) and `--smoke-start 3` under Xvfb (platform `xcb`), then measures start-up
-and idle memory (`linux-client-measurements`). A second job on a newer runner (`ubuntu-latest`)
-downloads the artifact, verifies the checksum, repeats the smoke tests, installs the wheel into a
-fresh virtual environment, checks every backend entry point's version, starts the backend, reads
-`/v1/health` and confirms the graceful `shutdown_cleanup`.
+The CI build uses Ubuntu 22.04 and targets glibc 2.35 or newer. The client includes `_sqlite3`
+and `libsqlite3`; `--local-backend-self-test` proves that its own embedded backend can persist an
+L0 experiment. `--polmon-run-embedded-backend --diagnostics` exercises backend startup without
+loading Qt. The Linux job verifies these operations from the extracted tarball with an empty
+environment, plus Qt startup under Xvfb. It installs, tests, reinstalls, and removes the native
+packages in fresh Debian and Fedora containers and checks that user-owned data survives removal.
+A second runner downloads the built artifacts and checks their hashes and embedded backend.
 
-The backend tarball is separately extracted and run under `env -i` with only system utility paths:
-`--version`, `--self-test` (uvicorn graph plus L0 deploy/scenario/telemetry/report/reset), then a
-real listening-server workflow driven over HTTP (`scripts/packaged-backend-e2e.sh`). It runs twice:
-with `/usr/bin:/bin` (the hosted runner has passwordless sudo, so `--lab-readiness` reports L1
-available and the two-node L1 topology is really deployed and destroyed), and as a negative
-control with a `PATH` holding only `ip`, `ping` and `setpriv`, where readiness reports L1
-unavailable and the deploy must be refused cleanly with HTTP 422 naming the missing checks
-(recorded as `NOT RUN - environment unavailable`). The build rejects any PySide6/Qt file in the
-backend bundle and uploads its RSS, extracted size, readiness JSON, E2E records and logs as
-`linux-backend-evidence`. The fresh-runner job repeats both runs on the downloaded tarball, then
-installs it exactly where `polmon-backend-bundled.service` expects it, checks the unit with
-`systemd-analyze --user verify`, starts it through a real systemd user manager (lingering
-enabled), drives the same HTTP workflow against it, stops it, and requires the journal to show
-the graceful `shutdown_cleanup` and no process left behind.
-
-## Running the bundle
-
-```bash
-sha256sum --check polmon-<version>-linux-x64.tar.gz.sha256
-tar -xzf polmon-<version>-linux-x64.tar.gz
-./polmon-<version>-linux-x64/polmon-client            # X11 or Wayland session
-./polmon-<version>-linux-x64/polmon-client --self-test  # headless check, opens no window
-./polmon-<version>-linux-x64/polmon-client --install-desktop-entry  # menu entry + icon (per user)
-```
-
-Backend, without installing Python:
-
-```bash
-sha256sum --check polmon-backend-<version>-linux-x64.tar.gz.sha256
-tar -xzf polmon-backend-<version>-linux-x64.tar.gz
-./polmon-backend-<version>-linux-x64/polmon-backend --self-test
-./polmon-backend-<version>-linux-x64/polmon-backend --lab-readiness
-./polmon-backend-<version>-linux-x64/polmon-backend --host 127.0.0.1 --token-file api-token
-```
-
-Extract both tarballs into the same directory and the client's **Local backend (L0 only)**
-preset finds the backend of the same version beside its own folder
-(`polmon-backend-<version>-linux-x64/polmon-backend`), starts it on loopback and reaps it on
-disconnect, exit or a client crash — the same owned workflow as on Windows, with no service to
-install. For L1/hybrid, run the backend as a service (below) and connect with *Remote Linux
-backend*. Build Linux proves this layout with the packaged client's local self-test, GUI probe
-and a killed-client check.
-
-`--install-desktop-entry` writes `~/.local/share/applications/polmon-client.desktop` and the icon
-(`$XDG_DATA_HOME` is honoured) pointing at the executable it was run from; run it again after
-moving the folder. It works the same for a `pip install polmon[gui]` installation.
-
-The bundle carries Qt, its X11/xcb client libraries and the Wayland platform. The host provides
-the display server, fontconfig/fonts and the C runtime. On a minimal Ubuntu/Debian host the xcb
-platform additionally needs `libxcb-cursor0` (Qt 6.5+ requires it and not every distribution
-installs it); the CI verification installs exactly: `libxcb-cursor0 libxkbcommon-x11-0
-libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
-libxcb-xinerama0 libxcb-xfixes0 libegl1 libfontconfig1 libdbus-1-3` plus `xvfb` for headless use.
+Native packages have no maintainer scripts or systemd unit. L1/hybrid traffic requires a
+separately configured Linux laboratory backend with the documented namespace privileges; the
+packaged local backend supports L0 only. Package removal leaves results in
+`$XDG_STATE_HOME/polmon/data` (usually `~/.local/state/polmon/data`) and settings under the
+user's config directory untouched. POLMON has no granted license; the package metadata says
+`Proprietary`, and bundled PySide6/Qt libraries retain their separate terms.
 
 ## Local build
 
 ```bash
 uv pip install -e '.[dev,gui,build]'
 .venv/bin/pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec
-.venv/bin/pyinstaller --clean --noconfirm packaging/linux/polmon-backend.spec
-dist/polmon-<version>-linux-x64/polmon-client --self-test
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m polmon.client.icon dist/polmon.png
+version="$(.venv/bin/python -c 'from polmon.version import __version__; print(__version__)')"
+epoch="$(git log -1 --format=%ct)"
+.venv/bin/python scripts/build-linux-packages.py \
+  --bundle "dist/polmon-$version-linux-x64" --icon dist/polmon.png \
+  --output dist --version "$version" --epoch "$epoch"
+(cd dist && sha256sum --check --strict SHA256SUMS-packages.txt)
+"dist/polmon-$version-linux-x64/polmon-client" --local-backend-self-test
 ```
 
-Bundle pruning is shared with Windows (`packaging/qt_bundle.py`): only the `qxcb`, `qwayland`,
-`qoffscreen` and `qminimal` platform plugins are kept; the GTK platform theme (which would pull a
-host GTK stack into the bundle), image-format, GL-integration and input-method plugins other than
-compose, and Qt translations are removed.
+The packaging script fixes ownership and timestamps and writes checksums. Repeating packaging
+from the same frozen bundle and epoch should produce the same package bytes. A fresh PyInstaller
+build is a separate reproducibility question. The packages need standard glibc, libstdc++, Qt
+xcb/EGL, fontconfig, and D-Bus libraries; exact declared dependencies are in the manifest.
+Desktop launch needs an X11/Qt display, while `--local-backend-self-test` runs headlessly.
 
-## AppImage (measured, not shipped)
-
-An AppImage was built from the same bundle with the pinned appimagetool 1.9.1 (zstd squashfs) and
-measured on the development host (4 vCPU, Xvfb, warm page cache, five launches each;
-`scripts/measure-client.py`, raw files in `benchmarks/results/client-qt-linux-*-20260926.json`):
-
-| Form | Download | Launch to window (median) | Idle RSS after 10 s |
-|---|---:|---:|---:|
-| Extracted tarball bundle | 50.8 MB (`.tar.gz`) | 0.54 s | 93.0 MiB |
-| AppImage | 47.4 MB | 0.92 s | 91.5 MiB |
-
-The AppImage saves 3.4 MB of download but adds about 0.4 s to every start (the squashfs is mounted
-through FUSE on each launch), requires FUSE 2 (`libfuse2`) on the host or the slower
-`--appimage-extract-and-run`, and brings a second, non-PyPI tool plus its runtime into the release
-build. The tarball runs without installation just the same, so the AppImage is not built;
-revisit if desktop integration (menus, icons) becomes a requirement.
+The previous standalone backend tarball and its systemd user unit remain documented in the
+published v0.5.0 release; they are not assets of the Phase VI build.
