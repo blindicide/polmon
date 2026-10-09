@@ -154,23 +154,58 @@ def test_backend_leaves_when_its_client_dies_abruptly(tmp_path) -> None:
     assert '"event":"owner_exit"' in log or os.name == "nt"  # Windows: the job may kill first
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux tarball layout")
-def test_frozen_linux_client_finds_the_backend_tarball_extracted_beside_it(
-    tmp_path, monkeypatch
-) -> None:
-    from polmon.version import __version__
+def test_frozen_client_embeds_the_l0_backend_in_its_own_executable(tmp_path, monkeypatch) -> None:
+    # The frozen client ships no separate backend executable, service, or sibling bundle on either
+    # platform: it re-invokes its own executable with BACKEND_MODE_FLAG, which app.main dispatches
+    # to backend.main. No sibling layout is consulted, so none can shadow the embedded backend.
+    from polmon.client.local_backend import BACKEND_MODE_FLAG
 
-    client = tmp_path / f"polmon-{__version__}-linux-x64" / "polmon-client"
+    client = tmp_path / "polmon-dist" / ("polmon-client.exe" if os.name == "nt" else
+                                          "polmon-client")
     client.parent.mkdir()
     client.write_bytes(b"client")
     monkeypatch.setattr(sys, "executable", str(client))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.delenv("POLMON_BACKEND_EXECUTABLE", raising=False)
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    with pytest.raises(LocalBackendError, match=f"polmon-backend-{__version__}-linux-x64.tar.gz"):
-        resolve_backend_command()
+    # A stale sibling backend must NOT be used even if one is present next to the client.
+    sibling = client.parent / ("polmon-backend.exe" if os.name == "nt" else "polmon-backend")
+    sibling.write_bytes(b"stale sibling")
+    monkeypatch.setattr("shutil.which", lambda name: str(sibling))
 
-    backend = tmp_path / f"polmon-backend-{__version__}-linux-x64" / "polmon-backend"
-    backend.parent.mkdir()
-    backend.write_bytes(b"backend")
-    assert resolve_backend_command() == [str(backend)]
+    assert resolve_backend_command() == [str(client.resolve()), BACKEND_MODE_FLAG]
+
+
+def test_embedded_backend_dispatch_opens_sqlite_and_runs_l0(tmp_path, monkeypatch) -> None:
+    # Regression for polmon 0.4.1 `ModuleNotFoundError: No module named '_sqlite3'`: drive the
+    # manager through the embedded self-dispatch path (app.main --polmon-run-embedded-backend ->
+    # backend.main) rather than the bare `-m polmon.backend` fallback, and run a real L0 workflow.
+    # The experiment persists to the backend's SQLite telemetry store, so a clean success proves
+    # the embedded dispatch loads and uses sqlite3/_sqlite3 with no import error. `-m` on the
+    # client package runs app.py as __main__, exactly the frozen executable's dispatch code.
+    from polmon.client import local_backend as module
+    from polmon.client.local_backend import _L0_SCENARIO, _L0_TOPOLOGY, BACKEND_MODE_FLAG
+
+    embedded = [sys.executable, "-m", "polmon.client.app", BACKEND_MODE_FLAG]
+    monkeypatch.setattr(module, "resolve_backend_command", lambda override=None: list(embedded))
+
+    manager = LocalBackendManager(state_directory=tmp_path)
+    connection = manager.start(timeout=15)
+    assert manager.command == embedded  # the embedded dispatch command, not a sibling executable
+    client = ApiClient(str(connection["url"]), token=str(connection["token"]))
+    try:
+        assert client.resources()["capabilities"]["fidelity"] == "l0_only"
+        client.load_topology(_L0_TOPOLOGY)
+        client.deploy("local-smoke")
+        result = client.run_experiment("embedded-1", "local-smoke", _L0_SCENARIO)
+        assert result["status"] == "succeeded"
+    finally:
+        manager.stop()
+
+    # The SQLite store the embedded backend opened persists the experiment across a restart.
+    connection = manager.start(timeout=15)
+    client = ApiClient(str(connection["url"]), token=str(connection["token"]))
+    try:
+        listed = {item["experiment_id"]: item for item in client.experiments()}
+        assert listed["embedded-1"]["status"] == "succeeded"
+    finally:
+        manager.stop()
