@@ -356,8 +356,7 @@ class ControlPlane:
             unavailable = [
                 name
                 for name, result in readiness["checks"].items()  # type: ignore[union-attr]
-                if not result["ok"]
-                and (needed == "hybrid_ready" or name != "tun_device")
+                if not result["ok"] and (needed == "hybrid_ready" or name != "tun_device")
             ]
             raise ConfigurationError(
                 "L1/hybrid deployment requires a Linux host with iproute2, unprivileged ping, "
@@ -370,6 +369,15 @@ class ControlPlane:
                 params={"checks": unavailable},
             )
         if classes == {NodeClass.L1}:
+            hostless_pair = (
+                len(topology.networks) == 1
+                and len(topology.nodes) == 2
+                and all(
+                    len(node.interfaces) == 1
+                    and node.interfaces[0].network == topology.networks[0].id
+                    for node in topology.nodes
+                )
+            )
             return NamespaceBackend(
                 run_directory=self.data_directory
                 / "runs"
@@ -377,6 +385,7 @@ class ControlPlane:
                 / topology.id
                 / secrets.token_hex(6),
                 log_directory=self.data_directory / "logs" / "services",
+                hostless_pair=hostless_pair,
             )
         if classes <= {NodeClass.L0, NodeClass.L1}:
             return HybridBackend()
@@ -466,6 +475,58 @@ class ControlPlane:
             "deployment_seconds": self.deployment_seconds.get(topology_id),
             "details": inspection.backend.details,
         }
+
+    def send_packet(
+        self, topology_id: str, node_id: str, interface_id: str, frame_hex: str
+    ) -> dict[str, object]:
+        """Audit a bounded, one-shot send through an isolated namespace pair."""
+        operation_id = secrets.token_hex(8)
+        with self._lock:
+            try:
+                control = self.deployments.get(topology_id)
+                if control is None:
+                    raise ConfigurationError(
+                        "topology is not deployed", message_code="packet.not_deployed"
+                    )
+                backend = control.backend
+                if not isinstance(backend, NamespaceBackend) or not backend.hostless_pair:
+                    raise ConfigurationError(
+                        "packet workbench requires a hostless isolated namespace pair",
+                        message_code="packet.hostless_pair_required",
+                    )
+                result = backend.send_packet(node_id, interface_id, frame_hex)
+            except ConfigurationError as error:
+                result = {
+                    "state": "refused",
+                    "message_code": error.message_code,
+                    "message": error.message,
+                }
+            except Exception:
+                result = {
+                    "state": "error",
+                    "message_code": "packet.backend_error",
+                    "message": "packet transmission could not be completed",
+                }
+            self._log(
+                {"sent": "INFO", "refused": "WARNING", "error": "ERROR"}[result["state"]],
+                "packet.send",
+                f"packet {result['state']}",
+                topology_id=topology_id,
+                node_id=node_id,
+                params={
+                    "operation_id": operation_id,
+                    "state": result["state"],
+                    "interface_id": interface_id,
+                    "byte_count": result.get("byte_count", 0),
+                    "message_code": result.get("message_code", ""),
+                },
+            )
+            return {
+                "operation_id": operation_id,
+                "topology_id": topology_id,
+                "node_id": node_id,
+                **result,
+            }
 
     def destroy(self, topology_id: str) -> dict[str, object]:
         topology = self.topologies.get(topology_id)
@@ -571,26 +632,30 @@ class ControlPlane:
             await websocket.close(code=4409)
             return
         process = await asyncio.create_subprocess_exec(
-            "sudo", "-n", *control.backend.vnc_proxy_argv(node_id),
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            "sudo",
+            "-n",
+            *control.backend.vnc_proxy_argv(node_id),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
         )
+
         async def from_client() -> None:
             while True:
                 data = await websocket.receive_bytes()
                 process.stdin.write(data)
                 await process.stdin.drain()
+
         async def from_vnc() -> None:
             while True:
                 data = await process.stdout.read(65536)
                 if not data:
                     return
                 await websocket.send_bytes(data)
+
         client_task = asyncio.create_task(from_client())
         vnc_task = asyncio.create_task(from_vnc())
         try:
-            await asyncio.wait(
-                (client_task, vnc_task), return_when=asyncio.FIRST_COMPLETED
-            )
+            await asyncio.wait((client_task, vnc_task), return_when=asyncio.FIRST_COMPLETED)
         except Exception:
             pass
         finally:

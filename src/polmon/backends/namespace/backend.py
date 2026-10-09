@@ -11,15 +11,22 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from polmon.backends.namespace.packet import parse_frame, require_lab_destination
+from polmon.backends.namespace.packet_io import PACKET_MODE_FLAG
 from polmon.backends.namespace.runner import CommandRunner
+from polmon.backends.namespace.static_http import HTTP_MODE_FLAG
+from polmon.core.errors import ConfigurationError
 from polmon.orchestration.base import BackendInspection
 from polmon.topology.models import NodeClass, Topology
 
 # Run by path in an isolated interpreter: no cwd, environment, or site-packages inside the lab.
 STATIC_HTTP_SCRIPT = Path(__file__).resolve().with_name("static_http.py")
+PACKET_IO_SCRIPT = Path(__file__).resolve().with_name("packet_io.py")
 _TRANSMITTED = re.compile(r"(\d+) packets transmitted, (\d+) (?:packets )?received")
 _RTT = re.compile(r"= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms")
 
@@ -64,6 +71,7 @@ class NamespaceBackend:
         owner_gid: int | None = None,
         run_directory: str | Path | None = None,
         log_directory: str | Path | None = None,
+        hostless_pair: bool = False,
     ) -> None:
         self.runner = runner or CommandRunner()
         self.python_executable = str(Path(python_executable or sys.executable).resolve())
@@ -77,6 +85,8 @@ class NamespaceBackend:
         )
         self.run_directory = Path(run_directory) if run_directory else None
         self.log_directory = Path(log_directory) if log_directory else None
+        self.hostless_pair = hostless_pair
+        self._packet_times: deque[float] = deque()
         self.topology: Topology | None = None
         self.names: NamespaceNames | None = None
         self.created_namespaces: set[str] = set()
@@ -157,6 +167,17 @@ class NamespaceBackend:
                 "a previous run left them behind (inspect with scripts/lab-cleanup.sh)"
             )
         prefixes = {network.id: network.ipv4_subnet.prefixlen for network in topology.networks}
+        if self.hostless_pair:
+            if (
+                len(topology.networks) != 1
+                or len(topology.nodes) != 2
+                or any(len(node.interfaces) != 1 for node in topology.nodes)
+                or any(
+                    node.interfaces[0].network != topology.networks[0].id for node in topology.nodes
+                )
+            ):
+                raise ValueError("hostless pair requires two single-interface nodes on one network")
+            return self._create_hostless_pair(topology, prefixes)
         host_lines: list[str] = []
         namespace_lines: dict[str, list[str]] = {}
         resources: set[str] = set()
@@ -201,6 +222,118 @@ class NamespaceBackend:
             self.destroy()
             raise
         return resources
+
+    def _create_hostless_pair(self, topology: Topology, prefixes: dict[str, int]) -> set[str]:
+        """Keep both veth ends inside owned namespaces; create no host link/bridge."""
+        assert self.names is not None
+        first, second = topology.nodes
+        left = self.names.namespaces[first.id]
+        right = self.names.namespaces[second.id]
+        resources = {f"netns:{left}", f"netns:{right}"}
+        try:
+            # Record both before the batch so a partial namespace creation is rolled back.
+            self.created_namespaces.update((left, right))
+            self._ip_batch([f"netns add {left}", f"netns add {right}"])
+            self._ip_batch(
+                ["link add eth0 type veth peer name peer0", f"link set peer0 netns {right}"],
+                namespace=left,
+            )
+            for node, namespace, peer in ((first, left, "eth0"), (second, right, "peer0")):
+                interface = node.interfaces[0]
+                address = f"{interface.ipv4}/{prefixes[interface.network]}"
+                lines = ["link set lo up"]
+                if peer != "eth0":
+                    lines.append("link set peer0 name eth0")
+                lines += [
+                    f"link set dev eth0 address {interface.mac}",
+                    f"address add {address} dev eth0",
+                    "link set dev eth0 up",
+                ]
+                self._ip_batch(lines, namespace=namespace)
+        except Exception:
+            self.destroy()
+            raise
+        return resources
+
+    def send_packet(self, node_id: str, interface_id: str, frame_hex: str) -> dict[str, object]:
+        """Send one exact frame through an interface owned by this running deployment."""
+        if not self.hostless_pair or self.created_bridges or self.created_veths:
+            raise ConfigurationError(
+                "packet workbench requires a hostless isolated namespace pair",
+                message_code="packet.hostless_pair_required",
+            )
+        if not self.running or self.topology is None or self.names is None:
+            raise ConfigurationError("lab is not running", message_code="packet.not_running")
+        node = next((item for item in self.topology.nodes if item.id == node_id), None)
+        if node is None:
+            raise ConfigurationError(
+                "node is not managed by this lab", message_code="packet.node_unknown"
+            )
+        interfaces = {item.id: (index, item) for index, item in enumerate(node.interfaces)}
+        if interface_id not in interfaces:
+            raise ConfigurationError(
+                "interface is not owned by the selected node",
+                message_code="packet.interface_unknown",
+            )
+        index, interface = interfaces[interface_id]
+        namespace = self.names.namespaces[node_id]
+        if namespace not in self.created_namespaces:
+            raise ConfigurationError(
+                "namespace is not owned by this deployment", message_code="packet.namespace_unowned"
+            )
+        network = next(item for item in self.topology.networks if item.id == interface.network)
+        frame = parse_frame(frame_hex)
+        require_lab_destination(frame, network.ipv4_subnet)
+        # Refuse a namespace that has gained another link since deployment. The only
+        # transmit path must remain the veth endpoint of the owned two-node pair.
+        for owned_namespace in self.created_namespaces:
+            links = self.runner.run(
+                ["ip", "-o", "-n", owned_namespace, "link", "show"], privileged=True
+            ).stdout
+            names = {
+                line.split(": ", 1)[1].split(":", 1)[0].split("@", 1)[0]
+                for line in links.splitlines()
+                if ": " in line
+            }
+            if names != {"lo", "eth0"}:
+                raise ConfigurationError(
+                    "lab namespace links no longer match the isolated pair",
+                    message_code="packet.egress_link",
+                )
+        now = time.monotonic()
+        while self._packet_times and now - self._packet_times[0] >= 1:
+            self._packet_times.popleft()
+        if len(self._packet_times) >= 20:
+            raise ConfigurationError("packet burst limit reached", message_code="packet.rate_limit")
+        # A route in either owned namespace is still an egress path; fail closed.
+        for owned_namespace in self.created_namespaces:
+            for family in ("-4", "-6"):
+                route = self.runner.run(
+                    ["ip", family, "-n", owned_namespace, "route", "show", "default"],
+                    privileged=True,
+                )
+                if route.stdout.strip():
+                    raise ConfigurationError(
+                        "lab namespace has a default route", message_code="packet.egress_route"
+                    )
+        self._packet_times.append(now)
+        sender = (
+            [self.python_executable, PACKET_MODE_FLAG, namespace, f"eth{index}"]
+            if getattr(sys, "frozen", False)
+            else [self.python_executable, "-I", str(PACKET_IO_SCRIPT), namespace, f"eth{index}"]
+        )
+        result = self.runner.run(
+            ["ip", "netns", "exec", namespace, *sender],
+            privileged=True,
+            timeout=3,
+            check=False,
+            input=frame.hex(),
+        )
+        if result.returncode != 0 or result.stdout.strip() != str(len(frame)):
+            raise ConfigurationError(
+                "packet transmission failed", message_code="packet.send_failed"
+            )
+        return {"interface": f"eth{index}", "byte_count": len(frame), "state": "sent"}
 
     def _preexisting(self, names: NamespaceNames) -> list[str]:
         """Generated names the kernel already reports (rootless ``ip`` queries)."""
@@ -289,9 +422,21 @@ class NamespaceBackend:
         )
         x11vnc = self.runner.start(
             self._as_owner(
-                namespace, "env", f"DISPLAY={display}", "x11vnc", "-display", display,
-                "-rfbport", str(port), "-listen", address, "-forever", "-shared",
-                "-nopw", "-o", str(log),
+                namespace,
+                "env",
+                f"DISPLAY={display}",
+                "x11vnc",
+                "-display",
+                display,
+                "-rfbport",
+                str(port),
+                "-listen",
+                address,
+                "-forever",
+                "-shared",
+                "-nopw",
+                "-o",
+                str(log),
             ),
             privileged=True,
         )
@@ -352,7 +497,16 @@ class NamespaceBackend:
             )
         )
         return [
-            "ip", "netns", "exec", namespace, sys.executable, "-u", "-c", proxy, address, str(port)
+            "ip",
+            "netns",
+            "exec",
+            namespace,
+            sys.executable,
+            "-u",
+            "-c",
+            proxy,
+            address,
+            str(port),
         ]
 
     def destroy(self) -> None:
@@ -381,6 +535,7 @@ class NamespaceBackend:
             resources=frozenset(resources),
             details={
                 "running": self.running,
+                "hostless_pair": self.hostless_pair,
                 "namespace_count": len(self.created_namespaces),
                 "service_count": len(self.services),
                 "names": asdict(self.names) if self.names else None,
@@ -468,17 +623,12 @@ class NamespaceBackend:
 
     def _start_service(self, node_id: str, service_id: str, port: int, address: str) -> None:
         namespace = self._namespace(node_id)
-        command = self._as_owner(
-            namespace,
-            self.python_executable,
-            "-I",
-            "-S",
-            str(STATIC_HTTP_SCRIPT),
-            "--bind",
-            address,
-            "--port",
-            str(port),
+        service = (
+            [self.python_executable, HTTP_MODE_FLAG]
+            if getattr(sys, "frozen", False)
+            else [self.python_executable, "-I", "-S", str(STATIC_HTTP_SCRIPT)]
         )
+        command = self._as_owner(namespace, *service, "--bind", address, "--port", str(port))
         self.services[(node_id, service_id)] = self.runner.start(
             command, privileged=True, **self._service_log_kwargs(node_id, service_id)
         )

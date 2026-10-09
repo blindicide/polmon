@@ -13,6 +13,7 @@ import socketserver
 import threading
 
 BODY = b"polmon static_http laboratory service\n"
+HTTP_MODE_FLAG = "--polmon-run-namespace-http-service"
 MAX_LINE_BYTES = 4_096
 MAX_REQUEST_BYTES = 8_192
 MAX_CONCURRENT = 32
