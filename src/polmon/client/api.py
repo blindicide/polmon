@@ -158,9 +158,7 @@ class ApiClient:
         else:
             code, message, details = None, str(error.reason), document
         raise ApiClientError(
-            f"server returned HTTP {error.code}"
-            + (f" {code}" if code else "")
-            + f": {message}",
+            f"server returned HTTP {error.code}" + (f" {code}" if code else "") + f": {message}",
             status=error.code,
             code=code,
             details=details,
@@ -178,9 +176,7 @@ class ApiClient:
         return self._dict("POST", "/v1/topologies", {"yaml": source})
 
     def save_topology(self, topology_id: str, source: str) -> dict[str, object]:
-        return self._dict(
-            "PUT", f"/v1/topologies/{_segment(topology_id)}", {"yaml": source}
-        )
+        return self._dict("PUT", f"/v1/topologies/{_segment(topology_id)}", {"yaml": source})
 
     def topologies(self) -> list[dict[str, object]]:
         return self._list("/v1/topologies")
@@ -198,9 +194,7 @@ class ApiClient:
         return self._dict("POST", "/v1/scenarios", {"yaml": source})
 
     def save_scenario(self, scenario_id: str, source: str) -> dict[str, object]:
-        return self._dict(
-            "PUT", f"/v1/scenarios/{_segment(scenario_id)}", {"yaml": source}
-        )
+        return self._dict("PUT", f"/v1/scenarios/{_segment(scenario_id)}", {"yaml": source})
 
     def scenarios(self) -> list[dict[str, object]]:
         return self._list("/v1/scenarios")
@@ -254,11 +248,15 @@ class ApiClient:
         path = f"/v1/deployments/{_segment(topology_id)}"
         return self._dict("DELETE", path, timeout=max(DEPLOY_TIMEOUT, self.timeout))
 
+    def send_packet(
+        self, topology_id: str, node_id: str, interface_id: str, frame_hex: str
+    ) -> dict[str, object]:
+        path = f"/v1/deployments/{_segment(topology_id)}/nodes/{_segment(node_id)}/packets"
+        return self._dict("POST", path, {"interface_id": interface_id, "frame_hex": frame_hex})
+
     @staticmethod
     def _console_path(topology_id: str, node_id: str) -> str:
-        return (
-            f"/v1/deployments/{_segment(topology_id)}/nodes/{_segment(node_id)}/console"
-        )
+        return f"/v1/deployments/{_segment(topology_id)}/nodes/{_segment(node_id)}/console"
 
     def console_readiness(self, topology_id: str, node_id: str) -> dict[str, object]:
         return self._dict("GET", self._console_path(topology_id, node_id) + "/readiness")
@@ -286,9 +284,7 @@ class ApiClient:
         )
 
     def console_session_create(self, topology_id: str, node_id: str) -> dict[str, object]:
-        return self._dict(
-            "POST", self._console_path(topology_id, node_id) + "/sessions"
-        )
+        return self._dict("POST", self._console_path(topology_id, node_id) + "/sessions")
 
     def console_session(
         self, topology_id: str, node_id: str, session_id: str, after: int = 0

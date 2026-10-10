@@ -45,6 +45,11 @@ class ConsoleInputRequest(BaseModel):
     data: str = Field(min_length=1, max_length=4096)
 
 
+class PacketSendRequest(BaseModel):
+    interface_id: str = Field(min_length=1, max_length=32, pattern=IDENTIFIER.pattern)
+    frame_hex: str = Field(max_length=8192)
+
+
 def control(request: Request) -> ControlPlane:
     return request.app.state.control
 
@@ -148,6 +153,18 @@ def destroy(topology_id: TopologyId, request: Request) -> dict[str, object]:
     return control(request).destroy(topology_id)
 
 
+@router.post("/deployments/{topology_id}/nodes/{node_id}/packets")
+def send_packet(
+    topology_id: TopologyId,
+    node_id: TopologyId,
+    payload: PacketSendRequest,
+    request: Request,
+) -> dict[str, object]:
+    return control(request).send_packet(
+        topology_id, node_id, payload.interface_id, payload.frame_hex
+    )
+
+
 @router.get("/deployments/{topology_id}/nodes/{node_id}/console/readiness")
 def console_readiness(
     topology_id: TopologyId, node_id: TopologyId, request: Request
@@ -202,9 +219,7 @@ def console_session(
     return control(request).console_session(session_id, after)
 
 
-@router.get(
-    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/stream"
-)
+@router.get("/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/stream")
 def console_session_stream(
     topology_id: TopologyId,
     node_id: TopologyId,
@@ -217,9 +232,7 @@ def console_session_stream(
     return control(request).console_session(session_id, after)
 
 
-@router.post(
-    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/input"
-)
+@router.post("/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/input")
 def console_session_input(
     topology_id: TopologyId,
     node_id: TopologyId,
@@ -231,9 +244,7 @@ def console_session_input(
     return control(request).console_session_input(session_id, payload.data)
 
 
-@router.get(
-    "/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/transcript"
-)
+@router.get("/deployments/{topology_id}/nodes/{node_id}/console/sessions/{session_id}/transcript")
 def console_session_transcript(
     topology_id: TopologyId,
     node_id: TopologyId,

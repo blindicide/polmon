@@ -16,6 +16,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "page.scenarios.subtitle": "Validate scenarios and run controlled experiments",
     "page.console.title": "Console",
     "page.console.subtitle": "Open audited SSH sessions inside deployed L1 machines",
+    "page.packets.title": "Packets",
+    "page.packets.subtitle": "Send exact Ethernet bytes inside a hostless, isolated L1 pair",
     "page.telemetry.title": "Telemetry",
     "page.telemetry.subtitle": "Live event stream and traffic capture of an experiment",
     "page.logs.title": "Logs",
@@ -24,6 +26,23 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "page.reports.subtitle": "Experiment outcomes: expected versus actual, errors, resources",
     "page.benchmarks.title": "Benchmarks",
     "page.benchmarks.subtitle": "Bounded measurement jobs and their retained raw results",
+    "packet.target": "Injection point",
+    "packet.topology": "Deployed topology",
+    "packet.node": "L1 machine",
+    "packet.interface": "Sandbox interface",
+    "packet.editor": "Ethernet frame (hex)",
+    "packet.hex_hint": (
+        "Hex bytes are sent exactly as entered; no fields or checksums are rewritten. "
+        "14–1514 bytes, up to 20 sends per second."
+    ),
+    "packet.placeholder": "Destination MAC, source MAC, EtherType, then payload in hexadecimal",
+    "packet.send": "Send one frame",
+    "packet.ready": "Choose an isolated pair, node and interface, then enter a frame.",
+    "packet.loading": "Loading packet targets",
+    "packet.sending": "Sending packet",
+    "packet.sent": "Sent {count} bytes on {interface}. Operation {operation_id}.",
+    "packet.refused": "Refused ({code}). Operation {operation_id}.",
+    "packet.error": "Error ({code}). Operation {operation_id}.",
     # -- common words --------------------------------------------------------------------------
     "common.yes": "yes",
     "common.no": "no",
@@ -921,11 +940,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- local backend lifecycle ---------------------------------------------------------------
     "local.failed": "The local backend could not be started.",
     "local.override_missing": "The configured backend executable does not exist: {path}.",
-    "local.missing": "This client bundle has no backend beside it. Install or extract the "
-    "self-contained backend next to the client, set {variable}, or choose the remote Linux "
-    "backend.",
-    "local.missing_linux": "This client bundle has no backend beside it. Extract {tarball} next "
-    "to the client's folder, set {variable}, or choose the remote Linux backend.",
     "local.start_failed": "{command} could not be started: {reason}.",
     "local.not_l0_only": "The owned backend did not advertise its L0-only boundary.",
     "local.exited": "The backend exited with code {exit_code} on start attempt {attempt}. Last "
@@ -1161,6 +1175,24 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.packet.ipv4_length": "The IPv4 total length does not match the packet.",
     "backend.packet.ipv4_flags": "IPv4 fragmentation and reserved flags are unsupported.",
     "backend.packet.ipv4_checksum": "Invalid IPv4 header checksum.",
+    "backend.packet.not_deployed": "The topology is not deployed.",
+    "backend.packet.hostless_pair_required": "Packets require an isolated two-node L1 pair.",
+    "backend.packet.not_running": "The lab is not running.",
+    "backend.packet.node_unknown": "The node is not managed by this lab.",
+    "backend.packet.interface_unknown": "The interface is not owned by the selected node.",
+    "backend.packet.namespace_unowned": "The namespace is not owned by this deployment.",
+    "backend.packet.egress_link": "The lab has an unexpected network link.",
+    "backend.packet.egress_route": "The lab has a default route.",
+    "backend.packet.rate_limit": "The packet burst limit was reached.",
+    "backend.packet.send_failed": "The packet could not be sent.",
+    "backend.packet.backend_error": "The packet operation failed.",
+    "backend.packet.size": "The Ethernet frame must be 14–1514 bytes.",
+    "backend.packet.hex": "The frame must contain hexadecimal bytes.",
+    "backend.packet.vlan_header": "The VLAN header is truncated.",
+    "backend.packet.ipv6_unconfigured": "IPv6 is not configured in this lab.",
+    "backend.packet.ipv4_header": "The IPv4 header is malformed.",
+    "backend.packet.arp_header": "The ARP header is malformed.",
+    "backend.packet.off_lab_target": "The packet target is outside the lab network.",
     "backend.benchmark.limits_exceeded": "The benchmark request exceeds the configured resource "
     "limits.",
     "backend.benchmark.large_required": "L0 endpoint counts above {maximum} require the explicit "

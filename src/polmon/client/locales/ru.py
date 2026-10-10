@@ -16,6 +16,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "page.scenarios.subtitle": "Проверка сценариев и запуск управляемых экспериментов",
     "page.console.title": "Консоль",
     "page.console.subtitle": "Контролируемые защищённые сеансы внутри развёрнутых машин L1",
+    "page.packets.title": "Пакеты",
+    "page.packets.subtitle": "Отправка точных байтов Ethernet внутри изолированной пары L1",
     "page.telemetry.title": "Телеметрия",
     "page.telemetry.subtitle": "Поток событий эксперимента в реальном времени и захват трафика",
     "page.logs.title": "Журналы",
@@ -24,6 +26,23 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "page.reports.subtitle": "Итоги экспериментов: ожидаемое и фактическое, ошибки, ресурсы",
     "page.benchmarks.title": "Бенчмарки",
     "page.benchmarks.subtitle": "Ограниченные задания замеров и сохранённые исходные результаты",
+    "packet.target": "Точка отправки",
+    "packet.topology": "Развёрнутая топология",
+    "packet.node": "Машина L1",
+    "packet.interface": "Интерфейс лаборатории",
+    "packet.editor": "Кадр канального уровня (шестнадцатеричные байты)",
+    "packet.hex_hint": (
+        "Байты отправляются без изменений; поля и контрольные суммы не пересчитываются. "
+        "14–1514 байт, до 20 отправок в секунду."
+    ),
+    "packet.placeholder": "Адрес получателя, адрес отправителя, код протокола и полезная нагрузка",
+    "packet.send": "Отправить один кадр",
+    "packet.ready": "Выберите изолированную пару, узел и интерфейс, затем введите кадр.",
+    "packet.loading": "Загрузка точек отправки",
+    "packet.sending": "Отправка пакета",
+    "packet.sent": "Отправлено {count} байт через {interface}. Операция {operation_id}.",
+    "packet.refused": "Отказ ({code}). Операция {operation_id}.",
+    "packet.error": "Ошибка ({code}). Операция {operation_id}.",
     # -- общие слова ----------------------------------------------------------------------------
     "common.yes": "да",
     "common.no": "нет",
@@ -339,7 +358,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- единицы измерения (слова и символы; форма числа по количеству) -------------------------
     "unit.decimal_separator": ",",
     "unit.millisecond": {
-        "one": "миллисекунда", "few": "миллисекунды", "many": "миллисекунд",
+        "one": "миллисекунда",
+        "few": "миллисекунды",
+        "many": "миллисекунд",
         "other": "миллисекунды",
     },
     "unit.second": {"one": "секунда", "few": "секунды", "many": "секунд", "other": "секунды"},
@@ -351,7 +372,10 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "unit.gib": "ГиБ",
     "unit.tib": "ТиБ",
     "unit.millicore": {
-        "one": "миллиядро", "few": "миллиядра", "many": "миллиядер", "other": "миллиядра",
+        "one": "миллиядро",
+        "few": "миллиядра",
+        "many": "миллиядер",
+        "other": "миллиядра",
     },
     # -- столбцы таблиц -------------------------------------------------------------------------
     "column.number": "№",
@@ -978,10 +1002,6 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     # -- жизненный цикл локального бэкенда ------------------------------------------------------
     "local.failed": "Не удалось запустить локальный бэкенд.",
     "local.override_missing": "Указанный исполняемый файл бэкенда не существует: {path}.",
-    "local.missing": "Рядом с этим клиентом нет бэкенда. Установите или распакуйте автономный "
-    "бэкенд рядом с клиентом, задайте {variable} или выберите удалённый бэкенд Linux.",
-    "local.missing_linux": "Рядом с этим клиентом нет бэкенда. Распакуйте {tarball} рядом с "
-    "папкой клиента, задайте {variable} или выберите удалённый бэкенд Linux.",
     "local.start_failed": "Не удалось запустить {command}: {reason}.",
     "local.not_l0_only": "Собственный бэкенд не сообщил о границе «только L0».",
     "local.exited": "Бэкенд завершился с кодом {exit_code} при попытке запуска {attempt}. "
@@ -1227,6 +1247,24 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.packet.ipv4_flags": "Фрагментация и зарезервированные флаги IPv4 не "
     "поддерживаются.",
     "backend.packet.ipv4_checksum": "Неверная контрольная сумма заголовка IPv4.",
+    "backend.packet.not_deployed": "Топология не развёрнута.",
+    "backend.packet.hostless_pair_required": "Для отправки нужна изолированная пара машин L1.",
+    "backend.packet.not_running": "Лаборатория не запущена.",
+    "backend.packet.node_unknown": "Узел не принадлежит этой лаборатории.",
+    "backend.packet.interface_unknown": "Интерфейс не принадлежит выбранному узлу.",
+    "backend.packet.namespace_unowned": "Сетевое пространство имён не принадлежит развёртыванию.",
+    "backend.packet.egress_link": "В лаборатории обнаружен посторонний сетевой интерфейс.",
+    "backend.packet.egress_route": "В лаборатории обнаружен маршрут по умолчанию.",
+    "backend.packet.rate_limit": "Достигнут лимит частоты отправки пакетов.",
+    "backend.packet.send_failed": "Не удалось отправить пакет.",
+    "backend.packet.backend_error": "Ошибка при отправке пакета.",
+    "backend.packet.size": "Кадр должен содержать от 14 до 1514 байт.",
+    "backend.packet.hex": "Кадр должен состоять из шестнадцатеричных байтов.",
+    "backend.packet.vlan_header": "Заголовок виртуальной сети усечён.",
+    "backend.packet.ipv6_unconfigured": "В этой лаборатории адреса IPv6 не настроены.",
+    "backend.packet.ipv4_header": "Неверный заголовок IPv4.",
+    "backend.packet.arp_header": "Неверный заголовок ARP.",
+    "backend.packet.off_lab_target": "Адрес назначения находится вне лабораторной сети.",
     "backend.benchmark.limits_exceeded": "Запрос бенчмарка превышает заданные лимиты ресурсов.",
     "backend.benchmark.large_required": "Для количеств конечных точек L0 больше {maximum} нужен "
     "явный флажок «Крупный».",
