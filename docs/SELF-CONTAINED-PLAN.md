@@ -101,3 +101,9 @@ operation when the host permits it.
 7. Prepare v0.3.0, create an annotated tag only after the gates pass, publish all assets with
    `SHA256SUMS.txt`, download and verify the release on both hosted platforms, then commit the
    final release evidence.
+# Phase VI note
+
+This document records the earlier split-backend design. The Phase VI branch replaces the
+packaged sibling backend with a single client executable that re-enters itself in embedded L0
+backend mode. The future Linux and Windows client distributions therefore ship no separate
+backend executable or service. See `docs/CLIENT.md` for the current branch behavior.

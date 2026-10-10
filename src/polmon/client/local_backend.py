@@ -23,7 +23,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from polmon.client.api import ApiClient, ApiClientError
-from polmon.version import __version__
 
 LOCAL_LABEL = "Local backend — L0 only"
 LOCAL_FIDELITY_MESSAGE = (
@@ -31,6 +30,11 @@ LOCAL_FIDELITY_MESSAGE = (
     "Linux host with network namespace privileges."
 )
 BACKEND_OVERRIDE_ENV = "POLMON_BACKEND_EXECUTABLE"
+# Sentinel first argument that makes the frozen client re-invoke itself as the embedded L0
+# backend instead of shipping a separate backend executable. ``app.main`` dispatches on it
+# before importing PySide6, and ``resolve_backend_command`` emits it for frozen single-file
+# builds. Kept in this Qt-free module so the dispatch stays import-cheap.
+BACKEND_MODE_FLAG = "--polmon-run-embedded-backend"
 # Session directories hold one backend log each; older ones are pruned when a backend starts.
 SESSION_LOGS_KEPT = 20
 
@@ -112,35 +116,28 @@ def resolve_backend_command(override: str | Path | None = None) -> list[str]:
             )
         return [str(resolved.resolve())]
 
+    # Frozen client: the L0 backend is embedded in this very executable on both Linux and
+    # Windows (no separate backend executable, service, or sibling bundle is shipped). Re-invoke
+    # ourselves with the sentinel first argument; app.main dispatches it to backend.main before
+    # importing PySide6. This is checked first so no stale sibling layout can shadow it.
+    if getattr(sys, "frozen", False):
+        return [str(Path(sys.executable).resolve()), BACKEND_MODE_FLAG]
+
+    # Non-frozen layouts: a backend executable on PATH wins over the source fallback. The
+    # _MEIPASS/sibling probe is retained only for any transitional unpacked layout; it is
+    # harmless when absent and never matches this executable itself.
     name = _executable_name()
     here = Path(sys.executable).resolve().parent
     candidates = [here / name]
     bundle = getattr(sys, "_MEIPASS", None)
     if bundle:
         candidates.insert(0, Path(bundle) / name)
-    if sys.platform.startswith("linux"):
-        # Linux ships the client and the backend as two tarballs; extracted side by side, the
-        # backend of exactly this version is beside the client's folder.
-        candidates.append(here.parent / f"polmon-backend-{__version__}-linux-x64" / name)
     for candidate in candidates:
         if candidate.is_file() and candidate.resolve() != Path(sys.executable).resolve():
             return [str(candidate)]
     installed = shutil.which("polmon-backend")
     if installed:
         return [installed]
-    if getattr(sys, "frozen", False):
-        hint = (
-            f"extract polmon-backend-{__version__}-linux-x64.tar.gz next to this client's folder"
-            if sys.platform.startswith("linux")
-            else "install or extract the self-contained backend beside it"
-        )
-        raise LocalBackendError(
-            f"this client bundle has no backend beside it; {hint}, set "
-            f"{BACKEND_OVERRIDE_ENV}, or select Remote Linux backend",
-            "missing_linux" if sys.platform.startswith("linux") else "missing",
-            tarball=f"polmon-backend-{__version__}-linux-x64.tar.gz",
-            variable=BACKEND_OVERRIDE_ENV,
-        )
     # Source checkout / editable install fallback. The module name is intentionally a string:
     # the client keeps its enforced import boundary from backend implementation modules.
     return [sys.executable, "-m", "polmon.backend"]

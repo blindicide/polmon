@@ -67,63 +67,6 @@ jobs:
           pytest -m "not privileged and not performance and not gui" -p no:cacheprovider "${args[@]}"
           # --no-qt-log: see ci.yml (pytest capture + pytest-qt Qt-log capture abort on Windows).
           QT_QPA_PLATFORM=offscreen pytest -m gui -p no:cacheprovider --no-qt-log "${args[@]}"
-      - name: Build and verify the Qt-free backend executable
-        shell: pwsh
-        run: |
-          pyinstaller --clean --noconfirm packaging/windows/polmon-backend.spec
-          $version = python -c "from polmon.version import __version__; print(__version__)"
-          $backend = "dist/polmon-backend.exe"
-          if (-not (Test-Path $backend)) { throw "Missing executable: $backend" }
-          if ((& $backend --version) -ne "polmon $version") { throw "backend --version failed" }
-          $selftest = & $backend --self-test | Out-String
-          $selftest
-          if ($LASTEXITCODE -ne 0 -or -not $selftest.Contains("PASS uvicorn application graph") -or -not $selftest.Contains("L0 deploy -> scenario -> telemetry -> report -> reset")) { throw "backend self-test failed" }
-          $archive = pyi-archive_viewer -l $backend | Out-String
-          if ($archive -match "PySide6|shiboken6") { throw "Qt leaked into backend executable" }
-          Copy-Item $backend "dist/polmon-backend-$version-windows-x64.exe"
-      - name: Run a real L0 experiment against the standalone packaged backend
-        shell: pwsh
-        run: |
-          . scripts/windows-proof.ps1
-          $backend = (Resolve-Path "dist/polmon-backend.exe").Path
-          $bash = "C:\Program Files\Git\bin\bash.exe"
-          if (-not (Get-Command jq -ErrorAction SilentlyContinue)) { throw "jq is not on PATH" }
-          & $backend --lab-readiness | Out-File -Encoding utf8 windows-backend-readiness.json
-          if ($LASTEXITCODE -ne 2) { throw "Windows lab readiness must report L1 unavailable (2), got $LASTEXITCODE" }
-          $port = python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])"
-          $env:POLMON_API_TOKEN = python -c "import secrets; print(secrets.token_urlsafe(32))"
-          $data = New-Item -ItemType Directory (Join-Path $env:RUNNER_TEMP "standalone-backend")
-          $watch = [Diagnostics.Stopwatch]::StartNew()
-          $proc = Start-Process -FilePath $backend -ArgumentList "--host","127.0.0.1","--port",$port `
-            -WorkingDirectory $data -NoNewWindow -PassThru `
-            -RedirectStandardOutput windows-backend.out.log -RedirectStandardError windows-backend.log
-          $healthy = $false
-          for ($i = 0; $i -lt 300 -and -not $healthy; $i++) {
-            try { Invoke-RestMethod "http://127.0.0.1:$port/v1/health" | Out-Null; $healthy = $true }
-            catch { Start-Sleep -Milliseconds 50 }
-          }
-          $seconds = $watch.Elapsed.TotalSeconds
-          if (-not $healthy) { Get-Content windows-backend.log; throw "standalone backend never became healthy" }
-          & $bash scripts/packaged-backend-smoke.sh "http://127.0.0.1:$port" $env:POLMON_API_TOKEN `
-            windows-backend-readiness.json windows-backend-e2e.json
-          if ($LASTEXITCODE -ne 0) { Get-Content windows-backend.log; throw "standalone backend L0 workflow failed" }
-          $proc.Refresh()
-          $launcherRss = $proc.WorkingSet64
-          # Kill only the one-file launcher PID: its Python child must notice and leave by itself.
-          Stop-Process -Id $proc.Id -Force
-          $proc.WaitForExit(10000) | Out-Null
-          Remove-Item Env:POLMON_API_TOKEN
-          Assert-NoBackend "standalone backend launcher killed (pid $($proc.Id))" 20
-          if (-not (Select-String -Quiet -Path windows-backend.log -Pattern '"event":"launcher_exit"')) { throw "backend did not log its launcher exit" }
-          if (-not (Select-String -Quiet -Path windows-backend.log -Pattern '"event":"shutdown_cleanup"')) { throw "backend did not shut down gracefully" }
-          $e2e = Get-Content windows-backend-e2e.json | ConvertFrom-Json
-          if ($e2e.experiment_status -ne "succeeded" -or $e2e.l1_result.error.message -notmatch "L0 synthetic nodes only") { throw "unexpected standalone E2E result" }
-          @{ backend_rss_bytes_after_workflow = $e2e.backend_rss_bytes; launcher_rss_bytes = $launcherRss;
-             seconds_to_healthy = [math]::Round($seconds, 3); executable_bytes = (Get-Item $backend).Length } |
-            ConvertTo-Json | Out-File -Encoding utf8 windows-backend-measurements.json
-          Get-Content windows-backend-measurements.json
-          # Probes above end with expected non-zero codes (2, 77); success is decided by the throws.
-          exit 0
       - run: pyinstaller --clean --noconfirm packaging/windows/polmon.spec
       - name: Verify the executable starts Qt and drives its embedded backend
         shell: pwsh
@@ -145,22 +88,20 @@ jobs:
           $smoke
           if ($LASTEXITCODE -ne 0) { throw "--smoke-start failed: $LASTEXITCODE" }
           if (-not $smoke.Contains("smoke-start: PASS platform=windows")) { throw "native Qt platform did not start" }
+          $diagnostics = & $exe --polmon-run-embedded-backend --diagnostics | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "embedded backend diagnostics failed" }
           $local = & $exe --local-backend-self-test | Out-String
           $local | Tee-Object -FilePath windows-onefile-local-backend.txt
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS") -or -not $local.Contains("L1/L2 requires a polmon backend on a Linux host")) { throw "embedded backend workflow failed" }
-          . scripts/windows-proof.ps1
-          Assert-NoBackend "one-file workflow: normal stop and backend killed"
           $gui = & $exe --local-backend-gui-probe windows-onefile-gui-probe.json --probe-screenshot windows-local-backend-refusal.png | Out-String
           $gui
           if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "one-file GUI lifecycle probe failed" }
-          Assert-NoBackend "one-file GUI: disconnect, backend killed, window closed"
           $probe = Join-Path $env:RUNNER_TEMP "onefile-crash.json"
           & $exe --local-backend-crash-test $probe
           if ($LASTEXITCODE -ne 77) { throw "crash probe did not emulate client failure" }
           $child = (Get-Content $probe | ConvertFrom-Json).pid
           for ($i = 0; $i -lt 50 -and (Get-Process -Id $child -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
           if (Get-Process -Id $child -ErrorAction SilentlyContinue) { throw "backend $child orphaned after client crash" }
-          Assert-NoBackend "one-file client killed (os._exit, backend pid $child)"
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash *polmon-$version-windows-x64.exe" | Out-File -Encoding ascii "$exe.sha256"
           "sha256: $hash"
@@ -172,17 +113,11 @@ jobs:
           pyinstaller --noconfirm packaging/windows/polmon-portable.spec
           $version = python -c "from polmon.version import __version__; print(__version__)"
           $name = "polmon-$version-windows-x64-portable"
-          Copy-Item dist/polmon-backend.exe "dist/$name/polmon-backend.exe"
           $zip = "dist/$name.zip"
           Compress-Archive -Path "dist/$name" -DestinationPath $zip
           $check = Join-Path $env:RUNNER_TEMP "portable-check"
           Expand-Archive -Path $zip -DestinationPath $check
           $exe = Join-Path $check "$name/polmon-client.exe"
-          $backend = Join-Path $check "$name/polmon-backend.exe"
-          if (-not (Test-Path $backend)) { throw "portable backend is not beside the client" }
-          if ((& $backend --version) -ne "polmon $version") { throw "portable backend failed" }
-          $backendSelf = & $backend --self-test | Out-String
-          if ($LASTEXITCODE -ne 0 -or -not $backendSelf.Contains("backend self-test: PASS")) { throw "portable backend self-test failed" }
           $out = & $exe --version
           if ($out -ne "polmon $version") { throw "--version printed '$out'" }
           $selftest = & $exe --self-test | Out-String
@@ -191,21 +126,20 @@ jobs:
           $smoke = & $exe --smoke-start 3 | Out-String
           $smoke
           if ($LASTEXITCODE -ne 0 -or -not $smoke.Contains("smoke-start: PASS platform=windows")) { throw "portable smoke start failed" }
+          $diagnostics = & $exe --polmon-run-embedded-backend --diagnostics | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "portable embedded backend diagnostics failed" }
           $local = & $exe --local-backend-self-test | Out-String
           $local | Tee-Object -FilePath windows-portable-local-backend.txt
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "portable local workflow failed" }
-          . scripts/windows-proof.ps1
-          Assert-NoBackend "portable workflow: normal stop and backend killed"
           $gui = & $exe --local-backend-gui-probe windows-portable-gui-probe.json | Out-String
           $gui
           if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "portable GUI lifecycle probe failed" }
-          Assert-NoBackend "portable GUI: disconnect, backend killed, window closed"
           $probe = Join-Path $env:RUNNER_TEMP "portable-crash.json"
           & $exe --local-backend-crash-test $probe
           if ($LASTEXITCODE -ne 77) { throw "portable crash probe did not emulate client failure" }
           $child = (Get-Content $probe | ConvertFrom-Json).pid
           for ($i = 0; $i -lt 50 -and (Get-Process -Id $child -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
-          Assert-NoBackend "portable client killed (os._exit, backend pid $child)"
+          if (Get-Process -Id $child -ErrorAction SilentlyContinue) { throw "portable backend $child orphaned after client crash" }
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
           "$hash *$name.zip" | Out-File -Encoding ascii "$zip.sha256"
           "portable zip: $((Get-Item $zip).Length) bytes, sha256 $hash"
@@ -236,11 +170,6 @@ jobs:
             windows-*-local-backend.txt
             windows-*-gui-probe.json
             windows-local-backend-refusal.png
-            windows-cleanup-proof.txt
-            windows-backend-readiness.json
-            windows-backend-e2e.json
-            windows-backend*.log
-            windows-backend-measurements.json
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -260,8 +189,7 @@ jobs:
       - name: Verify checksum and smoke-test the downloaded executable on a fresh runner
         shell: pwsh
         run: |
-          $exe = Get-ChildItem artifact/polmon-*-windows-x64.exe |
-            Where-Object Name -NotLike 'polmon-backend-*' | Select-Object -First 1
+          $exe = Get-ChildItem artifact/polmon-*-windows-x64.exe | Select-Object -First 1
           $expected = (Get-Content "$($exe.FullName).sha256").Split(" ")[0]
           $actual = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLower()
           if ($expected -ne $actual) { throw "checksum mismatch: $expected != $actual" }
@@ -276,21 +204,17 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $smoke.Contains("platform=windows")) { throw "smoke start failed" }
           $local = & $exe.FullName --local-backend-self-test | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $local.Contains("local-backend self-test: PASS")) { throw "published-form local workflow failed" }
-          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after downloaded one-file workflow" }
+          & $exe.FullName --polmon-run-embedded-backend --diagnostics | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "downloaded one-file backend diagnostics failed" }
           $gui = & $exe.FullName --local-backend-gui-probe downloaded-gui-probe.json | Out-String
           $gui
           if ($LASTEXITCODE -ne 0 -or -not $gui.Contains("local-backend GUI probe: PASS")) { throw "downloaded GUI lifecycle probe failed" }
-          $left = (tasklist /FI "IMAGENAME eq polmon-backend.exe" /NH | Out-String).Trim()
-          "tasklist after downloaded GUI probe: $left"
-          if ($left -match "polmon-backend\.exe") { throw "orphan after downloaded GUI probe: $left" }
           $zip = Get-ChildItem artifact/polmon-*-windows-x64-portable.zip | Select-Object -First 1
           $zipExpected = (Get-Content "$($zip.FullName).sha256").Split(" ")[0]
           $zipActual = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLower()
           if ($zipExpected -ne $zipActual) { throw "portable checksum mismatch" }
           Expand-Archive -Path $zip.FullName -DestinationPath portable
           $portable = Get-ChildItem portable/*/polmon-client.exe | Select-Object -First 1
-          $portableBackend = Get-ChildItem portable/*/polmon-backend.exe | Select-Object -First 1
-          if (-not $portableBackend) { throw "portable archive lacks polmon-backend.exe" }
           $portableSelf = & $portable.FullName --self-test | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $portableSelf.Contains("self-test: PASS")) { throw "portable self-test failed" }
           $portableSmoke = & $portable.FullName --smoke-start 3 | Out-String
@@ -298,7 +222,8 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $portableSmoke.Contains("platform=windows")) { throw "portable smoke start failed" }
           $portableLocal = & $portable.FullName --local-backend-self-test | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $portableLocal.Contains("local-backend self-test: PASS")) { throw "portable local workflow failed" }
-          if (Get-Process -Name polmon-backend -ErrorAction SilentlyContinue) { throw "orphan after downloaded portable workflow" }
+          & $portable.FullName --polmon-run-embedded-backend --diagnostics | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "downloaded portable backend diagnostics failed" }
           "## Windows artifacts verified on a fresh runner" >> $env:GITHUB_STEP_SUMMARY
           "| File | Size (bytes) | SHA-256 |" >> $env:GITHUB_STEP_SUMMARY
           "|---|---:|---|" >> $env:GITHUB_STEP_SUMMARY

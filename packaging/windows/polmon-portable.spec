@@ -11,6 +11,7 @@ from polmon.version import __version__
 
 project_root = Path(SPECPATH).parents[1]
 sys.path.insert(0, str(project_root / "packaging"))
+from backend_bundle import HIDDEN_IMPORTS as BACKEND_HIDDEN_IMPORTS  # noqa: E402
 from qt_bundle import EXCLUDED_MODULES, prune  # noqa: E402
 
 icon_path = Path(workpath) / "polmon.ico"
@@ -25,7 +26,15 @@ analysis = Analysis(
     pathex=[str(project_root / "src")],
     binaries=[],
     datas=[],
-    hiddenimports=["polmon.client.selftest", "polmon.client.mainwindow"],
+    hiddenimports=[
+        "polmon.client.selftest",
+        "polmon.client.mainwindow",
+        # Embedded L0 backend: app.main re-invokes this same EXE in backend mode, so the one
+        # bundled client must also contain the backend module graph and the SQLite extension
+        # ("sqlite3" pulls in _sqlite3) — no separate backend executable is shipped on Windows.
+        "sqlite3",
+        *BACKEND_HIDDEN_IMPORTS,
+    ],
     hookspath=[],
     runtime_hooks=[],
     excludes=EXCLUDED_MODULES,

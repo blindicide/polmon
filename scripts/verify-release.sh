@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Download a GitHub Release and verify its assets' names, versions and SHA-256 values.
 #
-# From v0.2.0 a release carries the Windows EXE, the Linux client tarball, the wheel, the systemd
-# unit and SHA256SUMS.txt; earlier releases carry the Windows EXE only (plus SHA256SUMS.txt from
-# v0.0.13). Every asset listed in SHA256SUMS.txt is checked, and the expected platform assets for
-# the release's era must be present.
+# Asset expectations follow the release era. The next feature release replaces separate backend
+# bundles with embedded L0 clients and adds Debian and RPM packages.
 # Exit codes: 0 verified; 1 mismatch or missing asset; 2 release has no SHA256SUMS.txt (releases
 # published before v0.0.13 and never repaired) — the computed hashes are still printed.
 # Usage: scripts/verify-release.sh vX.Y.Z [owner/repo]
@@ -30,10 +28,18 @@ if (( major > 0 || minor >= 3 )); then
              "polmon-backend-${version}-linux-x64.tar.gz"
              "polmon-backend-bundled.service")
 fi
-
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 gh release download "$tag" --repo "$repo" --dir "$workdir" >/dev/null
+if [[ -f "$workdir/package-manifest.json" ]]; then
+  expected=("polmon-${version}-windows-x64.exe"
+            "polmon-${version}-windows-x64-portable.zip"
+            "polmon-${version}-linux-x64.tar.gz"
+            "polmon-${version}-py3-none-any.whl"
+            "polmon-client_${version}_amd64.deb"
+            "polmon-client-${version}-1.x86_64.rpm"
+            "package-manifest.json" "SHA256SUMS-packages.txt")
+fi
 status=0
 for asset in "${expected[@]}"; do
   if [[ ! -f "$workdir/$asset" ]]; then

@@ -54,6 +54,7 @@ from polmon.client.pages.console import ConsolePage
 from polmon.client.pages.dashboard import DashboardPage
 from polmon.client.pages.deployment import DeploymentPage
 from polmon.client.pages.logs import LogsPage
+from polmon.client.pages.packets import PacketsPage
 from polmon.client.pages.reports import ReportsPage
 from polmon.client.pages.scenarios import ScenariosPage
 from polmon.client.pages.telemetry import TelemetryPage
@@ -90,11 +91,23 @@ PAGES = (
     DeploymentPage,
     ScenariosPage,
     ConsolePage,
+    PacketsPage,
     TelemetryPage,
     LogsPage,
     ReportsPage,
     BenchmarksPage,
 )
+PAGE_SHORTCUTS = {
+    "dashboard": "Ctrl+1",
+    "topologies": "Ctrl+2",
+    "deployment": "Ctrl+3",
+    "scenarios": "Ctrl+4",
+    "console": "Ctrl+5",
+    "telemetry": "Ctrl+6",
+    "logs": "Ctrl+7",
+    "reports": "Ctrl+8",
+    "packets": "Ctrl+9",
+}
 STATE_TONES = {
     ConnectionState.DISCONNECTED: "muted",
     ConnectionState.CONNECTING: "warning",
@@ -115,7 +128,7 @@ SHORTCUTS = (
     ("Ctrl+Shift+R", "shortcut.reset"),
     ("Ctrl+R", "shortcut.run"),
     ("Esc", "shortcut.cancel"),
-    ("Ctrl+1 … Ctrl+8", "shortcut.pages"),
+    ("Ctrl+1 … Ctrl+9", "shortcut.pages"),
     ("Ctrl+Shift+T", "shortcut.theme"),
     ("Ctrl+Shift+L", "shortcut.log"),
     ("Ctrl+Shift+U", "shortcut.language"),
@@ -214,7 +227,9 @@ class ConnectionBar(QFrame):
         self.connect_button.setMinimumWidth(128)
         self.addWidget(self.connect_button)
         self.log_button = button(
-            "connection.backend_log", "quiet", tip="connection.backend_log.tip",
+            "connection.backend_log",
+            "quiet",
+            tip="connection.backend_log.tip",
             name="backendLogButton",
         )
         self.log_button.setEnabled(False)
@@ -435,7 +450,9 @@ class MainWindow(QMainWindow):
             item = navigation.item(index)
             key = str(item.data(Qt.ItemDataRole.UserRole))
             item.setText(tr(f"page.{key}.title"))
-            item.setToolTip(f"{tr(f'page.{key}.subtitle')} (Ctrl+{index + 1})")
+            shortcut = PAGE_SHORTCUTS.get(key)
+            subtitle = tr(f"page.{key}.subtitle")
+            item.setToolTip(f"{subtitle} ({shortcut})" if shortcut else subtitle)
 
     # -- menus and shortcuts ------------------------------------------------------------------
 
@@ -520,11 +537,11 @@ class MainWindow(QMainWindow):
         )
 
         view = self._menu("menu.view")
-        for index, page in enumerate(self.pages.values()):
+        for page in self.pages.values():
             action = self._action(
                 view,
                 f"page.{page.key}.title",
-                f"Ctrl+{index + 1}",
+                PAGE_SHORTCUTS.get(page.key),
                 lambda checked=False, key=page.key: self.navigate(key),
             )
             action.setObjectName(f"navigate.{page.key}")
@@ -654,11 +671,15 @@ class MainWindow(QMainWindow):
         else:
             # Disconnecting from the owned local backend stops it: its deployments are lost.
             count = len(self.session.deployments)
-            if self.session.local_backend and count and not confirm(
-                self,
-                "connection.stop_local.confirm_title",
-                Msg("connection.stop_local.confirm", count=count),
-                "connection.stop_local.confirm_accept",
+            if (
+                self.session.local_backend
+                and count
+                and not confirm(
+                    self,
+                    "connection.stop_local.confirm_title",
+                    Msg("connection.stop_local.confirm", count=count),
+                    "connection.stop_local.confirm_accept",
+                )
             ):
                 return
             self.disconnect_backend()
@@ -718,9 +739,7 @@ class MainWindow(QMainWindow):
         self.session.token = str(result["token"])
         self.bar.log_button.setEnabled(True)
         self.backend_log_action.setEnabled(True)
-        self.session.log(
-            Msg("log.local.started", url=self.session.url, log=result.get("log_path"))
-        )
+        self.session.log(Msg("log.local.started", url=self.session.url, log=result.get("log_path")))
         self.poll(initial=True)
 
     def _local_start_failed(self, error: BaseException) -> None:
@@ -914,9 +933,7 @@ class MainWindow(QMainWindow):
             if previous is ConnectionState.LOST:
                 session.log(Msg("log.reachable_again"), "info")
             else:
-                session.log(
-                    Msg("log.connected", url=session.url, version=session.backend_version)
-                )
+                session.log(Msg("log.connected", url=session.url, version=session.backend_version))
                 self._remember_url(session.url)
                 if session.backend_version != __version__:
                     session.log(
@@ -935,8 +952,11 @@ class MainWindow(QMainWindow):
             features = ", ".join(tr(f"feature.{item}") for item in sorted(session.unsupported))
             problem = Problem(
                 "problem.older_backend",
-                Msg("problem.older_backend.detail", version=session.backend_version,
-                    features=features),
+                Msg(
+                    "problem.older_backend.detail",
+                    version=session.backend_version,
+                    features=features,
+                ),
                 Msg("problem.older_backend.hint", version=__version__),
             )
             session.log(problem, "warning")
@@ -1042,11 +1062,15 @@ class MainWindow(QMainWindow):
         session = self.session
         state = session.state
         if state is ConnectionState.CONNECTED:
-            prefix = tr("connection.local_label") if session.local_backend else tr(
-                "connection.state.connected"
+            prefix = (
+                tr("connection.local_label")
+                if session.local_backend
+                else tr("connection.state.connected")
             )
             text = tr(
-                "statusbar.connected", prefix=prefix, url=session.url,
+                "statusbar.connected",
+                prefix=prefix,
+                url=session.url,
                 version=session.backend_version,
             )
             short = tr("connection.state.connected")  # the pill beside it names the fidelity
@@ -1070,12 +1094,15 @@ class MainWindow(QMainWindow):
             self.bar.fidelity.setText(tr(f"fidelity.badge.{fidelity}"))
             self.bar.fidelity.setToolTip(tr(f"fidelity.badge.{fidelity}.tip"))
         self.sidebar_footer.setText(
-            tr("sidebar.connected", url=session.url) if session.connected
+            tr("sidebar.connected", url=session.url)
+            if session.connected
             else tr("sidebar.disconnected")
         )
-        backend = f" ({tr('title.backend', version=session.backend_version)})" if (
-            session.backend_version
-        ) else ""
+        backend = (
+            f" ({tr('title.backend', version=session.backend_version)})"
+            if (session.backend_version)
+            else ""
+        )
         where = (
             f" — {tr(f'connection.state.{state.value}')}: {session.url}{backend}"
             if state is not ConnectionState.DISCONNECTED
@@ -1229,11 +1256,15 @@ class MainWindow(QMainWindow):
         return self.runner.wait(wait_ms)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
-        if self.context.busy and not self._closing and not confirm(
-            self,
-            "dialog.quit_busy.title",
-            Msg("dialog.quit_busy.text", operation=self.context.operation_name),
-            "dialog.quit_busy.accept",
+        if (
+            self.context.busy
+            and not self._closing
+            and not confirm(
+                self,
+                "dialog.quit_busy.title",
+                Msg("dialog.quit_busy.text", operation=self.context.operation_name),
+                "dialog.quit_busy.accept",
+            )
         ):
             event.ignore()
             return

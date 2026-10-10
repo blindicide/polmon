@@ -109,3 +109,11 @@ the token into *Token*, and press *Connect* (Ctrl+Return). The token stays in me
 Stop the backend (this resets the laboratory), `git pull` or check out a release tag, reinstall with
 `uv pip install -e .`, run `scripts/check.sh`, `scripts/privileged-tests.sh`, and
 `.venv/bin/polmon-demo`, then start the backend again.
+# Phase VI packaging note
+
+The Phase VI branch's packaged desktop clients include an embedded L0 backend on Linux and
+Windows. The planned native Linux `.deb` and `.rpm` packages install no backend service and
+leave user-owned results and settings in home directories on removal. The source-installed
+Linux backend and its user service below remain the route to an L1/hybrid laboratory. Instructions
+for the separately bundled backend in this document apply to the published v0.5.0 release, not
+to a future Phase VI client package.
