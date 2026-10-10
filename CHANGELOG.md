@@ -49,6 +49,32 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 - Status colours in tables, trees and lists follow a theme switch: they kept the previous
   theme's colour (a dark-green "✓ успешно" on the dark theme's background).
 
+## [0.6.0] - 2026-10-10
+
+Phase VI — native Linux packages, embedded L0 clients, and an isolated packet workbench.
+
+### Added
+
+- Self-contained Debian and RPM desktop packages with a launcher, desktop entry, checksummed
+  package manifest, and CI install, reinstall, removal, and user-data survival checks.
+- An authenticated packet workbench in the desktop client and API for sending exact Ethernet
+  frame bytes from a deployed node without a scenario. Its hostless namespace pair confines
+  traffic to the managed lab; backend checks enforce ownership, route isolation, frame size,
+  and send rate.
+
+### Changed
+
+- Windows and Linux client distributions now embed their L0 backend and SQLite runtime in the
+  client artifact. L1 and L2 still require a separate Linux laboratory backend.
+- The project, package, and lockfile version is `0.6.0`.
+
+### Fixed
+
+- The frozen Linux client includes `_sqlite3` and exercises embedded backend startup, preventing
+  the missing SQLite extension failure seen in v0.4.1.
+- YAML library writes retain atomic replacement and file sync on Windows without attempting an
+  unsupported directory sync.
+
 ## [0.5.0] - 2026-09-28
 
 Phase V — Topology Studio & lab access.
