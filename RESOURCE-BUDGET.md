@@ -16,18 +16,38 @@ host activity. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 Admission uses per-class defaults unless a node declares `resources`: L0 1 MiB, L1 32 MiB, L2
 512 MiB (L2 is not implemented). Measured on the development host (4 logical CPUs, 7.8 GiB, shared
-with other services; raw files and summaries in `benchmarks/results/`):
+with other services; raw files and summaries in `benchmarks/results/`). The v0.6.0 re-measurement
+(`SUMMARY-v0.6.0-frontier.md`, commit 19736d9, 5 repeats each) agrees with v0.1.1:
 
-| Class | Default estimate | Measured | Source |
-|---|---|---|---|
-| L0 endpoint | 1 MiB | 2.6–2.8 KiB Python heap per endpoint; RSS growth 0.29 MiB for 250 endpoints | `SUMMARY-v0.1.1.md` (L0, 5 repeats) |
-| L1 endpoint with the built-in service | 32 MiB | 19.4 MiB service process tree (sudo launcher + isolated interpreter); kernel objects unattributable, host MemAvailable delta noisy (run medians 4.8–32.6 MiB for 2–8 namespaces, individual samples −22 to +82 MiB) | `SUMMARY-v0.1.1.md`, `SUMMARY-l1-scaling.md` |
-| Phase I target, 50 L0 + 2 L1 | 114 MiB | 39.2 MiB attributed (0.3 MiB control process + 38.8 MiB services); host delta median 10.8 MiB | `SUMMARY-v0.1.1.md` (target, 5 repeats) |
+| Class | Default estimate | Measured (v0.6.0) | v0.1.1 | Source |
+|---|---|---|---|---|
+| L0 endpoint | 1 MiB | 2.9–3.0 KiB Python heap per endpoint; RSS growth 0.08 MiB for 50 endpoints | 2.6–2.8 KiB; 0.29 MiB for 250 | `SUMMARY-v0.6.0-frontier.md`, `SUMMARY-v0.1.1.md` |
+| L1 endpoint with the built-in service | 32 MiB | 19.0 MiB service process tree (sudo launcher + isolated interpreter); host MemAvailable delta median −2.5 MiB (samples −14.1 to +47.3) | 19.4 MiB | same, `SUMMARY-l1-scaling.md` |
+| Phase I target, 50 L0 + 2 L1 | 114 MiB | 38.5 MiB attributed (0.4 MiB control process + 38.0 MiB services); host delta median 14.3 MiB (8.0–23.1) | 39.2 MiB; 10.8 MiB | same |
 
-The defaults are deliberately conservative — about 2.9× the attributed memory of the target
+The defaults are deliberately conservative — about 3× the attributed memory of the target
 workload and several hundred times the per-endpoint L0 heap — so admission refuses early rather
 than late. Operators who have measured their own services can declare per-node `resources` to
 admit denser topologies. The ≈1 GB engineering target for 50 L0 + 2 L1 is met on both measures.
+
+### Interactive console stack
+
+The benchmark target runs the built-in HTTP service only. The console added since then is measured
+separately by `scripts/measure-console-stack.py` with a real backend, `l1-console.yml` deployed and a
+VNC display on both nodes (`console-stack-20261021T225614Z.json`, commit 7da2c24):
+
+| Item | RSS | PSS | Admission |
+|---|---:|---:|---|
+| `sshd` per L1 node with an `ssh` service (root) | 7.3–7.4 MiB | unreadable | inside the 32 MiB L1 estimate |
+| VNC display per node (`Xvfb` 1024x768x24 68 MiB, `x11vnc` 14 MiB, `xclock` 9 MiB) | 90.3–90.6 MiB | 50.7–50.9 MiB | 96 MiB + reserve, checked when a new display starts |
+| Backend process (FastAPI), idle → two displays running | 51.6 → 52.4 MiB | — | not charged (fixed cost) |
+
+A display costs almost three times an L1 node's deploy-time estimate, and it starts on demand
+after deployment, so it is admitted at start time against the memory then available
+(`console.vnc_memory`). The 16-namespace limit therefore cannot turn into about 1.4 GiB of
+unadmitted displays. RSS counts shared library pages in each process; PSS (unreadable for root
+`sshd`) is the fairer per-display share, and the estimate stays on RSS to remain conservative. The
+`sudo` launchers in the host namespace are not included.
 
 L1 creation time is dominated by the host-side batch, and within it by `ip link add ... type veth`:
 the first pair is created in about 20 ms, later pairs sporadically take 0.5–1.3 s on this host,

@@ -18,7 +18,7 @@ that listener; VNC ports are not opened on the host.
   partly dead stack is stopped and replaced), so repeated clicks never start extra `Xvfb`,
   `xclock` or `x11vnc` processes. `x11vnc` starts only after the `Xvfb` socket exists; a display
   that cannot start is refused with `console.vnc_unavailable`.
-- Starting a new display is admitted against memory: it needs 96 MiB (a display measured 89 MiB
+- Starting a new display is admitted against memory: it needs 96 MiB (a display measured 90 MiB
   RSS, about 51 MiB PSS, on the development host — `scripts/measure-console-stack.py`) plus the
   backend's memory reserve to be available, otherwise HTTP 429 `console.vnc_memory`. Joining a
   running display is not charged again.
