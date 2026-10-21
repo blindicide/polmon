@@ -49,5 +49,5 @@ build is a separate reproducibility question. The packages need standard glibc, 
 xcb/EGL, fontconfig, and D-Bus libraries; exact declared dependencies are in the manifest.
 Desktop launch needs an X11/Qt display, while `--local-backend-self-test` runs headlessly.
 
-The previous standalone backend tarball and its systemd user unit remain documented in the
-published v0.5.0 release; they are not assets of the Phase VI build.
+The previous standalone backend tarball and its systemd user unit were last released with v0.4.1
+(v0.5.0 is tagged but has no GitHub release); they are not assets of the Phase VI build.

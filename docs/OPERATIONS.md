@@ -32,11 +32,11 @@ mismatch.
 
 ## 2. Run the backend
 
-For the release bundle, extract `polmon-backend-<version>-linux-x64.tar.gz` and run
-`./polmon-backend-<version>-linux-x64/polmon-backend --lab-readiness`. Start that executable in
-place of `.venv/bin/polmon-backend` below. The accompanying
-`polmon-backend-bundled.service` targets a bundle installed at `~/polmon-backend/`; the original
-unit remains for source/venv installations.
+From v0.6.0 the lab backend is installed from the release wheel or the source tree as above
+(`uv pip install polmon-<version>-py3-none-any.whl` into a Python 3.12 virtual environment works the
+same way); the release no longer contains a standalone backend bundle. A v0.3.0–v0.4.1
+`polmon-backend-<version>-linux-x64.tar.gz` bundle still runs in place of `.venv/bin/polmon-backend`
+below, with `packaging/linux/polmon-backend-bundled.service` for a bundle at `~/polmon-backend/`.
 
 Create an API token that only the service account can read:
 
@@ -62,8 +62,8 @@ backend flags (`--max-endpoints`, `--max-namespaces`, `--memory-reserve-mb`, ...
 is written under `var/` in the working directory, or wherever `--data-dir PATH` points; a
 directory that cannot be created or written is reported as
 `polmon-backend: cannot use data directory …` instead of a traceback. The standalone Windows
-`polmon-backend.exe` follows the same rule, so start it with `--data-dir` (for example
-`--data-dir %LOCALAPPDATA%\polmon\backend-data`) when its own folder is not writable.
+`polmon-backend.exe` of v0.3.0–v0.4.1 follows the same rule, so start it with `--data-dir` (for
+example `--data-dir %LOCALAPPDATA%\polmon\backend-data`) when its own folder is not writable.
 
 ## 3. Connect the desktop client
 
@@ -114,9 +114,8 @@ Stop the backend (this resets the laboratory), `git pull` or check out a release
 `.venv/bin/polmon-demo`, then start the backend again.
 # Phase VI packaging note
 
-The Phase VI branch's packaged desktop clients include an embedded L0 backend on Linux and
-Windows. The planned native Linux `.deb` and `.rpm` packages install no backend service and
-leave user-owned results and settings in home directories on removal. The source-installed
-Linux backend and its user service below remain the route to an L1/hybrid laboratory. Instructions
-for the separately bundled backend in this document apply to the published v0.5.0 release, not
-to a future Phase VI client package.
+Since v0.6.0 the packaged desktop clients include an embedded L0 backend on Linux and Windows.
+The native Linux `.deb` and `.rpm` packages install no backend service and leave user-owned
+results and settings in home directories on removal. The source- or wheel-installed Linux backend
+and its user service below remain the route to an L1/hybrid laboratory. Instructions for the
+separately bundled backend in this document apply to the v0.3.0–v0.4.1 releases that shipped it.

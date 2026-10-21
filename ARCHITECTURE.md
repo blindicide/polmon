@@ -20,18 +20,23 @@ checks it before constructing an orchestrator, so an L1/L2 request returns HTTP 
 host requirement and cannot silently degrade or create partial resources.
 
 ```
-Windows client EXE ──LocalBackendManager──► bundled polmon-backend.exe (127.0.0.1, L0 only)
-        │                 │ process group + log + Windows kill-on-close Job Object
-        │                 └── ephemeral bearer token, dynamic port, owned start/stop
-        └──Remote Linux preset────────────► self-contained/Python Linux backend (L0/L1/hybrid)
+Client (Windows EXE, Linux bundle/.deb/.rpm)
+        ├──LocalBackendManager──► the same executable, --polmon-run-embedded-backend
+        │        │                 (127.0.0.1, L0 only)
+        │        │ process group + log + Windows kill-on-close Job Object
+        │        └── ephemeral bearer token, dynamic port, owned start/stop
+        └──Remote Linux preset──► Python Linux backend (L0/L1/hybrid)
 ```
 
-The client lifecycle module imports no backend implementation. It resolves an override, an
-executable beside the client / in the one-file extraction directory, or the checkout's console
-script, then uses only the HTTP contract. The backend PyInstaller graph is built independently and
-excludes PySide6; uvicorn's dynamically selected loops, protocols and lifespan handlers are
-collected explicitly. Frozen benchmark jobs re-enter that executable through a private fixed
-dispatch flag instead of assuming `python -m` exists.
+The client lifecycle module imports no backend implementation. Since v0.6.0 a frozen client
+re-runs its own executable with the private `--polmon-run-embedded-backend` first argument, which
+the entry point dispatches to the backend before PySide6 is imported, so one artifact carries both
+and no sibling backend executable is shipped. An override (`POLMON_BACKEND_EXECUTABLE`) wins over
+that; unfrozen installs use a `polmon-backend` beside the interpreter or on `PATH`, else the
+checkout's module. Either way the client then uses only the HTTP contract. uvicorn's dynamically
+selected loops, protocols and lifespan handlers are collected explicitly. Frozen benchmark jobs
+re-enter that executable through a private fixed dispatch flag instead of assuming `python -m`
+exists.
 
 The orchestration layer owns lifecycle state and resource claims; backends own implementation
 details. This separation lets the mock backend test rollback and legal transitions while later L0,

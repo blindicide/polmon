@@ -25,9 +25,9 @@ Phase III (v0.3.0) makes the downloads self-contained. The Windows client starts
 stops its bundled backend from the **Local backend (L0 only)** preset; no Python install or separate
 service is needed. This local Windows path intentionally supports synthetic L0 only: Windows has
 no Linux network namespaces, so L1/L2 is refused rather than emulated. Use **Remote Linux backend**
-for L1 and hybrid TAP experiments. Linux releases also contain
-`polmon-backend-<version>-linux-x64.tar.gz`, a Qt-free backend bundle that runs without Python,
-pip, or a virtual environment.
+for L1 and hybrid TAP experiments. Releases v0.3.0–v0.4.1 also contained standalone backend
+bundles (`polmon-backend-<version>-linux-x64.tar.gz`, `polmon-backend-<version>-windows-x64.exe`);
+since v0.6.0 the clients embed their L0 backend instead.
 
 Phase IV (v0.4.0) localizes the desktop client — Russian by default, English switchable at run
 time, backend refusals rendered from stable message codes — and redesigns its interface (design
@@ -41,31 +41,29 @@ streaming and a localized Logs page. The headless evidence, real privileged gate
 limitations are recorded in [docs/milestones/v0.5.0.md](docs/milestones/v0.5.0.md) and
 [docs/evidence/phase-v/](docs/evidence/phase-v/).
 
+Phase VI (v0.6.0) ships self-contained Debian and RPM client packages, embeds the L0 backend and
+SQLite in every client artifact (no sibling backend executable), and adds an authenticated packet
+workbench for sending exact Ethernet frames from a deployed node.
+
 ## Which download?
 
-The table below describes the published v0.5.0 release. The Phase VI branch prepares future
-Linux `.deb` and `.rpm` packages and a single embedded-L0 client on both platforms; no Phase VI
-release has been published. Package builds and their manifest are produced by
-`scripts/build-linux-packages.py` and the Build Linux workflow.
-
-Published releases through v0.5.0 carry these assets and a
-`SHA256SUMS.txt` (`sha256sum --check --ignore-missing SHA256SUMS.txt`, or
-`scripts/verify-release.sh vX.Y.Z`):
+The table below describes v0.6.0, the latest published release. v0.5.0 is tagged but has no
+GitHub release (its release jobs could not start: GitHub Actions billing block); v0.4.1 is the
+last release with standalone backend bundles. Releases carry `SHA256SUMS.txt`
+(`sha256sum --check --ignore-missing SHA256SUMS.txt`, or `scripts/verify-release.sh vX.Y.Z`):
 
 | You want | Download | Fidelity | Needs |
 |---|---|---|---|
-| Try polmon on Windows | `polmon-<version>-windows-x64.exe` (one file) or `…-portable.zip` (unzip; starts ~2.5× faster) | L0 via the bundled local backend; **Remote Linux backend** for L1/hybrid | Nothing. Unsigned: SmartScreen warns on first run |
-| The desktop client on Linux | `polmon-<version>-linux-x64.tar.gz` | Connects to any backend | Qt's xcb libraries ([BUILD-LINUX.md](BUILD-LINUX.md)) |
-| A Linux lab backend without Python | `polmon-backend-<version>-linux-x64.tar.gz` + `polmon-backend-bundled.service` | L0; L1 and hybrid TAP when the host permits | glibc 2.35+; for L1/hybrid `iproute2`, `setpriv`, `/dev/net/tun`, passwordless `sudo` for `ip` (check with `--lab-readiness`) |
-| A headless Windows backend | `polmon-backend-<version>-windows-x64.exe` | L0 only | Nothing |
-| A Python install | `polmon-<version>-py3-none-any.whl` (+ `polmon-backend.service`) | As the Linux backend | Python 3.12; `polmon[gui]` for the client |
+| Try polmon on Windows | `polmon-<version>-windows-x64.exe` (one file) or `…-portable.zip` (unzip; starts faster) | L0 via the embedded local backend; **Remote Linux backend** for L1/hybrid | Nothing. Unsigned: SmartScreen warns on first run |
+| The desktop client on Linux | `polmon-<version>-linux-x64.tar.gz`, `polmon-client_<version>_amd64.deb` or `polmon-client-<version>-1.x86_64.rpm` | L0 via the embedded local backend; connects to any backend | glibc 2.35+, Qt's xcb libraries ([BUILD-LINUX.md](BUILD-LINUX.md)) |
+| A Linux lab backend (L1, hybrid) | `polmon-<version>-py3-none-any.whl` (+ `packaging/linux/polmon-backend.service` from the source tree) | L0; L1 and hybrid TAP when the host permits | Python 3.12; for L1/hybrid `iproute2`, `setpriv`, `/dev/net/tun`, passwordless `sudo` for `ip` (check with `polmon-diagnostics --lab`) |
+| The client from Python | the same wheel with the `gui` extra (`polmon-client`) | Connects to any backend; its local backend is the installed `polmon-backend` | Python 3.12 |
 
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
 namespaces can ARP for and ping L0 endpoints), optional bearer-token API authentication that is
 mandatory off loopback, in-namespace workloads that never run as root, verified scenario
 preconditions, storage admission, `polmon-diagnostics --lab`, GUI tests on Windows and under Xvfb,
-and a CI dependency audit. Releases carry `SHA256SUMS.txt`; check a download with
-`scripts/verify-release.sh vX.Y.Z`. Documentation index: [docs/README.md](docs/README.md).
+and a CI dependency audit. Documentation index: [docs/README.md](docs/README.md).
 
 ## Quick start
 
