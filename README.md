@@ -1,5 +1,7 @@
 # polmon
 
+[Русская версия](README.ru.md)
+
 polmon is a resource-efficient platform for controlled network-security experiments in
 explicitly isolated laboratories. Phase I combines shared-process synthetic endpoints (L0),
 Linux network namespaces (L1), and a Qt desktop client for Windows and Linux. L2 virtual machines
@@ -95,8 +97,8 @@ and enter the same token in the client; see [SECURITY.md](SECURITY.md) and the o
 Run `.venv/bin/polmon-client` to open the desktop client; the default local preset starts its own
 L0-only backend on a free loopback port. `--self-test` checks Qt and the client without opening a
 window, while `--local-backend-self-test` proves the owned deploy-to-reset workflow. Packaged clients for
-Windows (`.exe`) and Linux (`.tar.gz`) are attached to every release; see
-[BUILD-WINDOWS.md](BUILD-WINDOWS.md) and [BUILD-LINUX.md](BUILD-LINUX.md).
+Windows (`.exe`) and Linux (`.tar.gz`; since v0.6.0 also `.deb` and `.rpm`) are attached to
+every release; see [BUILD-WINDOWS.md](BUILD-WINDOWS.md) and [BUILD-LINUX.md](BUILD-LINUX.md).
 
 Use `.venv/bin/polmon-diagnostics --json` to inspect the Python version, host capabilities,
 network-tool availability, and an allow-listed resource snapshot without exposing environment
