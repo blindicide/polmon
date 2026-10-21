@@ -20,6 +20,10 @@ Controls in the implementation:
   `polmon*`/`veth*` names. Every workload inside a lab namespace (built-in services, ICMP and TCP
   probes) is started through `setpriv` as the invoking user; only `ip` itself and `setpriv` run as
   root.
+- Crash recovery (`docs/REPORTING-RECOVERY.md`) adds no privileged verb: it deletes only names
+  that its own mode-600 journal recorded, that match the generated patterns and, once created,
+  still carry the recorded kernel identity; it signals only the invoking user's processes inside
+  those namespaces and its own `sudo` launchers (which relay the signal), never other users'.
 - Known limit of the Phase I privilege model: `sudo ip` is root-equivalent, because
   `ip netns exec` can run any program. A sudoers rule restricted to `ip` therefore does not confine
   a compromised backend. Run the backend only on a dedicated laboratory host under an account

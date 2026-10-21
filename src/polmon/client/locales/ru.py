@@ -1201,6 +1201,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "({cause}).",
     "backend.admission.topology_limits": "Топология превышает заданные лимиты ресурсов.",
     "backend.admission.experiment_limits": "Эксперимент превышает заданные лимиты ресурсов.",
+    "backend.lab.ownership_conflict": "Лабораторные объекты этой топологии принадлежат другому "
+    "работающему бэкенду или не могли быть освобождены.",
     "backend.reset.incomplete": "Сброс окружения разобрал не все развёртывания.",
     "backend.orchestration.backend_failed": "Бэкенд «{backend}» завершился ошибкой на этапе "
     "{operation} ({cause}).",

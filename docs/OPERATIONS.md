@@ -93,9 +93,12 @@ the token into *Token*, and press *Connect* (Ctrl+Return). The token stays in me
 
 - **Stopping the backend** (`systemctl --user stop`, Ctrl-C) tears down every deployment and logs
   `shutdown_cleanup`; `shutdown_cleanup_failed` lists what could not be removed.
-- **After SIGKILL, OOM, or power loss** nothing can clean up in-process. Run
-  `scripts/lab-cleanup.sh` to list leftover `polmon*` namespaces, bridges, TAPs, `veth*` pairs, and
-  processes inside those namespaces, then `scripts/lab-cleanup.sh --apply`.
+- **After SIGKILL, OOM, or power loss** restart the backend on the same data directory: it
+  reclaims the namespaces, bridges, TAPs, veths and in-namespace processes recorded in its
+  ownership journal and logs `lab.recovery.reclaimed` (see `docs/REPORTING-RECOVERY.md`);
+  `POST /v1/reset` does the same for a running backend. Objects without a journal (lost data
+  directory, a killed benchmark process) still need `scripts/lab-cleanup.sh`, then
+  `scripts/lab-cleanup.sh --apply`.
 - **Deployment refused with "already exist"**: a previous run left objects with the same generated
   names, or another backend deployed the same topology. Stop the other deployment or run the cleanup
   script; polmon never adopts objects it did not create.

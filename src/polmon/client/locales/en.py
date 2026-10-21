@@ -1130,6 +1130,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.admission.topology_limits": "The topology exceeds the configured resource limits.",
     "backend.admission.experiment_limits": "The experiment exceeds the configured resource "
     "limits.",
+    "backend.lab.ownership_conflict": "Laboratory objects of this topology belong to another "
+    "running backend or could not be reclaimed.",
     "backend.reset.incomplete": "The environment reset did not clean every deployment.",
     "backend.orchestration.backend_failed": "Backend “{backend}” failed during {operation} "
     "({cause}).",
