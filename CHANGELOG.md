@@ -32,6 +32,13 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   identity and records of a live backend are never touched. New `lab.recovery.*` log events,
   `lab_recovery` in `GET /v1/resources`, `lab_reclaimed` in the reset response and the
   `lab.ownership_conflict` error code (docs/REPORTING-RECOVERY.md).
+- **Bounded interactive resources.** At most 16 live console sessions (4 per machine) and 8
+  VNC relays (2 per node); further opens are refused with HTTP 429
+  `console.session_limit` / `console.node_session_limit` or WebSocket close code `4429`. VNC
+  relay grants are capped at 32 and dropped on destroy/reset, and a repeated VNC start reuses
+  the node's running display instead of starting another `Xvfb`/`xclock`/`x11vnc` set.
+- `scripts/privileged-tests.sh` also fails when a lab process outlives the run (a process of
+  the operator outside the host network namespace, or an `ip netns exec polmon…` launcher).
 - Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled
   in client code (`" s"`, `f"{v} MiB"`), `i18n-completeness` on an English unit symbol in the
   Russian catalog, and the GUI suite walks every screen of a connected window — labels, tiles,
@@ -41,6 +48,17 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Fixed
 
+- **VNC containment:** the password-less `x11vnc` listened on the node's lab address and on
+  `[::]`, so any peer node could open the display without the relay. It now listens only on
+  the namespace loopback with IPv6 disabled, and the relay proxy runs as the operator instead
+  of root.
+- A console command that hit its timeout killed only the `sudo` launcher; the `ssh` client
+  survived in the deleted namespace for minutes. Timeouts, session close and service/VNC stop
+  now terminate the launched process group.
+- A VNC relay cancelled while closing (server shutdown, or a client leaving at that moment)
+  could leave its proxy running and leaked an `Event loop is closed` transport warning; a
+  relay whose display ended never closed the WebSocket, so the client waited forever.
+- `x11vnc` could start before `Xvfb` listened and exit with *cannot open display*.
 - The topology node inspector re-renders node resources after a language switch.
 - The benchmark progress line showed the backend's English step text (`starting`,
   `endpoints=10 repeat=1`, `cancelling`) in the Russian UI. Job progress now also carries

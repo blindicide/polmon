@@ -40,6 +40,11 @@ Controls in the implementation:
   Interactive commands execute in that namespace, not on the host; sessions have bounded live
   buffers, timeouts, retained transcripts and authenticated API access. L0/L2 and missing host
   prerequisites are refused with stable reason codes. See `docs/CONSOLE.md`.
+- The password-less `x11vnc` listener is bound to the node namespace's loopback with IPv6
+  disabled, so neither the host nor a peer lab node can reach it; the only path is the
+  authenticated relay, whose proxy runs as the unprivileged operator. Live console sessions
+  (16, 4 per node), VNC relays (8, 2 per node) and relay grants (32) are capped. See
+  `docs/VNC.md`.
 - API identifiers are pattern-checked before they reach file paths; request bodies are capped at
   2 MB per document and 5 MiB per request.
 - The Phase VI packet workbench is backend-enforced and limited to a running, owned, hostless pair
