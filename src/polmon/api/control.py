@@ -89,8 +89,8 @@ MAX_EXPERIMENT_RECORDS = 256
 MAX_VNC_SESSIONS = 32
 MAX_VNC_RELAYS = 8
 MAX_VNC_RELAYS_PER_NODE = 2
-# A display (Xvfb 1024x768x24 + x11vnc + xclock) measured 89 MiB RSS on the development host
-# (benchmarks/results/console-stack-*.json); admission is checked before each new one starts.
+# A display (Xvfb 1024x768x24 + x11vnc + xclock) measured 90.3–90.6 MiB RSS on the development
+# host (benchmarks/results/console-stack-20261021T225614Z.json); each new one is admitted first.
 VNC_DISPLAY_MEMORY_MB = 96
 
 

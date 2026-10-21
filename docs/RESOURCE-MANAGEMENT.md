@@ -21,7 +21,7 @@ allowed to return before teardown. Capture writers enforce the configured byte c
 dropped frames.
 
 Interactive console stacks started after deployment are admitted too. A VNC display (`Xvfb`,
-`x11vnc`, `xclock`; measured at 89 MiB RSS on the development host) starts only when 96 MiB plus the
+`x11vnc`, `xclock`; measured at 90 MiB RSS on the development host) starts only when 96 MiB plus the
 reserve is available, otherwise `POST .../console/vnc` returns HTTP 429 `console.vnc_memory`;
 joining a display that already runs is not charged again. Console and relay counts are capped as
 described in [VNC.md](VNC.md) and [CONSOLE.md](CONSOLE.md).

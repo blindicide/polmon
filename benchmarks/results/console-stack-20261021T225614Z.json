@@ -1,0 +1,119 @@
+{
+  "kind": "console-stack",
+  "polmon_commit": "7da2c24b842d47e0797be7ae070d7cdbd9a522fd",
+  "dirty_tree": false,
+  "started": "2026-10-21T22:56:14.966602+00:00",
+  "host": {
+    "cpu": "AMD EPYC 9354 32-Core Processor",
+    "logical_cpus": 4,
+    "memory_total_bytes": 8328290304,
+    "kernel": "6.8.0-142-generic",
+    "python": "3.12.3"
+  },
+  "workload": {
+    "topology": "examples/topologies/l1-console.yml",
+    "vnc_displays": 2,
+    "settle_seconds": 3.0,
+    "display": "Xvfb 1024x768x24 + x11vnc + xclock per node"
+  },
+  "backend_idle": {
+    "pid": 252132,
+    "command": "python",
+    "rss_bytes": 54145024,
+    "pss_bytes": 43744256
+  },
+  "backend_with_vnc": {
+    "pid": 252132,
+    "command": "python",
+    "rss_bytes": 54935552,
+    "pss_bytes": 43791360
+  },
+  "namespaces_deployed": {
+    "polmon5577bcd0n": [
+      {
+        "pid": 252155,
+        "command": "python3.12",
+        "rss_bytes": 13115392,
+        "pss_bytes": 6768640
+      },
+      {
+        "pid": 252157,
+        "command": "sshd",
+        "rss_bytes": 7741440,
+        "pss_bytes": null
+      }
+    ],
+    "polmond20336a0n": [
+      {
+        "pid": 252156,
+        "command": "sshd",
+        "rss_bytes": 7684096,
+        "pss_bytes": null
+      }
+    ]
+  },
+  "namespaces_with_vnc": {
+    "polmon5577bcd0n": [
+      {
+        "pid": 252155,
+        "command": "python3.12",
+        "rss_bytes": 13115392,
+        "pss_bytes": 6737920
+      },
+      {
+        "pid": 252157,
+        "command": "sshd",
+        "rss_bytes": 7741440,
+        "pss_bytes": null
+      },
+      {
+        "pid": 252185,
+        "command": "Xvfb",
+        "rss_bytes": 71131136,
+        "pss_bytes": 42354688
+      },
+      {
+        "pid": 252190,
+        "command": "x11vnc",
+        "rss_bytes": 14487552,
+        "pss_bytes": 7379968
+      },
+      {
+        "pid": 252191,
+        "command": "xclock",
+        "rss_bytes": 9093120,
+        "pss_bytes": 3483648
+      }
+    ],
+    "polmond20336a0n": [
+      {
+        "pid": 252156,
+        "command": "sshd",
+        "rss_bytes": 7684096,
+        "pss_bytes": null
+      },
+      {
+        "pid": 252174,
+        "command": "Xvfb",
+        "rss_bytes": 71262208,
+        "pss_bytes": 42463232
+      },
+      {
+        "pid": 252180,
+        "command": "xclock",
+        "rss_bytes": 9093120,
+        "pss_bytes": 3489792
+      },
+      {
+        "pid": 252182,
+        "command": "x11vnc",
+        "rss_bytes": 14594048,
+        "pss_bytes": 7430144
+      }
+    ]
+  },
+  "limitations": [
+    "RSS counts shared library pages in every process; PSS splits them, but is unreadable for processes running as root (sshd), whose PSS is null.",
+    "One measurement on one host is evidence for this host and configuration only."
+  ]
+}
