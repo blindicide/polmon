@@ -1077,6 +1077,10 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.session_closed": "Консольный сеанс закрыт.",
     "backend.console.session_unknown": "Консольный сеанс не найден.",
     "backend.console.vnc_unavailable": "Не удалось запустить графический экран; повторите попытку.",
+    "backend.console.vnc_memory": (
+        "Недостаточно свободной памяти для графического экрана "
+        "(нужно {required_mb} МиБ)."
+    ),
     "backend.console.session_limit": "Слишком много сеансов консоли (лимит {limit}).",
     "backend.console.node_session_limit": "Слишком много сеансов на этой машине (лимит {limit}).",
     "backend.console.l1_required": "Консоль доступна только для машин L1.",

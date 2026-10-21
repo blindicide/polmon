@@ -15,6 +15,7 @@ from polmon.api import control as control_module
 from polmon.api.control import ControlPlane
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.namespace.runner import CommandRunner, stop_process_group
+from polmon.core.diagnostics import ResourceSnapshot
 from polmon.resources.policy import ResourceLimitError
 from polmon.topology import parse_topology
 
@@ -93,9 +94,10 @@ def test_vnc_start_reuses_a_live_display_stack() -> None:
     assert backend.start_vnc(node) == {"node_id": node, "port": 5911}
 
 
-def vnc_plane(tmp_path, monkeypatch) -> ControlPlane:  # noqa: ANN001
-    plane = ControlPlane(tmp_path)
+def vnc_plane(tmp_path, monkeypatch, **options) -> ControlPlane:  # noqa: ANN001, ANN003
+    plane = ControlPlane(tmp_path, **options)
     backend = NamespaceBackend.__new__(NamespaceBackend)
+    backend.vnc_processes = {}
     backend.start_vnc = lambda node_id: {"node_id": node_id}  # type: ignore[method-assign]
     plane.deployments["lab"] = SimpleNamespace(backend=backend)  # type: ignore[assignment]
     monkeypatch.setattr(
@@ -119,6 +121,36 @@ def test_vnc_grants_are_bounded_and_dropped_on_destroy(tmp_path, monkeypatch) ->
         plane.deployments.pop("lab")
         plane.destroy("lab")
         assert plane.vnc_sessions == {"other": ("kept", "alpha")}
+    finally:
+        plane.deployments.pop("lab", None)
+        plane.shutdown()
+
+
+def test_a_new_vnc_display_is_admitted_against_available_memory(tmp_path, monkeypatch) -> None:
+    available_mb = control_module.VNC_DISPLAY_MEMORY_MB + 255  # one MiB short of the reserve
+
+    def snapshot() -> ResourceSnapshot:
+        return ResourceSnapshot(1, 0.1, 1.0, available_mb * 1_048_576, 0)
+
+    plane = vnc_plane(tmp_path, monkeypatch, snapshot=snapshot)
+    try:
+        with pytest.raises(ResourceLimitError) as refused:
+            plane.console_vnc_start("lab", "alpha")
+        assert refused.value.message_code == "console.vnc_memory"
+        assert refused.value.status_code == 429
+        assert refused.value.params == {
+            "required_mb": control_module.VNC_DISPLAY_MEMORY_MB + 256,
+            "available_mb": available_mb,
+        }
+        assert plane.vnc_sessions == {}
+
+        # Joining a display that already runs costs nothing new and is always allowed.
+        live = SimpleNamespace(poll=lambda: None)
+        plane.deployments["lab"].backend.vnc_processes["alpha"] = (live, live, live)
+        assert plane.console_vnc_start("lab", "alpha")["display"] == {"node_id": "alpha"}
+
+        available_mb += 1
+        assert plane.console_vnc_start("lab", "beta")["display"] == {"node_id": "beta"}
     finally:
         plane.deployments.pop("lab", None)
         plane.shutdown()

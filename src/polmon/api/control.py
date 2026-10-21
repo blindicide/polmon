@@ -89,6 +89,9 @@ MAX_EXPERIMENT_RECORDS = 256
 MAX_VNC_SESSIONS = 32
 MAX_VNC_RELAYS = 8
 MAX_VNC_RELAYS_PER_NODE = 2
+# A display (Xvfb 1024x768x24 + x11vnc + xclock) measured 89 MiB RSS on the development host
+# (benchmarks/results/console-stack-*.json); admission is checked before each new one starts.
+VNC_DISPLAY_MEMORY_MB = 96
 
 
 class ControlPlane:
@@ -628,6 +631,12 @@ class ControlPlane:
             raise ConfigurationError(
                 "topology must be deployed on the namespace backend",
                 message_code="console.not_deployed",
+            )
+        if not control.backend.vnc_running(node_id):
+            self.admission.admit_memory(
+                VNC_DISPLAY_MEMORY_MB,
+                message="not enough available memory to start a VNC display",
+                message_code="console.vnc_memory",
             )
         session = secrets.token_urlsafe(24)
         try:

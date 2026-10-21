@@ -37,6 +37,12 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   `console.session_limit` / `console.node_session_limit` or WebSocket close code `4429`. VNC
   relay grants are capped at 32 and dropped on destroy/reset, and a repeated VNC start reuses
   the node's running display instead of starting another `Xvfb`/`xclock`/`x11vnc` set.
+- **VNC displays are admitted against available memory.** A display stack measured 89 MiB RSS
+  (Xvfb 67–68, x11vnc 13, xclock 8) — almost three times the 32 MiB L1 estimate admitted at
+  deploy — and was started without any memory check, so 16 namespaces could add about 1.4 GiB
+  after admission. A new display now needs 96 MiB plus the memory reserve available, or is
+  refused with HTTP 429 `console.vnc_memory`; joining a running display is free.
+  `scripts/measure-console-stack.py` reproduces the measurement with a real backend and lab.
 - `scripts/privileged-tests.sh` also fails when a lab process outlives the run (a process of
   the operator outside the host network namespace, or an `ip netns exec polmon…` launcher).
 - Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled

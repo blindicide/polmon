@@ -1014,6 +1014,10 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.session_closed": "The console session is closed.",
     "backend.console.session_unknown": "The console session was not found.",
     "backend.console.vnc_unavailable": "The VNC display could not be started; try again.",
+    "backend.console.vnc_memory": (
+        "Not enough free memory for the VNC display "
+        "({required_mb} MiB needed)."
+    ),
     "backend.console.session_limit": "Too many open console sessions (limit {limit}); close one.",
     "backend.console.node_session_limit": "Too many sessions on this machine (limit {limit}).",
     "backend.console.l1_required": "SSH console access is available only for L1 machines.",
