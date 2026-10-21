@@ -319,6 +319,9 @@ def test_smoke_start_shows_the_window_and_reports(qapp) -> None:
     assert "exposed after" in output
     platform = QApplication.platformName()
     assert f"polmon {__version__} smoke-start: PASS platform={platform}" in output
+    from polmon.client.mainwindow import MainWindow
+
+    assert not [item for item in QApplication.topLevelWidgets() if isinstance(item, MainWindow)]
 
 
 def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_path) -> None:
