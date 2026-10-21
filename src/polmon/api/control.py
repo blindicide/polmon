@@ -17,6 +17,7 @@ from threading import RLock, Thread
 from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
+from polmon.backends.namespace.journal import LabJournal
 from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.console import ConsoleSessions
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
@@ -100,6 +101,8 @@ class ControlPlane:
         self.logs = StructuredLogStore(self.data_directory / "logs")
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
         self.console_sessions = ConsoleSessions(self.data_directory / "logs" / "console")
+        self.lab_journal = LabJournal(self.data_directory / "state" / "lab-ownership")
+        self.last_lab_recovery: dict[str, object] | None = None
         self.vnc_sessions: dict[str, tuple[str, str]] = {}
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
@@ -129,6 +132,8 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+        # A previous backend on this data directory may have died without its shutdown cleanup.
+        self.recover_lab("startup")
 
     def _node_context(self, topology_id: str, node_id: str | None) -> dict[str, object] | None:
         if node_id is None:
@@ -415,14 +420,18 @@ class ControlPlane:
                 topology_id=topology.id,
                 params={"node_count": len(topology.nodes), "network_count": len(topology.networks)},
             )
-            control = Orchestrator(topology, self._backend(topology))
+            backend = self._backend(topology)
+            control = Orchestrator(topology, backend)
             started = time.perf_counter()
             try:
                 control.validate()
+                self._journal_lab(topology_id, backend)
                 control.create()
+                self.lab_journal.confirm(topology_id)
                 control.start()
             except Exception:
                 control.destroy()
+                self.lab_journal.settle(topology_id)
                 raise
             self.deployment_seconds[topology_id] = time.perf_counter() - started
             self.deployments[topology_id] = control
@@ -538,6 +547,7 @@ class ControlPlane:
                 control.destroy()
                 self.deployments.pop(topology_id, None)
                 self.deployment_seconds.pop(topology_id, None)
+                self.lab_journal.settle(topology_id)
         if topology is not None:
             for node in topology.nodes:
                 self._log(
@@ -807,13 +817,103 @@ class ControlPlane:
                 self.destroy(topology_id)
             except Exception as error:
                 failures.append(f"{topology_id}: {type(error).__name__}")
+        # Reclaim what a crashed predecessor or a failed teardown above left journaled.
+        recovery = self.recover_lab("reset")
+        failures += [
+            f"{item['topology_id']}: lab objects remain"  # type: ignore[index]
+            for item in recovery["failures"]  # type: ignore[union-attr]
+        ]
         if failures:
             raise ConfigurationError(
                 "environment reset did not clean every deployment",
                 details={"failures": failures},
                 message_code="reset.incomplete",
             )
-        return {"state": "reset", "deployments_destroyed": len(topology_ids)}
+        return {
+            "state": "reset",
+            "deployments_destroyed": len(topology_ids),
+            "lab_reclaimed": len(recovery["reclaimed"]),  # type: ignore[arg-type]
+        }
+
+    def _journal_lab(self, topology_id: str, backend: object) -> None:
+        """Persist the generated names a deployment is about to create (crash recovery)."""
+        lab_names = getattr(backend, "lab_names", None)
+        if lab_names is None:
+            return
+        namespaces, links = lab_names()
+        if not namespaces and not links:
+            return
+        if self.lab_journal.get(topology_id) is not None:
+            self.recover_lab("deploy", topology_id=topology_id)
+            if self.lab_journal.get(topology_id) is not None:
+                raise ConfigurationError(
+                    "laboratory objects of this topology belong to another running backend or "
+                    "could not be reclaimed",
+                    details={"recovery": self.last_lab_recovery},
+                    message_code="lab.ownership_conflict",
+                )
+        self.lab_journal.record(topology_id, namespaces, links)
+
+    def recover_lab(self, reason: str, *, topology_id: str | None = None) -> dict[str, object]:
+        """Reclaim journaled lab objects whose owning backend died or no longer deploys them."""
+        empty: dict[str, object] = {
+            "reclaimed": [],
+            "skipped_live_owner": [],
+            "foreign": [],
+            "processes_stopped": 0,
+            "processes_remaining": [],
+            "failures": [],
+        }
+        if not self.lab_journal.entries():
+            return empty
+        with self._lock:
+            result = self.lab_journal.reconcile(keep=set(self.deployments), topology_id=topology_id)
+        for item in result["reclaimed"]:  # type: ignore[union-attr]
+            self._log(
+                "INFO",
+                "lab.recovery.reclaimed",
+                "reclaimed laboratory objects left by a previous backend",
+                topology_id=item["topology_id"],
+                params={
+                    "reason": reason,
+                    "namespaces": item["namespaces"],
+                    "links": item["links"],
+                    "owner_pid": item["owner_pid"],
+                },
+            )
+        for item in result["foreign"]:  # type: ignore[union-attr]
+            self._log(
+                "WARNING",
+                "lab.recovery.foreign",
+                "same-named objects are no longer the recorded ones; left untouched",
+                topology_id=item["topology_id"],
+                params={"reason": reason, "names": item["names"]},
+            )
+        for item in result["failures"]:  # type: ignore[union-attr]
+            self._log(
+                "ERROR",
+                "lab.recovery.failed",
+                "journaled laboratory objects could not be removed",
+                topology_id=item["topology_id"],
+                params={"reason": reason, "remaining": item["remaining"]},
+            )
+        for identifier in result["skipped_live_owner"]:  # type: ignore[union-attr]
+            self._log(
+                "INFO",
+                "lab.recovery.skipped_live_owner",
+                "journaled objects belong to another running backend",
+                topology_id=str(identifier),
+                params={"reason": reason},
+            )
+        if result["processes_remaining"]:
+            self._log(
+                "WARNING",
+                "lab.recovery.processes_remaining",
+                "processes inside reclaimed namespaces did not stop",
+                params={"reason": reason, "pids": result["processes_remaining"]},
+            )
+        self.last_lab_recovery = {"reason": reason, "at": time.time(), **result}
+        return result
 
     def run_experiment(
         self,
@@ -1210,6 +1310,7 @@ class ControlPlane:
             "limits": self.limits.model_dump(mode="json"),
             "data_directory_bytes": directory_size_bytes(self.data_directory),
             "active_deployments": len(self.deployments),
+            "lab_recovery": self.last_lab_recovery,
             "active_experiments": len(self.active_experiments),
             "benchmark_running": self.benchmarks.running() is not None,
             "snapshot": asdict(snapshot),

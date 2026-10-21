@@ -122,7 +122,10 @@ emulated result; observations carry a `path` such as `l0->l1`. The experiment ca
 
 When the backend stops (SIGINT or SIGTERM through uvicorn's graceful shutdown) it tears down every
 owned deployment before exiting and logs `shutdown_cleanup` (or `shutdown_cleanup_failed` with the
-failures). A backend killed with SIGKILL cannot clean up; recover with `scripts/lab-cleanup.sh`.
+failures). A backend killed with SIGKILL cannot clean up itself; the next backend started on the
+same data directory reclaims what its ownership journal records (`lab_recovery` in
+`GET /v1/resources`, `lab_reclaimed` in the `POST /v1/reset` response). A deployment whose names
+another running backend has journaled is refused with `lab.ownership_conflict`.
 
 Authentication: when the backend has an API token (`POLMON_API_TOKEN`, or `--api-token-file` for
 a file readable only by its owner; at least 24 characters), every path except `GET /` and

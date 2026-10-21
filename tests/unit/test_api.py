@@ -199,7 +199,7 @@ cleanup_policy: never
     assert Path(first["reports"]["markdown"]).is_file()
 
     reset = client.post("/v1/reset")
-    assert reset.json() == {"state": "reset", "deployments_destroyed": 1}
+    assert reset.json() == {"state": "reset", "deployments_destroyed": 1, "lab_reclaimed": 0}
     second = run("repeat-two")
     assert second["status"] == "succeeded"
     assert client.post("/v1/reset").json()["deployments_destroyed"] == 1

@@ -23,6 +23,15 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ### Added
 
+- **Crash-safe laboratory ownership journal.** A backend killed with SIGKILL, by the OOM killer
+  or a power loss no longer leaves namespaces, bridges, veths, TAPs, in-namespace `sshd`, HTTP
+  and VNC processes behind until someone runs root cleanup: generated names are journaled
+  atomically before creation and pinned to their kernel identities afterwards, and the next
+  backend on the same data directory reclaims records whose owner is gone at startup, on
+  `POST /v1/reset` and before redeploying the topology. Same-named objects with a different
+  identity and records of a live backend are never touched. New `lab.recovery.*` log events,
+  `lab_recovery` in `GET /v1/resources`, `lab_reclaimed` in the reset response and the
+  `lab.ownership_conflict` error code (docs/REPORTING-RECOVERY.md).
 - Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled
   in client code (`" s"`, `f"{v} MiB"`), `i18n-completeness` on an English unit symbol in the
   Russian catalog, and the GUI suite walks every screen of a connected window — labels, tiles,

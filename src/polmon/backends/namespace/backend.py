@@ -130,6 +130,20 @@ class NamespaceBackend:
                 peer_veths[key] = self._name("veth", seed, "p")
         return NamespaceNames(namespaces, bridges, host_veths, peer_veths)
 
+    def lab_names(self) -> tuple[list[str], list[str]]:
+        """(namespaces, host links) this deployment may create, for the ownership journal."""
+        if self.names is None:
+            return [], []
+        namespaces = sorted(self.names.namespaces.values())
+        if self.hostless_pair:
+            return namespaces, []  # both veth ends are created inside the owned namespaces
+        links = [
+            *self.names.bridges.values(),
+            *self.names.host_veths.values(),
+            *self.names.peer_veths.values(),
+        ]
+        return namespaces, sorted(links)
+
     def validate(self, topology: Topology) -> None:
         if self.require_linux and not sys.platform.startswith("linux"):
             raise ValueError("namespace backend requires Linux")
