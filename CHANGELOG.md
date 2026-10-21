@@ -32,6 +32,8 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   the console stack's measured cost.
 - `scripts/privileged-tests.sh` also fails when a lab process outlives the run (a process of
   the operator outside the host network namespace, or an `ip netns exec polmon…` launcher).
+- Russian README (`README.ru.md`), cross-linked with the English one, using the client's
+  glossary terms; the English README stays authoritative.
 
 ### Fixed
 

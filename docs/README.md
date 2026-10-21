@@ -1,6 +1,7 @@
 # Documentation index
 
-Start with the repository [README](../README.md). Root documents cover the project as a whole:
+Start with the repository [README](../README.md) (Russian: [README.ru](../README.ru.md)).
+Root documents cover the project as a whole:
 [ARCHITECTURE](../ARCHITECTURE.md), [DEVELOPMENT](../DEVELOPMENT.md),
 [BUILD-WINDOWS](../BUILD-WINDOWS.md), [BUILD-LINUX](../BUILD-LINUX.md), [CI](../CI.md), [RELEASE](../RELEASE.md),
 [RESOURCE-BUDGET](../RESOURCE-BUDGET.md), [SECURITY](../SECURITY.md),
