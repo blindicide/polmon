@@ -20,6 +20,12 @@ scenario engine checks cancellation between declared actions, so an in-flight bo
 allowed to return before teardown. Capture writers enforce the configured byte cap and account for
 dropped frames.
 
+Interactive console stacks started after deployment are admitted too. A VNC display (`Xvfb`,
+`x11vnc`, `xclock`; measured at 89 MiB RSS on the development host) starts only when 96 MiB plus the
+reserve is available, otherwise `POST .../console/vnc` returns HTTP 429 `console.vnc_memory`;
+joining a display that already runs is not charged again. Console and relay counts are capped as
+described in [VNC.md](VNC.md) and [CONSOLE.md](CONSOLE.md).
+
 Admission failure occurs before backend validation or resource creation. Deployment failures invoke
 orchestrator rollback. Reset continues across independent deployments and retains any teardown that
 failed so an operator can correct the cause and retry.

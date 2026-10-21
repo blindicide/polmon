@@ -395,6 +395,10 @@ class NamespaceBackend:
         self.services.clear()
         self.running = False
 
+    def vnc_running(self, node_id: str) -> bool:
+        current = self.vnc_processes.get(node_id)
+        return current is not None and all(process.poll() is None for process in current)
+
     def start_vnc(self, node_id: str) -> dict[str, object]:
         if self.run_directory is None:
             raise RuntimeError("console.vnc_unavailable")
@@ -403,11 +407,9 @@ class NamespaceBackend:
         node = next((item for item in self.topology.nodes if item.id == node_id), None)
         if node is None or node.node_class is not NodeClass.L1:
             raise ValueError("console.l1_required")
-        current = self.vnc_processes.get(node_id)
-        if current is not None:
-            if all(process.poll() is None for process in current):
-                return dict(self.vnc_displays[node_id])  # one display per node, shared
-            self._stop_vnc(node_id)  # a partly dead stack is replaced, never leaked
+        if self.vnc_running(node_id):
+            return dict(self.vnc_displays[node_id])  # one display per node, shared
+        self._stop_vnc(node_id)  # a partly dead stack is replaced, never leaked
         address, port = self.vnc_service(node_id)
         directory = self.run_directory / "vnc" / node_id
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)

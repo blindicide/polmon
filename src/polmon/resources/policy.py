@@ -79,6 +79,23 @@ class AdmissionController:
                 message_code="admission.topology_limits",
             )
 
+    def admit_memory(self, required_mb: int, *, message: str, message_code: str) -> None:
+        """Refuse a new process stack that would leave less than the reserve available."""
+        available = self.snapshot().available_memory_bytes
+        required = required_mb + self.limits.memory_safety_threshold_mb
+        if available is not None and required * 1_048_576 > available:
+            raise ResourceLimitError(
+                message,
+                details={
+                    "available_memory": {
+                        "required_mb_including_reserve": required,
+                        "available_mb": available // 1_048_576,
+                    }
+                },
+                message_code=message_code,
+                params={"required_mb": required, "available_mb": available // 1_048_576},
+            )
+
     def admit_experiment(
         self, scenario: Scenario, active_count: int, *, data_directory: Path | None = None
     ) -> None:
