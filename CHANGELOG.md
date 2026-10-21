@@ -46,6 +46,11 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   could leave its proxy running and leaked an `Event loop is closed` transport warning; a
   relay whose display ended never closed the WebSocket, so the client waited forever.
 - `x11vnc` could start before `Xvfb` listened and exit with *cannot open display*.
+- The client self-test left its hidden main window alive (`processEvents()` never delivers
+  `deleteLater`), so every later stylesheet change of the host application re-polished it; in
+  the GUI suite this crashed the interpreter with a segmentation fault in `theme.apply`
+  depending on garbage-collection timing. The window is now destroyed before the check
+  returns.
 
 ## [0.6.0] - 2026-10-10
 
