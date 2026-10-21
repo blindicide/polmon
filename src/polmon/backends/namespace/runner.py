@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -148,8 +151,7 @@ class CommandRunner:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            process.kill()
-            process.wait(timeout=3)
+            stop_process_group(process)
         for thread in threads:
             thread.join(timeout=3)
         duration = time.monotonic() - started
@@ -161,3 +163,20 @@ class CommandRunner:
             truncated=truncated,
             timed_out=timed_out,
         )
+
+
+def stop_process_group(process: subprocess.Popen, grace: float = 2.0) -> None:  # type: ignore[type-arg]
+    """Stop a ``start_new_session`` launcher and everything it started.
+
+    SIGKILL on ``sudo`` would orphan the command it runs (``sudo`` relays only catchable
+    signals), so the group is asked to terminate first and only what remains is killed.
+    """
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(process.pid, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=grace)
+    # Whatever ignored SIGTERM, leader or member, still shares the leader's group id.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(process.pid, signal.SIGKILL)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=grace)

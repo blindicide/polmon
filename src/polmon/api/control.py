@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import secrets
@@ -85,6 +86,9 @@ class SyntheticScenarioExecutor:
 
 # Finished experiments kept in memory with full detail; older ones are served from SQLite.
 MAX_EXPERIMENT_RECORDS = 256
+MAX_VNC_SESSIONS = 32
+MAX_VNC_RELAYS = 8
+MAX_VNC_RELAYS_PER_NODE = 2
 
 
 class ControlPlane:
@@ -104,6 +108,7 @@ class ControlPlane:
         self.lab_journal = LabJournal(self.data_directory / "state" / "lab-ownership")
         self.last_lab_recovery: dict[str, object] | None = None
         self.vnc_sessions: dict[str, tuple[str, str]] = {}
+        self.vnc_relays: dict[tuple[str, str], int] = {}
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
             parse=parse_topology,
@@ -542,6 +547,9 @@ class ControlPlane:
         self._log("INFO", "lab.teardown.start", "tearing down topology", topology_id=topology_id)
         self.console_sessions.close_topology(topology_id)
         with self._lock:
+            for session, (owner, _) in list(self.vnc_sessions.items()):
+                if owner == topology_id:
+                    self.vnc_sessions.pop(session, None)
             control = self.deployments.get(topology_id)
             if control is not None:
                 control.destroy()
@@ -622,8 +630,16 @@ class ControlPlane:
                 message_code="console.not_deployed",
             )
         session = secrets.token_urlsafe(24)
-        display = control.backend.start_vnc(node_id)
-        self.vnc_sessions[session] = (topology_id, node_id)
+        try:
+            display = control.backend.start_vnc(node_id)
+        except RuntimeError as error:
+            raise ConfigurationError(
+                "the VNC display could not be started", message_code="console.vnc_unavailable"
+            ) from error
+        with self._lock:
+            self.vnc_sessions[session] = (topology_id, node_id)
+            while len(self.vnc_sessions) > MAX_VNC_SESSIONS:  # the oldest grant expires first
+                self.vnc_sessions.pop(next(iter(self.vnc_sessions)))
         return {
             "session_id": session,
             "node": readiness["node"],
@@ -641,10 +657,36 @@ class ControlPlane:
         if control is None or not isinstance(control.backend, NamespaceBackend):
             await websocket.close(code=4409)
             return
+        # Relays only run on the event loop, so these counters need no lock.
+        if (
+            sum(self.vnc_relays.values()) >= MAX_VNC_RELAYS
+            or self.vnc_relays.get(session, 0) >= MAX_VNC_RELAYS_PER_NODE
+        ):
+            self._log(
+                "WARNING",
+                "console.vnc.relay_limit",
+                "VNC relay refused: concurrency limit reached",
+                topology_id=topology_id,
+                node_id=node_id,
+            )
+            await websocket.close(code=4429)
+            return
+        self.vnc_relays[session] = self.vnc_relays.get(session, 0) + 1
+        try:
+            await self._relay_vnc(control.backend, node_id, websocket)
+        finally:
+            self.vnc_relays[session] -= 1
+            if not self.vnc_relays[session]:
+                del self.vnc_relays[session]
+        # The VNC side ended (or the client left): tell a still-connected client explicitly.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=1000)
+
+    async def _relay_vnc(self, backend: NamespaceBackend, node_id: str, websocket) -> None:  # noqa: ANN001
         process = await asyncio.create_subprocess_exec(
             "sudo",
             "-n",
-            *control.backend.vnc_proxy_argv(node_id),
+            *backend.vnc_proxy_argv(node_id),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
         )
@@ -669,15 +711,25 @@ class ControlPlane:
         except Exception:
             pass
         finally:
+            # Signal before the first await: a cancelled relay (client gone, server stopping)
+            # is cancelled again at every await and would otherwise never stop the proxy.
+            if process.stdin is not None:
+                process.stdin.close()  # EOF alone ends the proxy, even if sudo is killed
+            if process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.terminate()
             client_task.cancel()
             vnc_task.cancel()
-            await asyncio.gather(client_task, vnc_task, return_exceptions=True)
-            if process.stdin is not None:
-                process.stdin.close()
-            if process.returncode is None:
-                process.terminate()
-            await process.wait()
-            process._transport.close()  # type: ignore[attr-defined]
+            try:
+                # Not gather(): if this task is cancelled meanwhile, gather would re-raise the
+                # children's anonymous cancellation and hide the canceller's own (anyio scopes).
+                await asyncio.wait((client_task, vnc_task))
+                for task in (client_task, vnc_task):
+                    if not task.cancelled():
+                        task.exception()  # retrieved; the relay ends either way
+                await process.wait()
+            finally:
+                process._transport.close()  # type: ignore[attr-defined]
             await asyncio.sleep(0)
 
     @staticmethod

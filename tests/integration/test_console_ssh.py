@@ -1,3 +1,4 @@
+import os
 import shutil
 import struct
 import subprocess
@@ -5,6 +6,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from polmon.api.control import ControlPlane
 from polmon.backend import create_app
@@ -44,6 +46,41 @@ def ssh_lab_available() -> bool:
     return result.returncode == 0
 
 
+def own_processes(marker: str) -> list[int]:
+    """Live processes of this user whose command line mentions ``marker``."""
+    found = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            if os.stat(f"/proc/{entry}").st_uid != os.getuid():
+                continue
+            with open(f"/proc/{entry}/cmdline", "rb") as stream:
+                if marker.encode() not in stream.read():
+                    continue
+            with open(f"/proc/{entry}/stat") as stream:
+                if stream.read().rsplit(")", 1)[1].split()[0] == "Z":
+                    continue
+        except OSError:
+            continue
+        found.append(int(entry))
+    return found
+
+
+def settle(probe, seconds: float = 5.0):  # noqa: ANN001, ANN201
+    deadline = time.monotonic() + seconds
+    while (result := probe()) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return result
+
+
+def namespace_pids(name: str) -> set[int]:
+    output = subprocess.run(
+        ["sudo", "-n", "ip", "netns", "pids", name], capture_output=True, text=True, check=False
+    ).stdout
+    return {int(item) for item in output.split()}
+
+
 def vnc_lab_available() -> bool:
     return ssh_lab_available() and all(shutil.which(tool) for tool in ("Xvfb", "x11vnc", "xclock"))
 
@@ -75,6 +112,9 @@ def test_real_ssh_exec_on_two_nodes_interrupt_and_teardown(tmp_path) -> None:
         assert failed.returncode != 0
         interrupted = backend.ssh_command("bravo", ["sleep", "30"], timeout=0.2)
         assert interrupted.timed_out and interrupted.returncode == 124
+        # The timeout stops the ssh client too, not only the sudo launcher above it.
+        key = str(tmp_path / "run" / "console" / "id_ed25519")
+        assert settle(lambda: own_processes(key)) == []
     finally:
         control.destroy()
     assert not backend.created_namespaces and not backend.created_veths
@@ -162,6 +202,10 @@ def test_real_vnc_stack_has_framebuffer_and_tears_down(tmp_path) -> None:
         control.start()
         display = backend.start_vnc("alpha")
         address, port = display["address"], display["port"]
+        assert address == "127.0.0.1"
+        stack = [process.pid for process in backend.vnc_processes["alpha"]]
+        assert backend.start_vnc("alpha") == display  # a repeated start reuses the stack
+        assert [process.pid for process in backend.vnc_processes["alpha"]] == stack
         probe = """import socket,sys,struct
 def recv_exact(sock, amount):
     data = b''
@@ -199,10 +243,36 @@ print(f'RFB-OK {width}x{height} PIXEL-BYTES={len(pixel)} POINTER-SENT')
         assert result.returncode == 0, result.stderr
         assert "RFB-OK 1024x768" in result.stdout
         print(result.stdout.strip())
+        # The password-less listener is unreachable on the lab network, from a peer or locally.
+        reach = (
+            "import socket,sys\n"
+            "try:\n socket.create_connection((sys.argv[1],int(sys.argv[2])),2); print('OPEN')\n"
+            "except OSError as error:\n print(type(error).__name__)\n"
+        )
+        for node in ("clock", "alpha"):
+            namespace = backend.names.namespaces[node]
+            argv = backend._as_owner(namespace, "python3", "-c", reach, "192.168.239.11", str(port))
+            refused = subprocess.run(
+                ["sudo", "-n", *argv], capture_output=True, text=True, timeout=10, check=False
+            )
+            assert refused.stdout.strip() == "ConnectionRefusedError", (node, refused)
+        listening = subprocess.run(
+            ["sudo", "-n", *backend._as_owner(backend.names.namespaces["alpha"], "ss", "-Hltn")],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout
+        local = [line.split()[3] for line in listening.splitlines()]
+        vnc = [item for item in local if item.endswith(f":{port}")]
+        assert vnc == [f"127.0.0.1:{port}"], listening
+        members = namespace_pids(backend.names.namespaces["alpha"])
+        assert len(members) >= 4  # sshd, Xvfb, xclock, x11vnc
     finally:
         control.destroy()
     assert not backend.created_namespaces and not backend.created_veths
     assert not backend.vnc_processes
+    assert settle(lambda: [pid for pid in members if os.path.exists(f"/proc/{pid}")]) == []
 
 
 @pytest.mark.integration
@@ -245,6 +315,17 @@ def test_vnc_api_relay_delivers_framebuffer_and_input(tmp_path) -> None:
                 update += socket.receive_bytes()
             assert update[0] == 0 and len(update) > 16
             socket.send_bytes(b"\x05\x01" + struct.pack(">HH", 400, 300))
+        # Two relays per node may run at once; a third is refused with a coded close.
+        with client.websocket_connect(relay) as first, client.websocket_connect(relay) as second:
+            assert first.receive_bytes() == b"RFB 003.008\n"
+            assert second.receive_bytes() == b"RFB 003.008\n"
+            proxies = own_processes("q.register(sys.stdin.buffer")
+            assert len(proxies) == 2
+            with client.websocket_connect(relay) as third:
+                with pytest.raises(WebSocketDisconnect) as refused:
+                    third.receive_bytes()
+                assert refused.value.code == 4429
+        assert settle(lambda: own_processes("q.register(sys.stdin.buffer")) == []
         evidence = tmp_path / "vnc-relay.txt"
         evidence.write_text(
             "WEBSOCKET-RELAY-OK 1024x768 FRAMEBUFFER-UPDATE POINTER-EVENT SENT CLEAN-CLOSE\n",

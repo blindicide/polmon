@@ -39,7 +39,12 @@ Interactive sessions use `POST .../console/sessions`, cursor polling through `GE
 bounded input through `POST .../input`, and `DELETE` for teardown. OpenSSH allocates the remote PTY
 (`ssh -tt`). The backend retains a 512 KiB live ring and writes the complete per-session transcript
 under `<data-dir>/runs/console/<topology>/<node>/`; the transcript endpoint remains available after
-session close. Sessions idle for 15 minutes are terminated. The client strips ANSI control
+session close. Sessions idle for 15 minutes are terminated. At most 16 interactive sessions are
+live at once, 4 per machine; a further open is refused with HTTP 429 and
+`console.session_limit` / `console.node_session_limit` (closed sessions free their slot). A
+command that exceeds its timeout stops the whole launched process group: `sudo` is asked to
+terminate (it relays the signal to `ssh`) before anything left is killed, so no `ssh` client
+outlives the request. The client strips ANSI control
 sequences for display, caps the visible document, performs HTTP work off the GUI thread, supports
 history with Up/Down, and sends Ctrl+C as an interrupt byte.
 
@@ -51,7 +56,8 @@ not a host shell. Authentication tokens remain mandatory whenever the API binds 
 Commands and transcripts are retained; structured per-command audit records are described in
 [LOGS.md](LOGS.md). Destroy/reset closes sessions before removing namespaces. The privileged gate
 proves the default route, host interfaces and firewall state remain unchanged and that no lab
-namespace or interface survives.
+namespace or interface, and no new lab process (a process of the operator outside the host network
+namespace, or an `ip netns exec polmon…` launcher), survives.
 
 For graphical L1 services, the same Console page can request the VNC relay when the node declares
 the graphical prerequisites. The backend returns an authenticated WebSocket session; the client
