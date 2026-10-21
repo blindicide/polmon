@@ -190,7 +190,7 @@ def gone(pid: int) -> bool:
     while time.monotonic() < deadline:
         try:
             state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):  # reaped between open and read
             return True
         if state == "Z":
             return True

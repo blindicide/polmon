@@ -97,7 +97,7 @@ def _self_test(out) -> int:  # noqa: ANN001
         return f"platform {name}"
 
     def window() -> str:
-        from PySide6.QtCore import QSettings
+        from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 
         from polmon.client import theme
         from polmon.client.mainwindow import MainWindow
@@ -113,9 +113,11 @@ def _self_test(out) -> int:  # noqa: ANN001
                 raise RuntimeError("the main window did not render")
             pages = len(main.pages)
             main.shutdown(wait_ms=1000)
+            # processEvents() never delivers DeferredDelete: without this the hidden window would
+            # outlive the check and be re-polished by every later setStyleSheet of the host app.
             main.deleteLater()
-            app.processEvents()  # type: ignore[attr-defined]
-            del settings
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            del main, settings
         size = f"{image.width()}x{image.height()}"
         return f"built, rendered {size} off screen, destroyed ({pages} pages)"
 

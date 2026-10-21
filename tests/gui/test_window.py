@@ -33,6 +33,11 @@ def test_version_contract_and_headless_self_test(capsys) -> None:
     assert report.rstrip().endswith(f"polmon {__version__} self-test: PASS")
     visible_after = [widget for widget in QApplication.topLevelWidgets() if widget.isVisible()]
     assert len(visible_after) <= len(visible_before)  # nothing new was shown
+    # ...and nothing was left behind: a hidden survivor is re-polished by every later theme.apply.
+    from polmon.client.mainwindow import MainWindow
+
+    survivors = [item for item in QApplication.topLevelWidgets() if isinstance(item, MainWindow)]
+    assert not survivors
 
 
 def test_title_shows_version_and_theme_toggles(window, qtbot) -> None:
