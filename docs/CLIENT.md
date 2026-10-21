@@ -7,21 +7,22 @@ laboratory networking itself. Screenshots of every page, rendered from the runni
 
 ## Install and start
 
-Published v0.5.0 assets are listed here. Phase VI packaging is described immediately below.
+The latest published release is v0.6.0 (Phase VI).
 
 | Platform | Get it from the release | Start |
 |---|---|---|
-| Windows, single file | `polmon-<version>-windows-x64.exe` | double-click; includes the owned backend (unpacks itself on every start) |
-| Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip; `polmon-client.exe` and `polmon-backend.exe` are side by side |
+| Windows, single file | `polmon-<version>-windows-x64.exe` | double-click; the L0 backend is embedded (unpacks itself on every start) |
+| Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip and run `polmon-client.exe`; the L0 backend is embedded, no `polmon-backend.exe` |
 | Linux | `polmon-<version>-linux-x64.tar.gz` | extract, run `polmon-client`; `--install-desktop-entry` adds a menu entry |
+| Debian/Ubuntu, Fedora/RHEL | `polmon-client_<version>_amd64.deb`, `polmon-client-<version>-1.x86_64.rpm` | install with the package manager; `polmon-client` |
 | Any, from source | `pip install "polmon[gui]"` | `polmon-client` |
 
-On the Phase VI (v0.6.0) branch, Windows single-file and portable clients both contain the L0
+Since v0.6.0, Windows single-file and portable clients both contain the L0
 backend and SQLite in the client executable. The Linux tarball and native `.deb`/`.rpm` packages
 do likewise; they have no sibling backend executable. The native packages install the client in
 `/opt/polmon`, a `/usr/bin/polmon-client` launcher, a desktop entry, and an icon. They install no
 service or maintainer script. Uninstalling does not remove results or settings in the user's home
-directory. These artifacts have not been released yet.
+directory.
 
 Verify downloads against `SHA256SUMS.txt` (`scripts/verify-release.sh vX.Y.Z`, or `Get-FileHash`
 on Windows). Linux needs glibc 2.35+ and, for X11, `libxcb-cursor0` (see
