@@ -1,0 +1,66 @@
+{
+  "version": "0.7.0rc1",
+  "addon_version": "0.1.0rc1",
+  "tag": "v0.7.0-rc.1",
+  "rootless": {
+    "command": "QT_QPA_PLATFORM=offscreen scripts/check.sh",
+    "exit_code": 0,
+    "passed": 487,
+    "deselected": 25,
+    "warnings": 1,
+    "seconds": 139.57,
+    "log": "rootless.txt"
+  },
+  "privileged": {
+    "command": "scripts/privileged-tests.sh -m privileged --ignore=tests/integration/test_vm_guest.py -s",
+    "exit_code": 0,
+    "passed": 23,
+    "deselected": 488,
+    "warnings": 1,
+    "seconds": 31.61,
+    "host_network_unchanged": true,
+    "lab_leftovers": false,
+    "log": "privileged.txt"
+  },
+  "vm_acceptance": {
+    "status": "NOT RUN",
+    "reasons": [
+      "vm.qemu_missing",
+      "vm.seed_tool_missing",
+      "vm.kvm_unavailable",
+      "vm.scaffold_only"
+    ],
+    "guest_test_executed": false
+  },
+  "i18n": {
+    "status": "PASS",
+    "problems": 0,
+    "log": "i18n.txt"
+  },
+  "format": {
+    "status": "PASS",
+    "files": 11,
+    "log": "format.txt"
+  },
+  "builds": {
+    "status": "PASS",
+    "core": "polmon-0.7.0rc1-py3-none-any.whl",
+    "addon": "polmon_l1_vm-0.1.0rc1-py3-none-any.whl",
+    "logs": [
+      "core-build.txt",
+      "addon-build.txt",
+      "wheel-smoke.txt",
+      "wheel-metadata.json"
+    ]
+  },
+  "release_metadata": "PASS",
+  "native_prerelease_ordering": {
+    "dpkg": "PASS",
+    "rpm_vercmp": -1
+  },
+  "publication": {
+    "status": "PENDING native workflow"
+  },
+  "raw_logs_committed": false,
+  "protected_files_unchanged": true
+}
