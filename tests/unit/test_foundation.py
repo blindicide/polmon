@@ -7,7 +7,11 @@ from polmon.version import __version__
 
 
 def test_version_is_current_release() -> None:
-    major, minor, patch = __version__.split(".")
+    import re
+
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:(?:a|b|rc)\d+)?", __version__)
+    assert match
+    major, minor, patch = match.groups()
     assert (int(major), int(minor), int(patch)) >= (0, 0, 1)
 
 
@@ -58,3 +62,22 @@ def test_lock_file_names_the_current_version() -> None:
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     # uv.lock sat at 0.2.3 through v0.3.1: refresh it with `uv lock --offline` on every bump.
     assert locked["polmon"]["version"] == project["version"] == __version__
+
+
+def test_release_metadata_rejects_mismatched_tags_and_scopes_notes():
+    import runpy
+    from pathlib import Path
+
+    root = Path(__file__).parents[2]
+    release = runpy.run_path(str(root / "scripts/release_metadata.py"))
+    result = release["metadata"](root, "v0.7.0-rc.1")
+    assert result["version"] == __version__
+    assert result["prerelease"] is True
+    assert result["native_version"] == "0.7.0~rc1"
+    assert "vm.scaffold_only" in result["notes"]
+    assert "## [0.6.0]" not in result["notes"]
+    assert release["tag_version"]("v0.6.0") == ("0.6.0", False)
+    with pytest.raises(ValueError, match="disagree"):
+        release["metadata"](root, "v0.7.0")
+    with pytest.raises(ValueError, match="expected"):
+        release["tag_version"]("v0.7.0rc1")

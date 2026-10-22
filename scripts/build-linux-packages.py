@@ -15,6 +15,8 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+from release_metadata import native_version
+
 DEB_DEPENDS = (
     "libc6 (>= 2.35), libstdc++6, libgcc-s1, libglib2.0-0, libx11-6, "
     "libx11-xcb1, libxcb1, libxkbcommon0, libxkbcommon-x11-0, "
@@ -101,7 +103,7 @@ def make_deb(root: Path, output: Path, version: str, arch: str, epoch: int) -> P
     control = root / "DEBIAN/control"
     control.parent.mkdir()
     control.write_text(
-        f"Package: polmon-client\nVersion: {version}\nArchitecture: {arch}\n"
+        f"Package: polmon-client\nVersion: {native_version(version)}\nArchitecture: {arch}\n"
         "Maintainer: polmon contributors\n"
         f"Depends: {DEB_DEPENDS}\n"
         "Section: science\nPriority: optional\n"
@@ -145,7 +147,7 @@ def make_rpm(root: Path, output: Path, version: str, arch: str, epoch: int,
     spec = top / "SPECS/polmon-client.spec"
     spec.write_text(
         f"""Name: polmon-client
-Version: {version}
+Version: {native_version(version)}
 Release: 1
 Summary: POLMON isolated network laboratory desktop client
 License: Proprietary
@@ -189,7 +191,7 @@ cp -a root/. %{{buildroot}}/
     built = list((top / "RPMS").rglob("*.rpm"))
     if len(built) != 1:
         raise SystemExit(f"expected one RPM, found {built}")
-    package = output / built[0].name
+    package = output / f"polmon-client-{version}-1.{arch}.rpm"
     shutil.copy2(built[0], package)
     return package
 
@@ -222,6 +224,7 @@ def main() -> None:
     )
     manifest = {
         "version": args.version,
+        "native_version": native_version(args.version),
         "architectures": {"deb": deb_arch, "rpm": rpm_arch},
         "source_date_epoch": args.epoch,
         "contents": ["/opt/polmon (single client with embedded L0 and _sqlite3)",
