@@ -1,7 +1,8 @@
 # Phase VI intermediate release handoff
 
 VERSION: core 0.7.0rc1; addon distribution 0.1.0rc1; SemVer tag v0.7.0-rc.1.
-STATUS: PARTIAL — bounded analytics delivered; VM runtime/acceptance unavailable.
+STATUS: PARTIAL / RELEASE BLOCKED — local gates pass; Windows release gate failed.
+Real VM runtime/acceptance remains unavailable / NOT RUN.
 
 ## Authority, model and worktree
 
@@ -230,15 +231,69 @@ download all assets and check both checksum manifests. Actions must reach termin
 success, including published-client verification. Billing/startup/workflow failure
 means publication is blocked, even if a GitHub API request succeeded.
 
-Publication status: local gates PASS; native publication/verification PENDING. Candidate/final commit SHAs, release
-URL, workflow run/status and download checksums will be recorded here at closeout.
+### Actual publication attempt — blocked
+
+Candidate commit: `16b8f4ad7c7a446aad68acd509be09b88bac28df`.
+Annotated tag: `v0.7.0-rc.1`; tag object:
+`85c5b3cbd50ee443cf7886c87fefcaa60cd26b04`.
+Remote feature branch and peeled annotated tag were read back and matched the
+candidate. Main remains `225318b3a0383749cced6d064dfef4c144b56531`.
+The final feature branch adds a docs-only closeout commit; its actual HEAD is
+recorded in the final response/supervisor notes (`git rev-parse HEAD`).
+
+[Native release workflow 39771278495](https://github.com/blindicide/polmon/actions/runs/39771278495)
+ran from that exact tag/commit. Candidate metadata passed. The Windows rootless
+step failed during collection, before binary construction:
+
+```text
+tests/integration/test_live_resource_analytics.py:11
+from tests.integration.test_namespace_networking import namespace_available
+ModuleNotFoundError: No module named 'tests'
+86 deselected, 1 warning, 1 error; exit 2
+```
+
+The Windows workflow invokes the `pytest` entry point; local gates use
+`python -m pytest`, which supplies the checkout root on sys.path. The cross-test
+namespace-package import is therefore a real portability blocker missed by the
+local checks. This failure remains reproducible at the immutable candidate tag.
+No test was deselected or gate bypassed to publish it. The mandate explicitly
+orders stopping/reporting on Actions failure, so no repair dispatch, replacement
+tag or additional publication attempt was made. The remaining Linux build was
+cancelled after Windows failure, conserving runner work that could not publish.
+
+Terminal workflow state: **completed / cancelled**, after required Windows job
+**failure**. Candidate job passed; Linux build and downstream release/verification
+jobs were cancelled; Windows artifact verification was skipped. GitHub reports
+zero workflow artifacts (`workflow-artifacts.json`). Job logs/state are retained in
+`windows-job.txt`, `workflow-state.json`, `workflow-watch.txt` and
+`workflow-failure-final.txt` under the current evidence directory.
+
+GitHub prerelease lookup returned **release not found** (exit 1);
+`release-lookup.txt` preserves that observation. Release creation was not reached.
+No prerelease URL, Release target commit or published assets/checksums exist.
+Published asset download, checksum and client verification: **NOT RUN — no release**.
+Only the branch and annotated tag were published; no stable release was created.
+Latest actual Release remains stable `v0.6.0`.
+
+A read-only local reproduction also failed exactly:
+`QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/integration/test_live_resource_analytics.py --collect-only -q`
+returned exit 2 with the same missing `tests` import; raw output is
+`pytest-entrypoint-repro.txt`. No source changes were made after the failed native
+gate. The remaining closeout changes are documentation and sanitized status only.
+
+Next release work, requiring a new candidate: remove the fragile cross-test import
+or make its helper import portable, reproduce the workflow's `pytest` entry-point
+collection (including Windows), rerun all invalidated local/native gates, bump to
+a fresh prerelease version/tag and publish only if every required job passes.
+Do not move/delete `v0.7.0-rc.1`, force-push or treat this failed tag as accepted.
 
 ## Separate judgments and final inventory
 
 - Implementation: bounded analytics and non-executing addon contracts delivered;
   full VM runtime is incomplete and unavailable.
 - Real VM acceptance: BLOCKED / NOT RUN, never replaced by fakes or storage tests.
-- Release readiness/publication: local gates PASS; native workflow PENDING.
+- Release readiness/publication: BLOCKED. Local gates pass; Windows native
+  workflow collection failed; no GitHub prerelease or assets were published.
 - Limitations: no guest metrics/runtime/recovery/mixed-fidelity integration; volatile
   procfs history, incomplete counters and existing upstream warning as above.
 
@@ -248,9 +303,79 @@ Implementation/release commits after the initial analytics commit:
 - `0ba28c3`: optional non-executing L1 scaffold and contracts;
 - `0d94094`: prerelease workflow, versions, package metadata and notes.
 
-The candidate report commit follows these and will be the annotated tag target.
-Final exact dirty/operator inventory and protected-file hash verification will be
-recorded in the post-publication closeout. Operator files/results remain uncommitted;
+The gated candidate report commit `16b8f4a` is the immutable annotated tag target.
+Final exact dirty/operator inventory and protected-file hash verification follow
+in the closeout inventory below. Operator files/results remain uncommitted;
 historical and new raw gate logs remain local. Final supervisor shutdown observes
 clean Codex exit and descendant termination outside this active harness, appending
 its actual observation to the supervisor run notes; it must not modify this tree.
+
+## Exact completion dirty/operator inventory
+
+After the docs-only closeout commit, tracked implementation/report files are clean;
+the remaining dirty inventory is exactly the untracked list below. The ignored
+`SUPERVISOR-BRIEF-POLMON-ASTRA.md` is present separately and unchanged. All three
+untracked operator records (including CI-EXE-TASK), the ignored brief, two L0
+outputs and 19 historical raw evidence files match their pre-edit SHA-256 hashes:
+**25/25 unchanged and untracked**. Local `protected-hashes.json` records hashes;
+`final-inventory.txt` records this exact inventory. None is in source/release assets.
+
+```text
+?? CI-EXE-TASK.md
+?? INSTRUCTION-PHASE-VI-ASTRA.md
+?? RUN-ACCOUNTING-PHASE-VI-ASTRA.md
+?? benchmarks/results/l0-20261022T070800Z.csv
+?? benchmarks/results/l0-20261022T070800Z.json
+?? docs/evidence/intermediate-20261022/addon-build.txt
+?? docs/evidence/intermediate-20261022/core-build.txt
+?? docs/evidence/intermediate-20261022/final-inventory.txt
+?? docs/evidence/intermediate-20261022/format.txt
+?? docs/evidence/intermediate-20261022/i18n.txt
+?? docs/evidence/intermediate-20261022/privileged.txt
+?? docs/evidence/intermediate-20261022/protected-hashes.json
+?? docs/evidence/intermediate-20261022/pytest-entrypoint-repro.txt
+?? docs/evidence/intermediate-20261022/release-lookup.txt
+?? docs/evidence/intermediate-20261022/release-metadata.json
+?? docs/evidence/intermediate-20261022/rootless.txt
+?? docs/evidence/intermediate-20261022/vm-readiness.json
+?? docs/evidence/intermediate-20261022/wheel-metadata.json
+?? docs/evidence/intermediate-20261022/wheel-smoke.txt
+?? docs/evidence/intermediate-20261022/windows-job.txt
+?? docs/evidence/intermediate-20261022/workflow-artifacts.json
+?? docs/evidence/intermediate-20261022/workflow-failure-final.txt
+?? docs/evidence/intermediate-20261022/workflow-failure.txt
+?? docs/evidence/intermediate-20261022/workflow-state.json
+?? docs/evidence/intermediate-20261022/workflow-watch.txt
+?? docs/evidence/phase-vi-astra/addon-build-final.txt
+?? docs/evidence/phase-vi-astra/addon-build-offline.txt
+?? docs/evidence/phase-vi-astra/addon-build.txt
+?? docs/evidence/phase-vi-astra/analytics-live-rerun.txt
+?? docs/evidence/phase-vi-astra/analytics-live.txt
+?? docs/evidence/phase-vi-astra/analytics-rootless-rerun.txt
+?? docs/evidence/phase-vi-astra/analytics-rootless.txt
+?? docs/evidence/phase-vi-astra/bounds-focused.txt
+?? docs/evidence/phase-vi-astra/final-privileged.txt
+?? docs/evidence/phase-vi-astra/final-rootless-bounds.txt
+?? docs/evidence/phase-vi-astra/final-rootless.txt
+?? docs/evidence/phase-vi-astra/format-final.txt
+?? docs/evidence/phase-vi-astra/format.txt
+?? docs/evidence/phase-vi-astra/i18n-final.txt
+?? docs/evidence/phase-vi-astra/i18n.txt
+?? docs/evidence/phase-vi-astra/live-bounds.txt
+?? docs/evidence/phase-vi-astra/vm-focused-rerun.txt
+?? docs/evidence/phase-vi-astra/vm-focused.txt
+?? docs/evidence/phase-vi-astra/vm-real-gate.txt
+```
+
+The source includes only the sanitized `summary.json` reproducibility record from
+the current evidence directory; other raw logs/results remain local. No `.md`,
+`.csv` or `.json` result/report was deleted. No VM runtime, guest download/build/
+boot, module load, production network change or host package installation occurred.
+
+Supervisor clean-exit evidence is recorded after this CLI finishes its final reply
+in the external run notes and `/tmp/polmon-intermediate-20261022/exit-verification.json`.
+The observer requests `/exit` only after the live TUI is idle, then checks the
+launcher/native CLI/code-mode host PIDs are gone, rechecks preserved hashes and
+captures the final HEAD/dirty inventory. It changes no checkout file or ref and
+exits itself. This active CLI cannot attest to its own termination before exiting;
+the observer records actual success/failure separately without inventing a pass.

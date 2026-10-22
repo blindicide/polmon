@@ -1,7 +1,7 @@
 # Phase VI intermediate closeout
 
 VERSION: core 0.7.0rc1; optional addon 0.1.0rc1; planned SemVer tag v0.7.0-rc.1.
-STATUS: PARTIAL — resource analytics implemented; VM runtime/acceptance unavailable.
+STATUS: PARTIAL / RELEASE BLOCKED — resource analytics implemented; VM runtime/acceptance unavailable.
 
 IMPLEMENTED: bounded on-demand node/deployment CPU/RSS/I/O and namespace counters,
 identity attribution, missing/shared/gap metadata and JSON export. Discovery queues,
@@ -48,3 +48,12 @@ NEXT MILESTONE: implement and independently accept real KVM functionality on an
 explicitly authorized capable machine. An intermediate prerelease is not VM
 acceptance; its native release workflow must finish successfully before publication
 can be reported as verified. No quota is inferred from tokens or old ledgers.
+
+Release attempt: annotated `v0.7.0-rc.1` points to
+`16b8f4ad7c7a446aad68acd509be09b88bac28df`. Native workflow `39771278495`
+passed candidate metadata, then Windows collection failed on the `tests.integration`
+import in `test_live_resource_analytics.py`. Remaining builds and downstream release/verification were cancelled; final run
+state is completed/cancelled after the Windows failure. Zero artifacts were produced;
+the handoff records terminal results. No GitHub prerelease/assets
+were created. Fix portability on a fresh candidate and rerun native gates;
+never move the failed tag or bypass verification. Main is unchanged.
