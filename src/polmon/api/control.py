@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import re
 import secrets
 import shutil
@@ -29,6 +30,7 @@ from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
+from polmon.resources.analytics import ResourceAnalytics, Subject
 from polmon.resources.policy import ResourceLimitError, directory_size_bytes
 from polmon.scenarios import ScenarioEngine, dump_scenario, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation, ScenarioError
@@ -130,6 +132,12 @@ class ControlPlane:
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
         self.limits = limits or ResourceLimits()
+        self.analytics = ResourceAnalytics(
+            interval_seconds=self.limits.analytics_interval_seconds,
+            retention=self.limits.analytics_retention,
+            max_bytes=self.limits.analytics_max_bytes,
+            max_subjects=min(1000, self.limits.max_endpoint_count + 1),
+        )
         self.l0_only = l0_only
         self._snapshot = snapshot
         self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
@@ -1363,6 +1371,46 @@ class ControlPlane:
     def close(self) -> None:
         """Release the telemetry database handle (Windows cannot delete open files)."""
         self.telemetry.close()
+
+    def resource_history(self, *, limit: int = 120) -> dict[str, object]:
+        """Sample only on request, rate-limited globally; no background polling workload."""
+        with self._lock:
+            subjects = [Subject("_control", "shared", "shared", "shared-control",
+                                (os.getpid(),), include_children=False)]
+            for topology_id, deployment in self.deployments.items():
+                backend = deployment.backend
+                namespace = backend.namespace if isinstance(backend, HybridBackend) else backend
+                for node in self.topologies[topology_id].nodes:
+                    roots = []
+                    netns = None
+                    if isinstance(namespace, NamespaceBackend):
+                        roots.extend(
+                            process.pid for (owner, _), process in namespace.services.items()
+                            if owner == node.id and process.poll() is None
+                        )
+                        roots.extend(
+                            process.pid for process in namespace.vnc_processes.get(node.id, ())
+                            if process.poll() is None
+                        )
+                        if namespace.names and node.id in namespace.names.namespaces:
+                            netns = Path('/run/netns') / namespace.names.namespaces[node.id]
+                    subjects.append(Subject(
+                        topology_id, node.id, str(node.uuid), str(node.node_class), tuple(roots),
+                        node.resources.memory_mb * 1_048_576 if node.resources else None, netns,
+                    ))
+            # An intentionally smaller analytics budget must not break deployment operations.
+            if len(subjects) <= self.analytics.max_subjects:
+                try:
+                    self.analytics.sample(subjects)
+                except ValueError:
+                    result = self.analytics.export(limit=limit)
+                    result['sample_error'] = 'analytics.sample_budget'
+                    return result
+            else:
+                result = self.analytics.export(limit=limit)
+                result['sample_error'] = 'analytics.subject_budget'
+                return result
+            return self.analytics.export(limit=limit)
 
     def resource_status(self) -> dict[str, object]:
         snapshot = self._sample()

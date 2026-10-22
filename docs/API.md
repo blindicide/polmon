@@ -134,3 +134,10 @@ a file readable only by its owner; at least 24 characters), every path except `G
 backend refuses to listen on a non-loopback address without a token. Clients pass the token with
 `ApiClient(url, token=...)`; the desktop client has a *Token* field whose value is kept in memory
 only, and `polmon-demo --url` reads `POLMON_API_TOKEN` or `--token-file`.
+
+### Resource history
+
+`GET /v1/resources/history?limit=120` returns bounded timestamped node/deployment
+host observations and retention metadata. It samples on demand, at most once per
+configured interval. See [RESOURCE-ANALYTICS.md](RESOURCE-ANALYTICS.md) for units,
+missing-counter semantics, limits, shared-process attribution and JSON export.
