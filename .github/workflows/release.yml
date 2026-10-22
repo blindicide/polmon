@@ -28,7 +28,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      addon_version: ${{ steps.metadata.outputs.addon_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - name: Validate exact tag, versions and changelog
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python scripts/release_metadata.py "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+
   windows:
+    needs: candidate
     uses: ./.github/workflows/build-windows.yml
     permissions:
       contents: read
@@ -37,6 +56,7 @@ jobs:
       pytest-deselect: ${{ inputs.pytest-deselect }}
 
   linux:
+    needs: candidate
     uses: ./.github/workflows/build-linux.yml
     permissions:
       contents: read
@@ -44,7 +64,7 @@ jobs:
       ref: ${{ inputs.tag || github.ref }}
 
   release:
-    needs: [windows, linux]
+    needs: [candidate, windows, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -67,16 +87,17 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         working-directory: dist
         run: |
-          version="${RELEASE_TAG#v}"
-          version="${version%%+*}"
+          version="${{ needs.candidate.outputs.version }}"
           assets=(
             "polmon-${version}-windows-x64.exe"
             "polmon-${version}-windows-x64-portable.zip"
             "polmon-${version}-linux-x64.tar.gz"
             "polmon-${version}-py3-none-any.whl"
+            "polmon_l1_vm-${{ needs.candidate.outputs.addon_version }}-py3-none-any.whl"
             "polmon-client_${version}_amd64.deb"
             "polmon-client-${version}-1.x86_64.rpm"
             "package-manifest.json"
+            "SHA256SUMS-packages.txt"
           )
           for asset in "${assets[@]}"; do
             test -f "$asset" || { echo "missing $asset for ${RELEASE_TAG}"; ls -l; exit 1; }
@@ -94,26 +115,31 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           RELEASE_NOTES: ${{ inputs.notes }}
         run: |
-          version="${RELEASE_TAG#v}"
-          version="${version%%+*}"
-          fidelity_notes="The Windows and Linux clients include an embedded L0 backend with SQLite. L1/L2 require a separately configured Linux laboratory backend. Unsigned Windows executables can trigger SmartScreen. POLMON has no granted license; bundled PySide6/Qt terms apply separately."
+          version="${{ needs.candidate.outputs.version }}"
+          python scripts/release_metadata.py "$RELEASE_TAG" --notes-file release-notes.md
           if [[ -n "$RELEASE_NOTES" ]]; then
-            fidelity_notes="$(printf '%s\n\n%s' "$RELEASE_NOTES" "$fidelity_notes")"
+            printf '%s\n\n' "$RELEASE_NOTES" > repair-notes.md
+            cat release-notes.md >> repair-notes.md
+            mv repair-notes.md release-notes.md
+          fi
+          flags=()
+          if [[ "${{ needs.candidate.outputs.prerelease }}" == "true" ]]; then
+            flags+=(--prerelease --latest=false)
           fi
           gh release create "$RELEASE_TAG" \
             "dist/polmon-${version}-windows-x64.exe" \
             "dist/polmon-${version}-windows-x64-portable.zip" \
             "dist/polmon-${version}-linux-x64.tar.gz" \
             "dist/polmon-${version}-py3-none-any.whl" \
+            "dist/polmon_l1_vm-${{ needs.candidate.outputs.addon_version }}-py3-none-any.whl" \
             "dist/polmon-client_${version}_amd64.deb" \
             "dist/polmon-client-${version}-1.x86_64.rpm" \
             dist/package-manifest.json dist/SHA256SUMS-packages.txt \
             dist/SHA256SUMS.txt \
-            --generate-notes --verify-tag \
-            --notes "$fidelity_notes"
+            --verify-tag --notes-file release-notes.md "${flags[@]}"
 
   verify-release:
-    needs: release
+    needs: [candidate, release]
     strategy:
       fail-fast: false
       matrix:
@@ -150,8 +176,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         working-directory: published
         run: |
-          version="${RELEASE_TAG#v}"
-          version="${version%%+*}"
+          version="${{ needs.candidate.outputs.version }}"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             client="./polmon-${version}-windows-x64.exe"
             launch=()

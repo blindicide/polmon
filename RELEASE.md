@@ -1,11 +1,23 @@
 # Releases
 
-Phase VI remains on a feature branch: no tag or release is authorized until its gates pass and
-the operator issues a new order. For a future milestone, update the central version (`src/polmon/version.py`,
-`pyproject.toml`, and `uv.lock` via `uv lock --offline`; a unit test fails if they disagree) and
-the changelog, commit, and create an annotated SemVer tag on the evidence
-commit. Push the commit and the tag. `release.yml` then builds and verifies both platforms and
-publishes one GitHub Release with:
+The intermediate candidate uses annotated SemVer tag `v0.7.0-rc.1`, canonical Python
+version `0.7.0rc1`, and separate addon distribution `0.1.0rc1` pinned to that core.
+`scripts/release_metadata.py` validates tag/source/project/lock/addon consistency and
+extracts only the exact changelog section. Stable tags retain `vX.Y.Z`; previews use
+`vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rc1` to sort before
+stable; downloadable filenames use the canonical Python version.
+
+Before tagging, run the complete rootless, applicable isolated privileged,
+localization/format, shell syntax, wheel and version gates. VM acceptance remains
+NOT RUN and unavailable: this release includes a non-executing scaffold only. Never
+present local gates as Windows or real-VM acceptance. Operator records, instructions,
+CI task, private host state and preserved L0 results must remain unpublished.
+
+Push the gated feature commit and annotated tag without merging main. `release.yml`
+validates the candidate, calls both native build/verification workflows and creates
+a GitHub **prerelease** with `--latest=false` for preview tags. It never generates
+whole-history notes; notes come from the version-scoped changelog. Optional manual
+repair notes are prepended explicitly. Assets are:
 
 | Asset | Platform |
 |---|---|
@@ -16,6 +28,7 @@ publishes one GitHub Release with:
 | `polmon-client_<version>_amd64.deb` | Debian desktop client with embedded L0 and SQLite |
 | `polmon-client-<version>-1.x86_64.rpm` | RPM desktop client with embedded L0 and SQLite |
 | `package-manifest.json`, `SHA256SUMS-packages.txt` | Package metadata, limits, and build checksums |
+| `polmon_l1_vm-<addon-version>-py3-none-any.whl` | Optional non-executing VM scaffold |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
 
 Before publishing, the release job checks every file name against the tag version and each

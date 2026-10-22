@@ -4,6 +4,31 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0rc1] - 2026-10-22
+
+Intermediate prerelease `v0.7.0-rc.1`. Local clients remain L0-only; namespace L1
+requires an authorized Linux lab backend. The optional VM addon is a non-executing
+scaffold: real guest boot, networking/services, guest-written clone isolation,
+resource footprint and VM cleanup are NOT RUN. This host has no KVM and VM runtime
+installation, downloads and guest execution are forbidden.
+
+### Added
+
+- Bounded on-demand per-node/deployment resource history and JSON export with
+  identity-safe CPU deltas, explicit unavailable counters and shared-process attribution.
+- Separately packaged optional VM-backed L1 planning/configuration scaffold, pinned image
+  contracts, clone/network plans and explicit `vm.scaffold_only` lifecycle refusals.
+  No guest runtime, image acquisition, GUI/API VM dispatch or recovery is available.
+- Native prerelease automation with SemVer tags mapped to canonical Python package
+  versions, Debian/RPM preview ordering, exact-version notes and published asset checks.
+
+### Fixed
+
+- Bound resource discovery queues, thread enumeration and child-list reads.
+- Report procfs process counters as unavailable on platforms without POSIX counters.
+
+### Carried-forward changes since 0.6.0
+
 ### Added
 
 - **Crash-safe laboratory ownership journal.** A backend killed with SIGKILL, by the OOM killer
@@ -731,8 +756,3 @@ later by repair run 36240994208, built from the tag source with those tests dese
 - Headless `--version` and `--self-test` client commands.
 - Linux CI, GitHub-hosted Windows packaging, executable smoke validation, and release automation.
 - Initial test suite and development, architecture, security, resource, build, CI, and release docs.
-
-## Unreleased — Phase VI continuation
-
-- Add bounded on-demand per-node/deployment resource history and JSON export,
-  identity-safe CPU deltas, missing-counter and shared-process attribution metadata.
