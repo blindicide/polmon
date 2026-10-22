@@ -44,6 +44,8 @@ packages = ["src/polmon"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
+# Optional addon tests use source without installing any VM runtime dependency.
+pythonpath = ["addons/l1-vm/src"]
 markers = [
   "integration: integration tests",
   "privileged: requires authorized laboratory networking privileges",

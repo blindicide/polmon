@@ -171,3 +171,11 @@ Per-node service observations and deployment totals distinguish unavailable valu
 from zero and shared L0 costs from individual node costs. Limits and methodology
 are in [resource analytics](docs/RESOURCE-ANALYTICS.md); RSS is not PSS or kernel
 memory, and declarations are not measurements.
+
+## Experimental VM scaffold
+
+Full OS guest planning uses two 256 MiB guests, one vCPU each, a 64 MiB estimated
+emulator allowance per guest and a 256 MiB host reserve. These are configuration
+estimates, not measured footprint or runtime/cgroup enforcement. Future admission
+must reserve full overlay capacity and free-space headroom. Runtime and VM metrics
+are unavailable; see [addon contracts](addons/l1-vm/README.md).
