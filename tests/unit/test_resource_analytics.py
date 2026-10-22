@@ -13,6 +13,8 @@ from polmon.resources.analytics import ResourceAnalytics, Subject, network_sampl
 
 
 def proc_process(proc, pid=123, *, start=50, cpu=100, rss=4, io=True):
+    if not hasattr(os, "sysconf"):
+        pytest.skip("NOT RUN — Linux procfs counters unavailable")
     path = proc / str(pid)
     path.mkdir(exist_ok=True)
     fields = ["0"] * 22
@@ -129,3 +131,18 @@ def test_live_process_and_api_history(tmp_path):
             assert client.get("/v1/resources/history?limit=1001").status_code == 422
     finally:
         plane.close()
+
+
+def test_process_walk_caps_pending_children_and_task_enumeration(tmp_path):
+    from polmon.resources.analytics import process_tree
+
+    root = proc_process(tmp_path)
+    (root / "task/123/children").write_text(" ".join(str(i) for i in range(1000, 20000)))
+    pids, complete = process_tree((123,), limit=4, proc=tmp_path)
+    assert len(pids) == 4
+    assert not complete
+
+
+def test_process_metrics_are_unavailable_without_posix_counters(monkeypatch):
+    monkeypatch.delattr(os, "sysconf", raising=False)
+    assert process_sample(os.getpid()) is None
