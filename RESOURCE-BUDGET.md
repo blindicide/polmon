@@ -162,3 +162,12 @@ governed by the admission and per-endpoint measurements above; the Windows local
 creates namespaces. v0.3.0's Windows backend reported no memory figures (procfs-only probes), so
 its admission memory reserve could not refuse; from v0.3.1 it reports available physical memory
 and enforces the reserve like Linux (swap remains unreported on Windows).
+
+## On-demand resource history
+
+The optional history endpoint retains at most 120 encoded samples and 2 MiB by
+default, with a minimum 2-second sampling interval. It creates no polling worker.
+Per-node service observations and deployment totals distinguish unavailable values
+from zero and shared L0 costs from individual node costs. Limits and methodology
+are in [resource analytics](docs/RESOURCE-ANALYTICS.md); RSS is not PSS or kernel
+memory, and declarations are not measurements.

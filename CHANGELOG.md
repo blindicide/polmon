@@ -731,3 +731,8 @@ later by repair run 36240994208, built from the tag source with those tests dese
 - Headless `--version` and `--self-test` client commands.
 - Linux CI, GitHub-hosted Windows packaging, executable smoke validation, and release automation.
 - Initial test suite and development, architecture, security, resource, build, CI, and release docs.
+
+## Unreleased — Phase VI continuation
+
+- Add bounded on-demand per-node/deployment resource history and JSON export,
+  identity-safe CPU deltas, missing-counter and shared-process attribution metadata.
