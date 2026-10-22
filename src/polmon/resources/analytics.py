@@ -10,6 +10,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from threading import RLock
 
@@ -31,6 +32,8 @@ class Subject:
 
 def process_sample(pid: int, proc: Path = Path("/proc")) -> dict | None:
     """Read one process consistently across PID reuse, including names containing spaces."""
+    if not hasattr(os, "sysconf"):
+        return None
     try:
         path = proc / str(pid)
         raw = (path / "stat").read_text()
@@ -61,8 +64,8 @@ def process_tree(
 ) -> tuple[list[int], bool]:
     """Visit only registered roots and their descendants; no whole-host process scan."""
     seen: set[int] = set()
-    pending = list(roots)
-    complete = True
+    pending = set(roots[:limit])
+    complete = len(roots) <= limit
     while pending and len(seen) < limit:
         pid = pending.pop()
         if pid in seen:
@@ -70,14 +73,23 @@ def process_tree(
         seen.add(pid)
         try:
             # Children can be forked by another thread; bound both tasks and descendants.
-            tasks = sorted((proc / str(pid) / "task").iterdir())
+            tasks = list(islice((proc / str(pid) / "task").iterdir(), limit + 1))
             if len(tasks) > limit:
                 complete = False
             for task in tasks[:limit]:
-                children = (task / "children").read_text().split()
-                pending.extend(int(item) for item in children[:limit] if int(item) not in seen)
-                if len(children) > limit:
+                with (task / "children").open() as stream:
+                    raw = stream.read(8193)
+                if len(raw) > 8192:
                     complete = False
+                    raw = raw[:8192].rsplit(" ", 1)[0]
+                for item in raw.split():
+                    child = int(item)
+                    if child in seen or child in pending:
+                        continue
+                    if len(seen) + len(pending) >= limit:
+                        complete = False
+                        break
+                    pending.add(child)
         except (OSError, ValueError):
             complete = False
     return sorted(seen), complete and not pending
