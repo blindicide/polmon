@@ -63,3 +63,13 @@ admission/recovery on an authorized capable host; validate guest networking,
 services and guest-written clone isolation; measure full VM resource costs and
 failure cleanup; then consider mixed-fidelity attachment and UI integration.
 Exact current gates/publication status: [handoff](../HANDOFF-PHASE-VI-ASTRA.md).
+
+## Intermediate release blocker
+
+`v0.7.0-rc.1` / candidate `16b8f4a` reached native workflow `39771278495` but
+Windows pytest collection failed: `test_live_resource_analytics.py` imports
+`tests.integration`, unavailable under that entry-point invocation. Publication
+stopped under the mandate; no GitHub prerelease/assets exist. Before another
+release, fix helper import portability, reproduce the actual pytest entry point,
+rerun affected full/native gates and use a fresh version/tag. The failed tag is
+immutable. Real VM work remains separately blocked as above.
