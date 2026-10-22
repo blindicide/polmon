@@ -84,3 +84,11 @@ are built only on GitHub-hosted runners from the tagged source, with third-party
 to commit SHAs, and every published asset is listed in `SHA256SUMS.txt`. Audit them before a release with
 `uvx pip-audit -r <(uv pip freeze --python .venv/bin/python | grep -v polmon)`; the 2026-09-26 audit
 after the starlette 1.7.0 upgrade reported no known vulnerabilities.
+
+## Optional VM scaffold boundary
+
+The [standalone scaffold](addons/l1-vm/README.md) cannot launch or recover a VM,
+download an image or create a seed ISO. `vm.scaffold_only` remains a hard refusal
+on capable hosts too. Future KVM runtime isolation, image trust, unprivileged TAP
+networking, ownership recovery and cleanup require independent real-guest evidence.
+No VM security acceptance is claimed. Core namespace/L0 behavior is unchanged.

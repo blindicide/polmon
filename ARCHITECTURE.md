@@ -124,3 +124,10 @@ older version) gets its English text shown, quoted inside a localized sentence. 
 handling into a service that has no UI, and codes are testable identifiers. Two tests keep the
 contract: every backend raise site passes a code (`tests/unit/test_error_codes.py`), and every
 code the backend can send has a Russian and an English entry (`scripts/i18n-completeness.py`).
+
+## Optional VM-backed L1 scaffold
+
+`addons/l1-vm` is separately packaged, with typed configuration, capability checks
+and read-only clone/network plans aligned with `ExecutionBackend`. Runtime lifecycle,
+image acquisition and recovery explicitly refuse with `vm.scaffold_only`. No core
+VM dispatch or guest integration is implemented. See [addon contracts](addons/l1-vm/README.md).

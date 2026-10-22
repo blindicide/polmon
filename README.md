@@ -109,3 +109,8 @@ not ready. The backend emits structured JSON startup and shutdown logs.
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
 [docs/LOGS.md](docs/LOGS.md), and [SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
 the repository owner makes an explicit licensing decision.
+
+An experimental [optional VM-backed L1 scaffold](addons/l1-vm/README.md) is available
+as a separate package. It provides read-only plans and explicit runtime refusals.
+Real VM boot, networking, clone isolation and cleanup are NOT RUN; consult the
+[Phase VI handoff](HANDOFF-PHASE-VI-ASTRA.md) for evidence and remaining acceptance.
