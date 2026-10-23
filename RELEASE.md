@@ -1,10 +1,10 @@
 # Releases
 
-The experimental runtime candidate uses annotated SemVer tag `v0.7.0-rc.2`, canonical Python
-version `0.7.0rc2`, and separate addon distribution `0.1.0rc2` pinned to that core.
+The experimental runtime candidate uses annotated SemVer tag `v0.7.0-rc.3`, canonical Python
+version `0.7.0rc3`, and separate addon distribution `0.1.0rc3` pinned to that core.
 `scripts/release_metadata.py` validates tag/source/project/lock/addon consistency and
 extracts only the exact changelog section. Stable tags retain `vX.Y.Z`; previews use
-`vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rc2` to sort before
+`vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rcN` to sort before
 stable; downloadable filenames use the canonical Python version.
 
 Before tagging, run the complete rootless, applicable isolated privileged,

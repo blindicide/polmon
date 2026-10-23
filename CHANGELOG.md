@@ -4,9 +4,9 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
-## [0.7.0rc2] - 2026-10-23
+## [0.7.0rc3] - 2026-10-23
 
-Experimental prerelease `v0.7.0-rc.2`, core `0.7.0rc2`, optional addon `0.1.0rc2`.
+Experimental prerelease `v0.7.0-rc.3`, core `0.7.0rc3`, optional addon `0.1.0rc3`.
 Ordinary local topology execution remains L0-only on Windows and Linux; namespace L1/hybrid
 requires an authorized Linux lab backend. Separate VM jobs are Linux-only and experimental.
 **Real guest/KVM acceptance: NOT RUN.** The release executor lacks `/dev/kvm`,
@@ -33,6 +33,17 @@ are unverified. No VM functional or security acceptance is claimed.
 - Linux packaging collects the actual shipped client graph and preserves read-only image mode.
 - Missing POSIX UID APIs no longer break Windows VM status; subprocess cancellation is portable.
 - VM controls fit the supported window width; native pytest resolves shared test helpers.
+- Portable bounded subprocess termination and coded QMP errors on Windows; Linux kernel
+  ownership tests use explicit procfs fixtures on every platform without dropping assertions.
+- RPM source extraction no longer leaves the bundled pinned guest image writable.
+
+## [0.7.0rc2] - 2026-10-23
+
+Unpublished candidate `v0.7.0-rc.2`. Native Actions run
+[39950685245](https://github.com/blindicide/polmon/actions/runs/39950685245)
+failed Windows portability tests and the installed RPM read-only image check.
+Its tag remains immutable; its experimental runtime changes are included in rc3 above.
+Real guest/KVM acceptance was NOT RUN; no release acceptance is claimed.
 
 ## [0.7.0rc1] - 2026-10-22
 

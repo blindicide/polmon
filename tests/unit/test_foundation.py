@@ -70,10 +70,10 @@ def test_release_metadata_rejects_mismatched_tags_and_scopes_notes():
 
     root = Path(__file__).parents[2]
     release = runpy.run_path(str(root / "scripts/release_metadata.py"))
-    result = release["metadata"](root, "v0.7.0-rc.2")
+    result = release["metadata"](root, "v0.7.0-rc.3")
     assert result["version"] == __version__
     assert result["prerelease"] is True
-    assert result["native_version"] == "0.7.0~rc2"
+    assert result["native_version"] == "0.7.0~rc3"
     assert "Real guest/KVM acceptance: NOT RUN" in result["notes"]
     assert "Experimental prerelease" in result["notes"]
     assert "## [0.6.0]" not in result["notes"]
