@@ -13,10 +13,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 from pydantic import Field
 
+from polmon.backends.namespace.journal import LabOwner
 from polmon.backends.namespace.runner import CommandRunner, stop_process_group
 from polmon.orchestration.base import BackendInspection, ExecutionBackend
 from polmon.topology.models import Node, NodeClass, StrictModel, Topology
@@ -24,7 +26,7 @@ from polmon.version import __version__
 from polmon_l1_vm import qmp
 from polmon_l1_vm.host import admit, alive, process_start, terminate
 from polmon_l1_vm.images import ImageManifest, OverlayStore, VMError, verify_image
-from polmon_l1_vm.lab import MODES, Lab
+from polmon_l1_vm.lab import MODES, Lab, file_identity
 from polmon_l1_vm.recovery import SOCKET_PREFIX, STATE_NAME, write_state
 from polmon_l1_vm.seed import create_seed
 
@@ -149,6 +151,8 @@ class VMBackend(ExecutionBackend):
         self.launchers: dict[str, subprocess.Popen[bytes]] = {}
         self.identities: dict[str, tuple[int, str]] = {}
         self.pidfiles: dict[str, Path] = {}
+        self.owner = LabOwner.current()
+        self.socket_identity = None
         self.phase = "new"
         self.image_info: dict = {}
         self.admission: dict = {}
@@ -204,14 +208,17 @@ class VMBackend(ExecutionBackend):
     # -- жизненный цикл -------------------------------------------------------------------
 
     def _journal(self) -> None:
-        files = (
-            sorted([path.name for path in self.overlays.owned] + [path.name for path in self.seeds])
-            if self.overlays
-            else []
+        # Journal intended filenames before creation; the run directory was admitted empty.
+        files = sorted(
+            name
+            for node in (self.topology.nodes if self.topology else [])
+            for name in (f"{node.id}.qcow2", f"{node.id}-seed.iso")
         )
         write_state(
             self.directory,
             {
+                "owner": asdict(self.owner),
+                "socket_identity": self.socket_identity,
                 "mode": self.mode,
                 "topology": self.topology.id if self.topology else None,
                 **(self.lab.state() if self.lab else {}),
@@ -242,13 +249,20 @@ class VMBackend(ExecutionBackend):
         )
         self.topology = topology
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # Exclusive reservation prevents two backends adopting the same empty directory.
+        descriptor = os.open(
+            self.directory / STATE_NAME, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+        )
+        os.close(descriptor)
         self.phase = "creating"
         self.overlays = OverlayStore(self.directory, self.base, self.runner)
         try:
             # Короткий каталог: путь UNIX-сокета QMP не должен превышать 108 байт.
-            self.socket_dir = Path(tempfile.mkdtemp(prefix=SOCKET_PREFIX, dir="/tmp"))
+            self.socket_dir = Path(tempfile.mkdtemp(prefix=SOCKET_PREFIX)).resolve()
+            self.socket_identity = file_identity(self.socket_dir)
             self._journal()
             self.lab = Lab(topology, self.runner, mode=self.mode)
+            self.lab.on_created = self._journal
             self.lab.create()
             self._journal()
             for node in topology.nodes:
@@ -382,7 +396,8 @@ class VMBackend(ExecutionBackend):
             if alive(identity) and self.socket_dir is not None:
                 with contextlib.suppress(VMError):
                     qmp.command(str(self.socket_dir / f"{node_id}.qmp"), "quit", timeout=2)
-            terminate(identity, grace=3)
+            if not terminate(identity, grace=3) and alive(identity):
+                raise VMError("vm.cleanup_failed")
         for launcher in self.launchers.values():
             if launcher.poll() is None:
                 stop_process_group(launcher, grace=1)
@@ -392,6 +407,13 @@ class VMBackend(ExecutionBackend):
 
     def destroy(self) -> None:
         """Идемпотентно: процессы, пространство, диски, образы начальной конфигурации, сокеты."""
+        if self.phase == "new":
+            return
+        if self.socket_dir is not None and (
+            self.socket_dir.is_symlink()
+            or (self.socket_dir.exists() and file_identity(self.socket_dir) != self.socket_identity)
+        ):
+            raise VMError("vm.state_invalid")
         self.stop()
         if self.lab is not None:
             self.lab.destroy()
@@ -405,7 +427,8 @@ class VMBackend(ExecutionBackend):
         self.pidfiles.clear()
         self.identities.clear()
         if self.socket_dir is not None:
-            shutil.rmtree(self.socket_dir, ignore_errors=True)
+            if self.socket_dir.exists():
+                shutil.rmtree(self.socket_dir)
             self.socket_dir = None
         (self.directory / STATE_NAME).unlink(missing_ok=True)
         self.phase = "destroyed"

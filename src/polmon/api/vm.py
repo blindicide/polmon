@@ -13,7 +13,6 @@ import contextlib
 import importlib.util
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -185,14 +184,20 @@ def _terminate_group(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
+        if os.name == "nt":
+            process.terminate()
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
 
     def escalate() -> None:
         try:
             process.wait(timeout=TERMINATION_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
 
     Thread(target=escalate, name="polmon-vm-kill", daemon=True).start()
 
@@ -342,7 +347,8 @@ class VMJobs:
             except OSError as error:
                 stdout.close()
                 if run_directory is not None:
-                    shutil.rmtree(run_directory, ignore_errors=True)
+                    with contextlib.suppress(OSError):
+                        run_directory.rmdir()
                 raise ConfigurationError(
                     "the VM process could not be started",
                     details={"reason": str(error)},
@@ -411,7 +417,12 @@ class VMJobs:
             return False
         if completed.returncode != 0:
             return False
-        shutil.rmtree(directory, ignore_errors=True)
+        try:
+            directory.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return False
         return not directory.exists()
 
     def _supervise(self, job: VMJob, stdout) -> None:  # type: ignore[no-untyped-def]
@@ -441,7 +452,11 @@ class VMJobs:
         with self._lock:
             job.exit_code = exit_code
             job.finished = time.monotonic()
-            if job.expired:
+            if left_behind:
+                job.state, job.message_code = "failed", "vm.failed"
+                job.message = "VM cleanup failed; recovery is required"
+                job.message_params = {"detail": "cleanup failed"}
+            elif job.expired:
                 job.state, job.message_code = "failed", "vm.timeout"
                 job.message = "the VM job exceeded its time limit and was stopped"
                 job.message_params = {"seconds": JOB_SECONDS[job.request.action]}
