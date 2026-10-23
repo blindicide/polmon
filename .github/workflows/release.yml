@@ -14,6 +14,11 @@ on:
         required: false
         type: string
         default: ""
+      skip-windows-tests:
+        description: Skip Windows test suite for a documented release repair; artifact verification remains enabled
+        required: false
+        type: boolean
+        default: false
       notes:
         description: Text prepended to the generated release notes (explain any repair)
         required: false
@@ -54,6 +59,7 @@ jobs:
     with:
       ref: ${{ inputs.tag || github.ref }}
       pytest-deselect: ${{ inputs.pytest-deselect }}
+      skip-tests: ${{ inputs.skip-windows-tests }}
 
   linux:
     needs: candidate

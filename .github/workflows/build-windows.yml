@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: ""
+      skip-tests:
+        description: Skip Windows tests for a documented release repair; package build and smoke checks still run
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       ref:
@@ -25,6 +30,11 @@ on:
         required: false
         type: string
         default: ""
+      skip-tests:
+        description: Skip Windows tests for a documented release repair; package build and smoke checks still run
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +65,7 @@ jobs:
       - run: python -m pip install -e ".[dev,gui,build]"
       - run: ruff check .
       - name: Run tests (rootless, then GUI on the offscreen platform)
+        if: ${{ !inputs.skip-tests }}
         shell: bash
         env:
           PYTEST_DESELECT: ${{ inputs.pytest-deselect }}
