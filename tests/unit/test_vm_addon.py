@@ -55,35 +55,57 @@ def test_model_limits_and_namespace_semantics(tmp_path):
         vm.validate(topology)
 
 
-def test_scaffold_refuses_runtime_even_on_capable_host(tmp_path, monkeypatch):
-    from polmon_l1_vm.images import acquire_image
-    from polmon_l1_vm.recovery import recover
+def test_readiness_reports_runtime_and_modes(monkeypatch):
+    monkeypatch.setattr(module, "_userns_works", lambda: True)
+    monkeypatch.setattr(module, "_sudo_works", lambda: False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(module.os, "access", lambda *args: True)
+    result = readiness()
+    assert result["ready"] and result["runtime_implemented"]
+    assert result["modes"] == {"userns": True, "netns": False}
+    assert result["missing"] == []
+    monkeypatch.setattr(module, "_userns_works", lambda: False)
+    result = readiness()
+    assert not result["ready"]
+    assert {"vm.userns_unavailable", "vm.sudo_unavailable"} <= set(result["missing"])
+    monkeypatch.setattr(module.os, "access", lambda *args: False)
+    assert {"vm.kvm_unavailable", "vm.tun_unavailable"} <= set(readiness()["missing"])
 
+
+def test_lifecycle_refuses_before_mutation(tmp_path):
     runner = FakeRunner()
     vm = backend(tmp_path, runner=runner)
     topology = load_topology(EXAMPLE)
-    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/" + name)
-    monkeypatch.setattr(module.os, "access", lambda *args: True)
-    assert not readiness()["ready"]
-    assert "vm.scaffold_only" in readiness()["missing"]
-    actions = [
-        lambda: vm.create(topology),
-        vm.start,
-        vm.stop,
-        vm.destroy,
-        vm.wait_ready,
-        vm.sample,
-        lambda: vm.probe_http("192.168.236.20", 8080, "server"),
-        lambda: acquire_image(tmp_path / "image", manifest()),
-        lambda: recover(vm.directory, runner),
-    ]
-    for action in actions:
-        with pytest.raises(VMError, match="vm.scaffold_only"):
+    for action in (vm.start, vm.wait_ready, vm.sample):
+        with pytest.raises(VMError, match="vm.not_"):
             action()
+    with pytest.raises(VMError, match="vm.not_created"):
+        vm.probe_http("192.168.236.20", 8080, "server")
+    # Образа нет: отказ происходит до создания каталога, пространства и дисков.
+    with pytest.raises(VMError, match="vm.image_missing"):
+        vm.create(topology)
+    vm.stop()
+    vm.destroy()
+    vm.destroy()  # повторный вызов безопасен
     assert not runner.calls
     assert not list(tmp_path.iterdir())
     assert not vm.inspect().resources
-    assert vm.inspect().details["guest_memory_bytes"] is None
+    # Непустой каталог запуска чужой: он не используется и не затирается.
+    fresh = backend(tmp_path, runner=runner)
+    fresh.directory.mkdir()
+    (fresh.directory / "operator.txt").write_text("keep")
+    with pytest.raises(VMError, match="vm.directory_not_empty"):
+        fresh.create(topology)
+    assert (fresh.directory / "operator.txt").read_text() == "keep"
+    assert not runner.calls
+
+
+def test_image_acquisition_is_not_implemented_yet(tmp_path):
+    from polmon_l1_vm.images import acquire_image
+
+    with pytest.raises(VMError, match="vm.scaffold_only"):
+        acquire_image(tmp_path / "image", manifest())
+    assert not list(tmp_path.iterdir())
 
 
 def test_generated_seed_addresses_identity_and_no_egress():
@@ -101,7 +123,7 @@ def test_clone_and_network_plans_keep_distinct_identities(tmp_path):
     vm = backend(tmp_path)
     topology = load_topology(EXAMPLE)
     plan = vm.plan(topology)
-    assert not plan["runtime_implemented"]
+    assert plan["runtime_implemented"]
     assert plan["estimated_memory_mb"] == 640
     assert len({node["uuid"] for node in plan["nodes"]}) == 2
     assert len({node["overlay"] for node in plan["nodes"]}) == 2

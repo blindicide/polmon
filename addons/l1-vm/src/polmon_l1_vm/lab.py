@@ -21,6 +21,7 @@ from pathlib import Path
 
 from polmon.backends.namespace.runner import CommandRunner, stop_process_group
 from polmon.topology.models import Topology
+from polmon_l1_vm.host import alive, process_start, terminate
 from polmon_l1_vm.images import VMError
 
 MODES = ("userns", "netns")
@@ -70,15 +71,6 @@ def lab_names(topology: Topology) -> LabNames:
         },
         probes={item.id: probe_address(topology, item.id) for item in topology.networks},
     )
-
-
-def _process_start(pid: int) -> str | None:
-    """Время старта процесса из /proc: вместе с pid защищает от повторного использования pid."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except OSError:
-        return None
-    return stat.rsplit(")", 1)[1].split()[19]
 
 
 class Lab:
@@ -230,7 +222,7 @@ class Lab:
                     and os.readlink(f"/proc/{self.holder.pid}/ns/net") != host
                     and Path(f"/proc/{self.holder.pid}/comm").read_text().strip() == "sleep"
                 ):
-                    start = _process_start(self.holder.pid)
+                    start = process_start(self.holder.pid)
                     if start is not None:
                         self.holder_identity = (self.holder.pid, start)
                         return
@@ -313,3 +305,27 @@ class Lab:
             "namespace": self.names.namespace,
             "holder": list(self.holder_identity) if self.holder_identity else None,
         }
+
+
+def release(state: dict, runner: CommandRunner) -> list[str]:
+    """Освобождает пространство по записи о владении (после аварии); возвращает снятые ресурсы."""
+    released = []
+    if state.get("mode") == "netns" and state.get("namespace"):
+        name = state["namespace"]
+        if not name.startswith("polmon") or not name.endswith("n"):
+            raise VMError("vm.state_invalid")
+        runner.run(["ip", "netns", "del", name], privileged=True, check=False)
+        released.append(f"netns:{name}")
+    elif state.get("mode") == "userns" and state.get("holder"):
+        holder = state["holder"]
+        if alive(holder):
+            target = os.readlink(f"/proc/{holder[0]}/ns/net")
+            for entry in Path("/proc").iterdir():
+                if not entry.name.isdigit() or int(entry.name) == holder[0]:
+                    continue
+                with contextlib.suppress(OSError):
+                    if os.readlink(entry / "ns" / "net") == target:
+                        os.kill(int(entry.name), signal.SIGKILL)
+            terminate(holder, grace=1)
+            released.append(f"userns:{holder[0]}")
+    return released
