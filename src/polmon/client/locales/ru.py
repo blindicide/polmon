@@ -1149,8 +1149,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.session_unknown": "Консольный сеанс не найден.",
     "backend.console.vnc_unavailable": "Не удалось запустить графический экран; повторите попытку.",
     "backend.console.vnc_memory": (
-        "Недостаточно свободной памяти для графического экрана "
-        "(нужно {required_mb} МиБ)."
+        "Недостаточно свободной памяти для графического экрана " "(нужно {required_mb} МиБ)."
     ),
     "backend.console.session_limit": "Слишком много сеансов консоли (лимит {limit}).",
     "backend.console.node_session_limit": "Слишком много сеансов на этой машине (лимит {limit}).",
@@ -1425,6 +1424,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.qmp_timeout": "Управляющий канал QEMU не ответил вовремя.",
     "backend.vm.service_limit": "Превышено число служб гостя.",
     "backend.vm.service_unsupported": "Тип службы не поддерживается.",
+    "backend.vm.cleanup_failed": "Очистка ВМ не завершена. Журнал восстановления сохранён.",
     "backend.vm.state_invalid": "Журнал состояния запуска повреждён.",
     "backend.vm.use_addon_limits": "Запрошенные ресурсы выходят за пределы, заданные дополнением.",
     "backend.vm.userns_unavailable": "Непривилегированные пространства имён недоступны на этом "

@@ -1084,8 +1084,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.session_unknown": "The console session was not found.",
     "backend.console.vnc_unavailable": "The VNC display could not be started; try again.",
     "backend.console.vnc_memory": (
-        "Not enough free memory for the VNC display "
-        "({required_mb} MiB needed)."
+        "Not enough free memory for the VNC display " "({required_mb} MiB needed)."
     ),
     "backend.console.session_limit": "Too many open console sessions (limit {limit}); close one.",
     "backend.console.node_session_limit": "Too many sessions on this machine (limit {limit}).",
@@ -1349,6 +1348,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.qmp_timeout": "The QEMU control channel did not answer in time.",
     "backend.vm.service_limit": "The guest service count limit was exceeded.",
     "backend.vm.service_unsupported": "The service type is not supported.",
+    "backend.vm.cleanup_failed": "VM cleanup failed. The recovery journal was retained.",
     "backend.vm.state_invalid": "The run state journal is invalid.",
     "backend.vm.use_addon_limits": "The requested resources exceed the limits set by the add-on.",
     "backend.vm.userns_unavailable": "Unprivileged user namespaces are not available on this host.",
