@@ -14,6 +14,9 @@ on:
         default: ""
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   build-linux:
     runs-on: ubuntu-22.04
@@ -45,6 +48,7 @@ jobs:
           version="$(python -c 'from polmon.version import __version__; print(__version__)')"
           name="polmon-$version-linux-x64"
           epoch="$(git log -1 --format=%ct)"
+          python scripts/fetch-vm-image.py
           pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec \
             2>&1 | tee linux-pyinstaller-build.txt
           QT_QPA_PLATFORM=offscreen python -m polmon.client.icon dist/polmon.png
@@ -69,6 +73,8 @@ jobs:
           client="$scratch/polmon-$version-linux-x64/polmon-client"
           test ! -e "$scratch/polmon-$version-linux-x64/polmon-backend"
           env -i PATH=/usr/bin:/bin HOME="$scratch" LANG=C.UTF-8 "$client" \
+            --run-vm bundle-check | tee linux-vm-bundle.json
+          env -i PATH=/usr/bin:/bin HOME="$scratch" LANG=C.UTF-8 "$client" \
             --polmon-run-embedded-backend --diagnostics > linux-embedded-diagnostics.json
           env -i PATH=/usr/bin:/bin HOME="$scratch" LANG=C.UTF-8 "$client" \
             --local-backend-self-test | tee linux-local-backend.txt
@@ -83,6 +89,7 @@ jobs:
             apt-get update -qq
             apt-get install -y -qq /packages/polmon-client_*.deb
             export QT_QPA_PLATFORM=offscreen
+            polmon-client --run-vm bundle-check
             polmon-client --self-test
             polmon-client --local-backend-self-test
             mkdir -p /home/operator/polmon-data /home/operator/.config/polmon
@@ -98,6 +105,7 @@ jobs:
           docker run --rm -v "$PWD/dist:/packages:ro" fedora:44 bash -euc '
             dnf -y -q install /packages/polmon-client-*.rpm
             export QT_QPA_PLATFORM=offscreen
+            polmon-client --run-vm bundle-check
             polmon-client --self-test
             polmon-client --local-backend-self-test
             mkdir -p /home/operator/polmon-data /home/operator/.config/polmon
@@ -131,6 +139,7 @@ jobs:
             rpm-contents.txt
             deb-install-evidence.txt
             rpm-install-evidence.txt
+            linux-vm-bundle.json
             linux-embedded-diagnostics.json
             linux-local-backend.txt
             linux-client-selftest.txt
@@ -155,6 +164,7 @@ jobs:
           tarball="$(ls polmon-[0-9]*-linux-x64.tar.gz)"
           tar -xzf "$tarball"
           client="./$(basename "$tarball" .tar.gz)/polmon-client"
+          "$client" --run-vm bundle-check
           "$client" --polmon-run-embedded-backend --diagnostics
           "$client" --local-backend-self-test
           for file in *.deb *.rpm; do
