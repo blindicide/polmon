@@ -10,7 +10,7 @@ from polmon_l1_vm import backend as module
 from polmon_l1_vm.backend import VMBackend, VMLimits, readiness
 from polmon_l1_vm.cli import main
 from polmon_l1_vm.images import ImageManifest, OverlayStore, VMError, verify_image
-from polmon_l1_vm.seed import seed_documents
+from polmon_l1_vm.seed import SEED_VOLUME_ID, create_seed, seed_documents
 
 from polmon.backends.namespace.runner import CommandResult, CommandRunner
 from polmon.topology import load_topology
@@ -58,7 +58,6 @@ def test_model_limits_and_namespace_semantics(tmp_path):
 def test_scaffold_refuses_runtime_even_on_capable_host(tmp_path, monkeypatch):
     from polmon_l1_vm.images import acquire_image
     from polmon_l1_vm.recovery import recover
-    from polmon_l1_vm.seed import create_seed
 
     runner = FakeRunner()
     vm = backend(tmp_path, runner=runner)
@@ -77,7 +76,6 @@ def test_scaffold_refuses_runtime_even_on_capable_host(tmp_path, monkeypatch):
         lambda: vm.probe_http("192.168.236.20", 8080, "server"),
         lambda: acquire_image(tmp_path / "image", manifest()),
         lambda: recover(vm.directory, runner),
-        lambda: create_seed(vm.directory, topology.nodes[0], topology, runner),
     ]
     for action in actions:
         with pytest.raises(VMError, match="vm.scaffold_only"):
@@ -173,3 +171,43 @@ def test_cli_runtime_refuses_before_reading_operator_files(tmp_path, capsys):
         assert main([operation, "--image", str(tmp_path / "absent")]) == 2
         assert json.loads(capsys.readouterr().err)["error_code"] == "vm.scaffold_only"
     assert not list(tmp_path.iterdir())
+
+
+def test_seed_iso_is_created_with_nocloud_label_and_documents(tmp_path):
+    if not shutil.which("genisoimage") or not shutil.which("isoinfo"):
+        pytest.skip("NOT RUN — environment unavailable: genisoimage/isoinfo")
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    path = create_seed(tmp_path, node, topology, CommandRunner())
+    assert path == tmp_path / f"{node.id}-seed.iso"
+    # Метка тома — позиция 0x8028 первичного дескриптора ISO 9660.
+    assert path.read_bytes()[0x8028:0x8048].decode().strip() == SEED_VOLUME_ID
+    runner = CommandRunner()
+    listing = runner.run(["isoinfo", "-R", "-l", "-i", str(path)]).stdout
+    for name in ("meta-data", "user-data", "network-config"):
+        assert name in listing
+    user_data = runner.run(["isoinfo", "-R", "-x", "/user-data", "-i", str(path)]).stdout
+    assert user_data == seed_documents(node, topology)["user-data"]
+    # Рабочий каталог удалён, остался только образ.
+    assert [item.name for item in tmp_path.iterdir()] == [path.name]
+
+
+def test_seed_refuses_existing_file_and_cleans_up_on_failure(tmp_path):
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    (tmp_path / f"{node.id}-seed.iso").write_bytes(b"operator-file")
+    with pytest.raises(FileExistsError):
+        create_seed(tmp_path, node, topology, FakeRunner())
+    assert (tmp_path / f"{node.id}-seed.iso").read_bytes() == b"operator-file"
+
+    class Failing(FakeRunner):
+        def run(self, argv, **kwargs):
+            raise RuntimeError("genisoimage failed")
+
+    (tmp_path / f"{node.id}-seed.iso").unlink()
+    with pytest.raises(RuntimeError):
+        create_seed(tmp_path, node, topology, Failing())
+    assert not list(tmp_path.iterdir())
+    node.id = "Bad_ID"
+    with pytest.raises(VMError, match="vm.node_id"):
+        create_seed(tmp_path, node, topology, FakeRunner())
