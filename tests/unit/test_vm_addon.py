@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 from polmon_l1_vm import backend as module
 from polmon_l1_vm import images
 from polmon_l1_vm.backend import VMBackend, VMLimits, readiness
@@ -117,6 +118,21 @@ def test_generated_seed_addresses_identity_and_no_egress():
     assert "gateway" not in first["network-config"] and "dns" not in first["network-config"]
     assert "package_update: false" in first["user-data"]
     assert "http.server" in second["user-data"]
+
+
+def test_peer_report_is_opt_in_and_names_only_declared_peers():
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    assert "polmon-peers" not in seed_documents(node, topology)["user-data"]
+    documents = seed_documents(node, topology, peer_report=True)
+    user_data = yaml.safe_load(documents["user-data"])
+    assert [item["path"] for item in user_data["write_files"]][1:] == [
+        "/usr/local/bin/polmon-peers.py"
+    ]
+    other = topology.nodes[1]
+    command = user_data["runcmd"][-1][-1]
+    assert other.id in command and str(other.uuid) in command and str(node.uuid) not in command
+    compile(user_data["write_files"][1]["content"], "polmon-peers.py", "exec")
 
 
 def test_clone_and_network_plans_keep_distinct_identities(tmp_path):
