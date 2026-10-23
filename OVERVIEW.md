@@ -97,4 +97,5 @@ From a checkout: `.venv/bin/python -m polmon.client` for the GUI. For the VM pag
 - Every user-facing string goes through the catalogs; the i18n audit fails on hard-coded text.
 - Do not run `ruff format` over the whole tree; it is not format-clean and would rewrite unrelated files.
 - GUI tests open real windows unless `DISPLAY` is unset; run them with `QT_QPA_PLATFORM=offscreen`.
-- The VM `netns` mode is implemented but not verified on real hardware; `userns` is.
+- Both VM network modes are implemented but real guest acceptance is NOT RUN here.
+  Neither source tests nor bundle/image checks establish VM security acceptance.

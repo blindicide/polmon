@@ -110,10 +110,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
 [docs/LOGS.md](docs/LOGS.md), and [SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
 the repository owner makes an explicit licensing decision.
 
-An experimental [optional VM-backed L1 scaffold](addons/l1-vm/README.md) is available
-as a separate package. It provides read-only plans and explicit runtime refusals.
-Real VM boot, networking, clone isolation and cleanup are NOT RUN; consult the
-[Phase VI handoff](HANDOFF-PHASE-VI-ASTRA.md) for evidence and remaining acceptance.
+An experimental [optional VM-backed L1 runtime](addons/l1-vm/README.md) provides separate
+Linux QEMU/KVM jobs through the API and desktop VM page. Linux client bundles include the
+addon and pinned read-only image; Windows requires a remote Linux lab for these jobs.
+Real guest boot, networking, clone isolation and cleanup acceptance are NOT RUN here.
+See [SECURITY.md](SECURITY.md) for the evidence boundary; the Phase VI handoff describes
+the earlier scaffold candidate, not current runtime acceptance.
 
 ## Русский
 
@@ -239,8 +241,9 @@ l0|l1|target|summarize`. Лимиты, методика и сохранённы�
 [docs/LOGS.md](docs/LOGS.md) и [SECURITY.md](SECURITY.md) (на английском). Лицензия не
 предоставлена; файл лицензии появится только после явного решения владельца репозитория.
 
-Экспериментальный [необязательный L1-каркас с виртуальными машинами](addons/l1-vm/README.md)
-доступен как отдельный пакет. Он предоставляет планы только для чтения и явно отказывает
-в выполнении операций. Реальный запуск гостевой ВМ, настройка сети, изоляция клонов и очистка
-**не выполнялись и не проверялись**; свидетельства и оставшиеся критерии приёмки см. в
-[передаче результатов фазы VI](HANDOFF-PHASE-VI-ASTRA.md).
+Экспериментальный [необязательный L1-модуль ВМ](addons/l1-vm/README.md) реализует
+отдельные задания QEMU/KVM в Linux через API и страницу клиента. Сборки Linux включают
+модуль и закреплённый образ только для чтения; Windows требуется удалённая лаборатория Linux.
+Реальный запуск гостя, сеть, изоляция клонов и очистка в этой среде **не проверялись**.
+Границы свидетельств описаны в [SECURITY.md](SECURITY.md); передача результатов фазы VI
+относится к предыдущему кандидату с каркасом.

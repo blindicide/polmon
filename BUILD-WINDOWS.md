@@ -1,7 +1,7 @@
 # Windows build
 
 GitHub Actions is the authoritative Windows build environment. Dispatch **Build Windows** on
-the Phase VI branch to build and test a one-file client and a portable one-folder client. Both
+the intended release branch to build and test a one-file client and a portable one-folder client. Both
 client executables embed the L0 backend, SQLite, and the Qt runtime. Neither distribution ships
 `polmon-backend.exe` or needs a Python installation.
 
@@ -35,4 +35,6 @@ dist\polmon-<version>-windows-x64-portable\polmon-client.exe --local-backend-sel
 ```
 
 A missing Qt platform plugin causes `--self-test` to fail with the inspected plugin directory.
-The produced files have not been published as a Phase VI release.
+For the 0.7.0rc2 candidate, the VM page can address a remote Linux lab; Windows does not
+bundle the Linux addon or guest image. Publication and acceptance require the exact tag
+run, including fresh-runner checks and post-publication verification (see RELEASE.md).

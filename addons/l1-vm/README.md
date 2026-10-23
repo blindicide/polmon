@@ -1,31 +1,37 @@
 # Optional VM-backed L1 addon
 
-Runs L1 nodes as real QEMU/KVM guests instead of network namespaces. Core POLMON
+Experimental implementation of L1 nodes as QEMU/KVM guests instead of namespaces. Core POLMON
 stays namespace-backed; local clients stay L0-only; L2 is still refused. The addon is
 a separate package (`polmon-l1-vm`) and the core backend never imports it: it runs
 the addon's CLI as a subprocess job (see [docs/API.md](../../docs/API.md), `/v1/vm`).
 
-## What works
+## Implemented scope (real guest acceptance NOT RUN)
 
 - Two Alpine guests on an isolated network, no route out, no NAT, no host shares.
 - Per-guest QCOW2 overlays over a verified read-only base; the base is never written.
 - Unprivileged QEMU with `-sandbox`, KVM only, bounded CPU, memory, logs and time.
 - Service probes against both guests, then measurements: host CPU time, RSS, I/O,
   TAP bytes and packets, overlay allocation, boot time.
-- Teardown on success, failure, cancellation and crash recovery; the lab is always
-  destroyed at the end of a run.
+- Teardown paths for success, failure and cancellation; identity-checked recovery refuses
+  ambiguous ownership and preserves failed cleanup journals. Legacy journals require inspection.
 - Two lab modes:
-  - `userns` — rootless, no sudo. Verified end to end with two real guests on KVM.
+  - `userns` — rootless, no sudo. Real guest acceptance NOT RUN here.
   - `netns` — named network namespace through passwordless `sudo -n`; QEMU drops to the
     owner uid. Implemented, **not integration-verified** (needs `sudo -v` and
     `POLMON_VM_TEST_IMAGE=<image> scripts/vm-tests.sh netns`).
+
+Real guest boot, service networking, guest-written clone isolation, costs and failure cleanup
+are NOT RUN for this candidate. The release executor lacks `/dev/kvm`, QEMU system emulator
+and ISO tools, and denies user namespace creation. Unit/storage/bundle checks do not establish
+VM functionality or security acceptance; both network modes need independent real guest evidence.
 
 ## Image
 
 The pinned Alpine 3.24.1 cloud image (`examples/vm/alpine-3.24.1-manifest.json`) ships
 with the program. In a checkout it lives in `packaging/vm-image/` (git-ignored, about
-175 MB); `scripts/fetch-vm-image.py` puts it there and checks the SHA-256. The packaged
-backend includes it. If the bundled file is absent the addon falls back to a copy in the
+175 MB); `scripts/fetch-vm-image.py` puts it there and checks the SHA-256. The frozen Linux
+client includes it and the addon; Windows and Python wheels do not. If the bundled file is
+absent the addon falls back to a copy in the
 backend data directory.
 
 ## Host requirements
