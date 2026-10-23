@@ -11,13 +11,25 @@ from polmon_l1_vm.images import VMError
 MAX_BYTES = 65_536
 
 
+def _connect(path: str, timeout: float) -> socket.socket:
+    family = getattr(socket, "AF_UNIX", None)
+    if family is None:
+        raise OSError("Unix sockets are unavailable")
+    stream = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        stream.settimeout(timeout)
+        stream.connect(path)
+    except OSError:
+        stream.close()
+        raise
+    return stream
+
+
 def command(path: str, name: str, *, timeout: float = 3.0) -> dict:
     deadline = time.monotonic() + timeout
     received = 0
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
-            stream.settimeout(timeout)
-            stream.connect(path)
+        with _connect(path, timeout) as stream:
             reader = stream.makefile("rb")
 
             def message() -> dict:

@@ -65,7 +65,7 @@ def _socket_dir(state: dict) -> Path | None:
         return None
     path = Path(value)
     if (
-        path.parent != Path(tempfile.gettempdir()).resolve()
+        path.parent.resolve() != Path(tempfile.gettempdir()).resolve()
         or not path.name.startswith(SOCKET_PREFIX)
         or path.is_symlink()
         or not state.get("socket_identity")
