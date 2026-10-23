@@ -73,6 +73,15 @@ class VMRequest(StrictModel):
     mode: Literal["userns", "netns"] = "userns"
 
 
+def bundled_image() -> Path:
+    """Образ, который поставляется вместе с программой (в сборке — рядом с исполняемым файлом)."""
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "vm"
+    else:
+        base = Path(__file__).resolve().parents[3] / "packaging/vm-image"
+    return base / IMAGE_NAME
+
+
 def addon_source() -> Path | None:
     """Исходники дополнения в рабочей копии репозитория (в установленной системе их нет)."""
     candidate = Path(__file__).resolve().parents[3] / "addons/l1-vm/src"
@@ -85,7 +94,7 @@ def addon_importable() -> bool:
 
 def addon_available() -> bool:
     """Дополнение можно запустить: Linux, обычная установка и найденный пакет."""
-    if sys.platform != "linux" or getattr(sys, "frozen", False):
+    if sys.platform != "linux":
         return False
     return addon_importable() or addon_source() is not None
 
@@ -100,6 +109,8 @@ def addon_environment() -> dict[str, str]:
 
 
 def addon_command(*arguments: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--run-vm", *arguments]
     return [sys.executable, "-m", "polmon_l1_vm.cli", *arguments]
 
 
@@ -197,8 +208,10 @@ class VMJobs:
         command: Callable[..., list[str]] = addon_command,
         environment: Callable[[], dict[str, str]] = addon_environment,
         available: Callable[[], bool] | None = None,
+        bundled: Callable[[], Path] = bundled_image,
     ) -> None:
         self.directory = directory
+        self._bundled = bundled
         self._launcher = launcher
         self._command = command
         self._environment = environment
@@ -214,6 +227,10 @@ class VMJobs:
 
     @property
     def image_path(self) -> Path:
+        """Образ из состава программы; если его нет — копия в каталоге данных."""
+        bundled = self._bundled()
+        if bundled.is_file():
+            return bundled
         return self.directory / "image" / IMAGE_NAME
 
     # -- состояние ----------------------------------------------------------------------------
@@ -232,6 +249,7 @@ class VMJobs:
                 "as_root": os.geteuid() == 0,
                 "image": {
                     "present": present,
+                    "bundled": present and self.image_path == self._bundled(),
                     "name": IMAGE_NAME,
                     "size_bytes": self.image_path.stat().st_size if present else None,
                     "sha256": MANIFEST["sha256"],
@@ -345,7 +363,7 @@ class VMJobs:
 
     def _prepare(self) -> None:
         """Каталоги и закреплённые файлы задания; доступ только владельцу."""
-        for path in (self.directory, self.image_path.parent, self.directory / "runs"):
+        for path in (self.directory, self.directory / "image", self.directory / "runs"):
             path.mkdir(parents=True, exist_ok=True)
             path.chmod(0o700)
         (self.directory / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")

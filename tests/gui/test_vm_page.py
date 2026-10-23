@@ -43,6 +43,7 @@ def install_fake(backend, tmp_path, behavior: str = "ok", image: bool = True) ->
         command=lambda *arguments: [sys.executable, str(script), *arguments],
         environment=lambda: {**os.environ, "FAKE": behavior},
         available=lambda: True,
+        bundled=lambda: tmp_path / "no-bundled-image",
     )
     if image:
         jobs.image_path.parent.mkdir(parents=True)

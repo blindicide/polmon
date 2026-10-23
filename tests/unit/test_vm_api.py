@@ -57,6 +57,7 @@ def fake(tmp_path):
             command=lambda *arguments: [sys.executable, str(script), *arguments],
             environment=lambda: {**os.environ, **state},
             available=lambda: True,
+            bundled=lambda: tmp_path / "no-bundled-image",
             **options,
         )
 
