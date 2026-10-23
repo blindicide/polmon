@@ -35,6 +35,6 @@ dist\polmon-<version>-windows-x64-portable\polmon-client.exe --local-backend-sel
 ```
 
 A missing Qt platform plugin causes `--self-test` to fail with the inspected plugin directory.
-For the 0.7.0rc2 candidate, the VM page can address a remote Linux lab; Windows does not
+For the 0.7.0rc3 candidate, the VM page can address a remote Linux lab; Windows does not
 bundle the Linux addon or guest image. Publication and acceptance require the exact tag
 run, including fresh-runner checks and post-publication verification (see RELEASE.md).
