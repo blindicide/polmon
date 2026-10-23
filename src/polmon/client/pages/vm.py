@@ -112,17 +112,6 @@ class VMPage(Page):
         self.image_detail.setObjectName("vmImageDetail")
         self.image_detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         image.add(self.image_detail)
-        image_buttons = QHBoxLayout()
-        self.acquire_button = primary_button(
-            "vm.acquire", tip="vm.acquire.tip", name="acquireVMImage"
-        )
-        self.verify_button = button("vm.verify", tip="vm.verify.tip", name="verifyVMImage")
-        self.acquire_button.clicked.connect(lambda: self.start("acquire"))
-        self.verify_button.clicked.connect(lambda: self.start("verify"))
-        image_buttons.addWidget(self.acquire_button)
-        image_buttons.addWidget(self.verify_button)
-        image_buttons.addStretch(1)
-        image.body.addLayout(image_buttons)
         image.body.addStretch(1)
         top.addWidget(image, 4)
 
@@ -543,8 +532,6 @@ class VMPage(Page):
         usable = self.usable
         present = self._image_present()
         self.refresh_button.setEnabled(connected)
-        self.acquire_button.setEnabled(idle and usable and not present)
-        self.verify_button.setEnabled(idle and usable and present)
         self.run_button.setEnabled(
             idle and usable and present and self._mode_ready(self.mode.currentData())
         )

@@ -24,3 +24,6 @@ RESUME-*.md
 RUN-ACCOUNTING.md
 MANDATE-*.md
 SUPERVISOR-*.md
+
+# Образ гостя ВМ: скачивается scripts/fetch-vm-image.py при сборке.
+packaging/vm-image/
