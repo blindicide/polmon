@@ -4,6 +4,25 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- **L1 virtual machines.** The `polmon-l1-vm` addon now boots two real Alpine guests on
+  QEMU/KVM in an isolated network, probes their services, measures them and destroys the lab.
+  Rootless (`userns`) and `sudo -n` (`netns`) modes; the `netns` mode is not yet
+  integration-verified.
+- `/v1/vm/*` API: status, readiness, jobs (acquire, verify, run), cancel and recover. Jobs run
+  the addon CLI as a subprocess; the backend never imports the addon. Advertised through
+  `capabilities.vm`, independent of the fidelity boundary, so the local L0-only backend serves it.
+- Desktop client page for L1 virtual machines: host readiness, image state, run and cancel,
+  per-guest measurements and job history.
+- The guest image ships with the program (`packaging/vm-image/`, fetched by
+  `scripts/fetch-vm-image.py`); the packaged backend includes the addon and the image.
+
+### Changed
+
+- The addon README no longer describes a scaffold.
+- VM jobs are refused when the backend runs as root (`vm.running_as_root`).
+
 ## [0.7.0rc1] - 2026-10-22
 
 Intermediate prerelease `v0.7.0-rc.1`. Local clients remain L0-only; namespace L1

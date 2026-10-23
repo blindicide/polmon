@@ -31,6 +31,15 @@ implementation backlog was found. The completed L0 large run will not be repeate
    bounded sampling/export and exact remaining integration gaps. Preserve raw gate
    logs. Commit only coherent code with passing applicable local gates.
 
+## Status update: VM runtime implemented
+
+The scaffold-only state described below is historical. The addon now boots two real Alpine
+guests on KVM in rootless (`userns`) mode and the integration test passes; the `netns` mode
+is implemented but not integration-verified. Core exposes `/v1/vm/*`, the client has a
+Virtual machines page, and the guest image ships with the program. See
+[the addon README](../addons/l1-vm/README.md). Still open: `netns` verification, attaching
+guests to L0/namespace nodes, scenarios and SSH/VNC to guests, guest-side metrics.
+
 ## Host and scope decisions
 
 Rechecked: `qemu-img` and `qemu-io` exist; `qemu-system-x86_64`, `/dev/kvm`, and

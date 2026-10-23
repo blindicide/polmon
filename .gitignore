@@ -27,3 +27,7 @@ SUPERVISOR-*.md
 
 # Образ гостя ВМ: скачивается scripts/fetch-vm-image.py при сборке.
 packaging/vm-image/
+
+# Instruction files for assistants: never repository content.
+CLAUDE.md
+AGENTS.md

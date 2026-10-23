@@ -95,6 +95,7 @@ retries every 5 s and disables actions until it is back). An older backend conne
 | Logs (Ctrl+7) | Detailed structured backend records separate from telemetry. Filter by minimum level, source, deployment, node id/name/UUID and text; follow new records; inspect full JSON, copy a row, inspect on-disk file paths/sizes, and export the bounded selection. |
 | Reports (Ctrl+8) | Experiments on the backend (including those of earlier backend runs). Overall status, expected versus actual conditions, observations, errors, resource statistics, the Markdown report and the raw JSON; save as JSON or Markdown. |
 | Benchmarks | Run a bounded benchmark job on the backend host with explicit limits (checked against the backend's own limits; one job at a time, never during an experiment), follow its progress, cancel it, and inspect retained results. |
+| Virtual machines | Check that the host can run KVM guests, see whether the bundled image is present, choose the lab mode (rootless, or through passwordless sudo when the host confirms it), start or cancel a two-guest lab, and read per-guest probe results, CPU time, memory, disk and traffic. The page never runs as root and needs the backend's `capabilities.vm`; it works with the local backend on Linux. |
 
 Long operations run in the background: the status bar shows what is running with percent, step,
 elapsed time, ETA and a Cancel button, and the window stays responsive. When an experiment or a
