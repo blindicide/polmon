@@ -246,7 +246,7 @@ class VMJobs:
             running = self.running()
             return {
                 "available": self.available,
-                "as_root": os.geteuid() == 0,
+                "as_root": getattr(os, "geteuid", lambda: -1)() == 0,
                 "image": {
                     "present": present,
                     "bundled": present and self.image_path == self._bundled(),
@@ -285,7 +285,7 @@ class VMJobs:
             return {**base, "missing": ["vm.readiness_failed"]}
         report = {key: document[key] for key in READINESS_FIELDS if key in document}
         result = {**base, **report}
-        if os.geteuid() == 0:
+        if getattr(os, "geteuid", lambda: -1)() == 0:
             # Гость обязан работать от имени обычного пользователя, а не root.
             missing = result.get("missing")
             known = list(missing) if isinstance(missing, list) else []
@@ -304,7 +304,7 @@ class VMJobs:
                 "the VM runtime add-on is not available on this backend",
                 message_code="vm.addon_missing",
             )
-        if os.geteuid() == 0:
+        if getattr(os, "geteuid", lambda: -1)() == 0:
             raise ConfigurationError(
                 "VM jobs must not run as root: guests would run with root privileges",
                 message_code="vm.running_as_root",
