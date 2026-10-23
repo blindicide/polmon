@@ -33,19 +33,15 @@ def seed_documents(node: Node, topology: Topology) -> dict[str, str]:
                 ],
             }
         )
-    # Alpine's BusyBox HTTP server needs no guest package acquisition or credentials.
+    # В BusyBox образа Alpine нет апплета httpd, а пакеты в гость не скачиваются:
+    # используется python3 из базового образа (он нужен самому cloud-init).
     commands = []
     for service in node.services:
-        commands.append(
-            [
-                "busybox",
-                "httpd",
-                "-p",
-                f"{node.interfaces[0].ipv4}:{service.port}",
-                "-h",
-                "/var/www/polmon",
-            ]
+        server = (
+            f"setsid python3 -m http.server {service.port} --bind {node.interfaces[0].ipv4}"
+            " --directory /var/www/polmon </dev/null >/dev/null 2>&1 &"
         )
+        commands.append(["sh", "-c", server])
     user = {
         "hostname": node.id,
         "manage_etc_hosts": True,

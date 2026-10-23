@@ -94,7 +94,7 @@ def test_generated_seed_addresses_identity_and_no_egress():
     assert "192.168.236.10/24" in first["network-config"]
     assert "gateway" not in first["network-config"] and "dns" not in first["network-config"]
     assert "package_update: false" in first["user-data"]
-    assert "busybox" in second["user-data"]
+    assert "http.server" in second["user-data"]
 
 
 def test_clone_and_network_plans_keep_distinct_identities(tmp_path):
