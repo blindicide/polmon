@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from polmon.api.benchmarks import RESULT_NAME, BenchmarkRequest
 from polmon.api.control import ControlPlane
+from polmon.api.vm import VMRequest
 from polmon.telemetry.store import EXPERIMENT_ID
 from polmon.topology.models import IDENTIFIER
 from polmon.version import __version__
@@ -428,3 +429,39 @@ def benchmark_results(request: Request) -> list[dict[str, object]]:
 @router.get("/benchmarks/results/{name}")
 def benchmark_result(name: ResultName, request: Request) -> dict[str, object]:
     return control(request).benchmarks.result(name)
+
+
+@router.get("/vm/status")
+def vm_status(request: Request) -> dict[str, object]:
+    return control(request).vm.status()
+
+
+@router.get("/vm/readiness")
+def vm_readiness(request: Request) -> dict[str, object]:
+    return control(request).vm.readiness()
+
+
+@router.post("/vm/jobs")
+def start_vm_job(payload: VMRequest, request: Request, response: Response) -> dict[str, object]:
+    response.status_code = 202
+    return control(request).vm.start(payload)
+
+
+@router.get("/vm/jobs")
+def vm_jobs(request: Request) -> list[dict[str, object]]:
+    return control(request).vm.jobs()
+
+
+@router.get("/vm/jobs/{job_id}")
+def vm_job(job_id: JobId, request: Request) -> dict[str, object]:
+    return control(request).vm.job(job_id)
+
+
+@router.post("/vm/jobs/{job_id}/cancel")
+def cancel_vm_job(job_id: JobId, request: Request) -> dict[str, object]:
+    return control(request).vm.cancel(job_id)
+
+
+@router.post("/vm/recover")
+def recover_vm(request: Request) -> dict[str, object]:
+    return control(request).vm.recover()

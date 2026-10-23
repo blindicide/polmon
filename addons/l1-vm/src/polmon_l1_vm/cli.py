@@ -34,8 +34,6 @@ def _run(args: argparse.Namespace) -> dict:
         directory=args.directory,
         mode=args.mode,
     )
-    # SIGTERM должен проходить через блок finally, иначе остались бы гости и пространство.
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     started = time.monotonic()
     try:
         vm.create(topology)
@@ -80,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
         "--hold-seconds", type=int, default=0, choices=range(MAX_HOLD_SECONDS + 1), metavar="N"
     )
     args = parser.parse_args(argv)
+    # SIGTERM проходит через блоки finally: иначе остались бы гости, пространство, частичный образ.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
         if args.action == "readiness":
             result = readiness()
