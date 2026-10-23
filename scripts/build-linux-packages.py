@@ -36,6 +36,9 @@ All rights reserved. Redistribution requires permission from the owner.
 The frozen client includes PySide6 Essentials, shiboken6 and Qt libraries,
 which carry their own third-party license terms (including LGPLv3).
 See the upstream packages' notices and the bundled library metadata.
+The bundled Alpine Linux cloud image and its components retain their own licenses.
+Image provenance and source/package notices: https://alpinelinux.org/cloud/
+Corresponding Alpine package sources: https://gitlab.alpinelinux.org/alpine/aports
 This statement does not grant a license to POLMON itself.
 """
 DESKTOP = """[Desktop Entry]
@@ -75,8 +78,9 @@ def stage(bundle: Path, root: Path, epoch: int, icon: Path) -> None:
         raise SystemExit("bundle lacks polmon-client")
     if any(path.name.startswith("polmon-backend") for path in files.rglob("*")):
         raise SystemExit("bundle contains a separate backend executable")
-    if not any(path.name.startswith("_sqlite3") and path.suffix == ".so"
-               for path in files.rglob("*")):
+    if not any(
+        path.name.startswith("_sqlite3") and path.suffix == ".so" for path in files.rglob("*")
+    ):
         raise SystemExit("bundle lacks the embedded _sqlite3 extension")
     (root / "usr/bin").mkdir(parents=True)
     (root / "usr/bin/polmon-client").symlink_to("/opt/polmon/polmon-client")
@@ -95,7 +99,10 @@ def stage(bundle: Path, root: Path, epoch: int, icon: Path) -> None:
         if path.is_dir():
             path.chmod(0o755)
         else:
-            path.chmod(0o755 if path.stat().st_mode & 0o111 else 0o644)
+            if path.parent == files / "_internal/vm" and path.suffix == ".qcow2":
+                path.chmod(0o444)
+            else:
+                path.chmod(0o755 if path.stat().st_mode & 0o111 else 0o644)
     touch_tree(root, epoch)
 
 
@@ -116,13 +123,19 @@ def make_deb(root: Path, output: Path, version: str, arch: str, epoch: int) -> P
     touch_tree(root, epoch)
     package = output / f"polmon-client_{version}_{arch}.deb"
     env = {**os.environ, "SOURCE_DATE_EPOCH": str(epoch)}
-    run("dpkg-deb", "--build", "--root-owner-group", "--uniform-compression",
-        str(root), str(package), env=env)
+    run(
+        "dpkg-deb",
+        "--build",
+        "--root-owner-group",
+        "--uniform-compression",
+        str(root),
+        str(package),
+        env=env,
+    )
     return package
 
 
-def make_rpm(root: Path, output: Path, version: str, arch: str, epoch: int,
-             work: Path) -> Path:
+def make_rpm(root: Path, output: Path, version: str, arch: str, epoch: int, work: Path) -> Path:
     top = work / "rpm"
     for name in ("BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"):
         (top / name).mkdir(parents=True)
@@ -133,6 +146,7 @@ def make_rpm(root: Path, output: Path, version: str, arch: str, epoch: int,
         if child.name != "DEBIAN":
             shutil.copytree(child, payload / "root" / child.name, symlinks=True)
     touch_tree(payload, epoch)
+
     def root_owner(info: tarfile.TarInfo) -> tarfile.TarInfo:
         info.uid = info.gid = 0
         info.uname = info.gname = "root"
@@ -181,11 +195,19 @@ cp -a root/. %{{buildroot}}/
     )
     env = {**os.environ, "SOURCE_DATE_EPOCH": str(epoch)}
     run(
-        "rpmbuild", "-bb", str(spec), "--define", f"_topdir {top}",
-        "--define", "_buildhost reproducible",
-        "--define", "clamp_mtime_to_source_date_epoch 1",
-        "--define", "use_source_date_epoch_as_buildtime 1",
-        "--define", "__os_install_post %{nil}",
+        "rpmbuild",
+        "-bb",
+        str(spec),
+        "--define",
+        f"_topdir {top}",
+        "--define",
+        "_buildhost reproducible",
+        "--define",
+        "clamp_mtime_to_source_date_epoch 1",
+        "--define",
+        "use_source_date_epoch_as_buildtime 1",
+        "--define",
+        "__os_install_post %{nil}",
         env=env,
     )
     built = list((top / "RPMS").rglob("*.rpm"))
@@ -227,17 +249,23 @@ def main() -> None:
         "native_version": native_version(args.version),
         "architectures": {"deb": deb_arch, "rpm": rpm_arch},
         "source_date_epoch": args.epoch,
-        "contents": ["/opt/polmon (single client with embedded L0 and _sqlite3)",
-                     "/usr/bin/polmon-client", "/usr/share/applications/polmon-client.desktop",
-                     "/usr/share/icons/hicolor/256x256/apps/polmon.png",
-                     "/usr/share/doc/polmon/copyright"],
+        "contents": [
+            "/opt/polmon (single client with embedded L0 and _sqlite3)",
+            "/usr/bin/polmon-client",
+            "/usr/share/applications/polmon-client.desktop",
+            "/usr/share/icons/hicolor/256x256/apps/polmon.png",
+            "/usr/share/doc/polmon/copyright",
+        ],
         "dependencies": {"deb": DEB_DEPENDS, "rpm": RPM_REQUIRES},
-        "license": "No license granted for POLMON; bundled PySide6/Qt terms apply separately.",
+        "license": (
+            "No license granted for POLMON; bundled PySide6/Qt and Alpine "
+            "component terms apply separately."
+        ),
         "user_data": (
             "No maintainer scripts; removal leaves home directories, results and settings intact."
         ),
         "platform_limits": "Linux glibc 2.35+; GUI requires X11/Qt xcb libraries. "
-                           "L1/L2 require a separately configured Linux laboratory backend.",
+        "L1/L2 require a separately configured Linux laboratory backend.",
         "packages": [
             {"name": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)}
             for path in packages

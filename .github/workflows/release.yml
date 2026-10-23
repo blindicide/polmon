@@ -210,6 +210,7 @@ jobs:
             grep -q "local-backend GUI probe: PASS" gui-probe.txt
           else
             test ! -e "polmon-${version}-linux-x64/polmon-backend"
+            "$client" --run-vm bundle-check
             env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$client" \
               --polmon-run-embedded-backend --diagnostics > published-embedded-diagnostics.json
             "$client" --local-backend-self-test | tee published-local-backend.txt
