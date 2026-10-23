@@ -103,7 +103,7 @@ def test_readiness_passes_only_known_fields_and_is_refused_for_root(fake, monkey
     report = jobs.readiness()
     assert report["ready"] and report["modes"] == {"userns": True, "netns": False}
     assert "extra" not in report
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     root = jobs.readiness()
     assert not root["ready"] and "vm.running_as_root" in root["missing"]
     assert root["modes"] == {"userns": False, "netns": False}
@@ -209,10 +209,13 @@ def test_http_contract_and_capability(tmp_path, monkeypatch):
     monkeypatch.setattr(vm_module, "addon_available", lambda: False)
     plane = ControlPlane(tmp_path, l0_only=True)
     try:
+        # Windows has no effective uid; unavailable VM endpoints must still answer normally.
+        monkeypatch.delattr(os, "geteuid", raising=False)
         client = TestClient(create_app(plane))
         capabilities = client.get("/v1/resources").json()["capabilities"]
         assert capabilities["fidelity"] == "l0_only" and capabilities["vm"] is False
-        assert client.get("/v1/vm/status").json()["available"] is False
+        status = client.get("/v1/vm/status").json()
+        assert status["available"] is False and status["as_root"] is False
         assert client.get("/v1/vm/readiness").json()["missing"] == ["vm.addon_missing"]
         refused = client.post("/v1/vm/jobs", json={"action": "acquire"})
         assert refused.status_code == 422
