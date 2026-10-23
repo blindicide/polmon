@@ -78,12 +78,22 @@ def test_admission_checks_memory_disk_and_kvm(monkeypatch):
 class QmpServer:
     """Минимальный сервер QMP; сокет в коротком каталоге из-за предела в 108 байт."""
 
-    def __init__(self, script):
+    def __init__(self, script, monkeypatch):
         self.directory = tempfile.mkdtemp(prefix="pmvm-test-")
         self.path = os.path.join(self.directory, "q.sock")
         self.received = []
-        self.listener = socket.socket(socket.AF_UNIX)
-        self.listener.bind(self.path)
+        self.unix = hasattr(socket, "AF_UNIX")
+        self.listener = socket.socket(socket.AF_UNIX if self.unix else socket.AF_INET)
+        self.listener.bind(self.path if self.unix else ("127.0.0.1", 0))
+        if not self.unix:
+            # Only replace the OS connection boundary; run the full QMP protocol
+            # and byte/time bounds over a real stream on Windows as well.
+            def connect(path, timeout):
+                if path != self.path:
+                    raise OSError("unknown fixture socket")
+                return socket.create_connection(self.listener.getsockname(), timeout)
+
+            monkeypatch.setattr(qmp, "_connect", connect)
         self.listener.listen(1)
         self.thread = threading.Thread(target=self._serve, args=(script,), daemon=True)
         self.thread.start()
@@ -97,18 +107,19 @@ class QmpServer:
     def close(self):
         self.thread.join(timeout=3)
         self.listener.close()
-        os.unlink(self.path)
+        if self.unix:
+            os.unlink(self.path)
         os.rmdir(self.directory)
 
 
-def test_qmp_sends_negotiation_then_command_and_returns_result():
+def test_qmp_sends_negotiation_then_command_and_returns_result(monkeypatch):
     def script(connection, reader, received):
         connection.sendall(b'{"QMP": {"version": {}}}\n')
         for reply in (b'{"return": {}}\n', b'{"event": "SHUTDOWN"}\n{"return": {"ok": 1}}\n'):
             received.append(reader.readline())
             connection.sendall(reply)
 
-    server = QmpServer(script)
+    server = QmpServer(script, monkeypatch)
     try:
         assert qmp.command(server.path, "query-status", timeout=3) == {"ok": 1}
     finally:
@@ -119,11 +130,11 @@ def test_qmp_sends_negotiation_then_command_and_returns_result():
     ]
 
 
-def test_qmp_failures_are_bounded_and_coded():
+def test_qmp_failures_are_bounded_and_coded(monkeypatch):
     def flood(connection, reader, received):
         connection.sendall(b"x" * (qmp.MAX_BYTES + 10))
 
-    server = QmpServer(flood)
+    server = QmpServer(flood, monkeypatch)
     try:
         with pytest.raises(VMError, match="vm.qmp_failed"):
             qmp.command(server.path, "quit", timeout=3)
@@ -135,7 +146,7 @@ def test_qmp_failures_are_bounded_and_coded():
         reader.readline()
         connection.sendall(b'{"error": {"class": "GenericError"}}\n')
 
-    server = QmpServer(reject)
+    server = QmpServer(reject, monkeypatch)
     try:
         with pytest.raises(VMError, match="vm.qmp_failed"):
             qmp.command(server.path, "quit", timeout=3)
@@ -145,7 +156,29 @@ def test_qmp_failures_are_bounded_and_coded():
         qmp.command("/nonexistent/q.sock", "quit")
 
 
+def test_qmp_unavailable_socket_family_is_a_coded_error(monkeypatch):
+    monkeypatch.delattr(socket, "AF_UNIX", raising=False)
+    with pytest.raises(VMError, match="vm.qmp_failed"):
+        qmp.command("unavailable.sock", "quit")
+
+
 # -- команда QEMU -------------------------------------------------------------------------
+
+
+def test_recovery_socket_directory_accepts_canonical_temp_alias(tmp_path, monkeypatch):
+    temporary = tmp_path / "canonical"
+    temporary.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(temporary, target_is_directory=True)
+    directory = temporary / "pmvm-owned"
+    directory.mkdir()
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(alias))
+    assert (
+        recovery._socket_dir(
+            {"socket_dir": str(directory), "socket_identity": file_identity(directory)}
+        )
+        == directory
+    )
 
 
 def test_qemu_command_is_kvm_only_isolated_and_per_node(tmp_path):

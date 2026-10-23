@@ -53,9 +53,7 @@ class CommandRunner:
         except subprocess.TimeoutExpired:
             # A hung command must not abort best-effort teardown or turn a probe into a crash.
             if check:
-                raise RuntimeError(
-                    f"command timed out after {timeout:g}s: {command[0]}"
-                ) from None
+                raise RuntimeError(f"command timed out after {timeout:g}s: {command[0]}") from None
             return CommandResult("", f"timed out after {timeout:g}s", TIMEOUT_RETURNCODE)
         if check and completed.returncode != 0:
             raise RuntimeError(
@@ -171,6 +169,16 @@ def stop_process_group(process: subprocess.Popen, grace: float = 2.0) -> None:  
     SIGKILL on ``sudo`` would orphan the command it runs (``sudo`` relays only catchable
     signals), so the group is asked to terminate first and only what remains is killed.
     """
+    if not hasattr(os, "killpg"):
+        # Windows has no POSIX process groups; namespace launchers are Linux-only.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            process.terminate()
+        try:
+            process.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=grace)
+        return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(process.pid, signal.SIGTERM)
     with contextlib.suppress(subprocess.TimeoutExpired):
