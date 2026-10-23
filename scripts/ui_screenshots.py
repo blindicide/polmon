@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import shutil
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -35,7 +36,14 @@ CAPTIONS: dict[str, str] = {}
 
 def oversized_topology(count: int = 300) -> str:
     """A syntactically valid topology larger than the default 250-endpoint admission limit."""
-    lines = ["id: too-big", "networks:", "  - id: lab", "    ipv4_subnet: 10.30.0.0/22", "nodes:"]
+    lines = [
+        "id: too-big",
+        "address_space: rfc1918",
+        "networks:",
+        "  - id: lab",
+        "    ipv4_subnet: 10.30.0.0/22",
+        "nodes:",
+    ]
     for index in range(1, count + 1):
         lines += [
             f"  - id: node-{index}",
@@ -208,9 +216,11 @@ def main() -> int:
         )
 
         window.navigate("topologies")
-        topologies.editor.setPlainText(
-            TOPOLOGY.read_text(encoding="utf-8").replace("10.20.0.0/24", "8.8.8.0/24", 1)
-        )
+        valid_source = TOPOLOGY.read_text(encoding="utf-8")
+        invalid_source = valid_source.replace("192.168.232.0/24", "8.8.8.0/24", 1)
+        if invalid_source == valid_source:
+            raise RuntimeError("example topology subnet changed; cannot render validation error")
+        topologies.editor.setPlainText(invalid_source)
         wait_until(app, lambda: topologies.problems.rowCount() > 0, "validation error")
         grab("validation-error", "Validation errors mapped to the offending YAML line")
 
@@ -255,6 +265,7 @@ def main() -> int:
     finally:
         window.shutdown(wait_ms=3000)
         backend.stop()
+        shutil.rmtree(workdir)
 
     stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     lines = [
