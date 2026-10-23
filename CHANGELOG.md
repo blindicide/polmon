@@ -4,24 +4,35 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0rc2] - 2026-10-23
+
+Experimental prerelease `v0.7.0-rc.2`, core `0.7.0rc2`, optional addon `0.1.0rc2`.
+Ordinary local topology execution remains L0-only on Windows and Linux; namespace L1/hybrid
+requires an authorized Linux lab backend. Separate VM jobs are Linux-only and experimental.
+**Real guest/KVM acceptance: NOT RUN.** The release executor lacks `/dev/kvm`,
+`qemu-system-x86_64` and ISO tools, and denies user namespace creation. Guest boot,
+networking/services, guest-written clone isolation, resource costs and failure cleanup
+are unverified. No VM functional or security acceptance is claimed.
+
 ### Added
 
-- **L1 virtual machines.** The `polmon-l1-vm` addon now boots two real Alpine guests on
-  QEMU/KVM in an isolated network, probes their services, measures them and destroys the lab.
-  Rootless (`userns`) and `sudo -n` (`netns`) modes; the `netns` mode is not yet
-  integration-verified.
-- `/v1/vm/*` API: status, readiness, jobs (acquire, verify, run), cancel and recover. Jobs run
-  the addon CLI as a subprocess; the backend never imports the addon. Advertised through
-  `capabilities.vm`, independent of the fidelity boundary, so the local L0-only backend serves it.
-- Desktop client page for L1 virtual machines: host readiness, image state, run and cancel,
-  per-guest measurements and job history.
-- The guest image ships with the program (`packaging/vm-image/`, fetched by
-  `scripts/fetch-vm-image.py`); the packaged backend includes the addon and the image.
+- Optional QEMU/KVM runtime implementation: isolated userns/netns labs, independent QCOW2
+  overlays, NoCloud seeds, service probes, bounded admission/measurements and recovery.
+- `/v1/vm/*` subprocess jobs and a desktop VM page with readiness, image state, bounded
+  run/cancel controls and history, independent of namespace topology fidelity.
+- Linux client bundles include the addon and pinned, read-only Alpine image; native package
+  and fresh-runner checks verify their presence, digest and frozen dispatch without guest boot.
+  Windows remains L0-only locally and does not bundle the addon or guest image.
 
-### Changed
+### Fixed
 
-- The addon README no longer describes a scaffold.
-- VM jobs are refused when the backend runs as root (`vm.running_as_root`).
+- Recovery validates dead owner and kernel/file identities before destructive operations,
+  refuses host/foreign namespaces and directories, retains failed cleanup journals and leaves
+  unjournaled files intact. Ambiguous legacy VM journals require operator inspection.
+- Frozen addon/probe commands dispatch before Qt instead of treating the executable as Python.
+- Linux packaging collects the actual shipped client graph and preserves read-only image mode.
+- Missing POSIX UID APIs no longer break Windows VM status; subprocess cancellation is portable.
+- VM controls fit the supported window width; native pytest resolves shared test helpers.
 
 ## [0.7.0rc1] - 2026-10-22
 
