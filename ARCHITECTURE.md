@@ -125,9 +125,16 @@ handling into a service that has no UI, and codes are testable identifiers. Two 
 contract: every backend raise site passes a code (`tests/unit/test_error_codes.py`), and every
 code the backend can send has a Russian and an English entry (`scripts/i18n-completeness.py`).
 
-## Optional VM-backed L1 scaffold
+## Optional experimental VM-backed L1 runtime
 
-`addons/l1-vm` is separately packaged, with typed configuration, capability checks
-and read-only clone/network plans aligned with `ExecutionBackend`. Runtime lifecycle,
-image acquisition and recovery explicitly refuse with `vm.scaffold_only`. No core
-VM dispatch or guest integration is implemented. See [addon contracts](addons/l1-vm/README.md).
+`addons/l1-vm` is separately packaged and implements the `ExecutionBackend` lifecycle with
+QEMU/KVM, pinned image verification/acquisition, NoCloud seeds, isolated TAP labs and bounded
+probes. Core `/v1/vm/*` jobs invoke its CLI as a subprocess; the VM page is independent of
+ordinary namespace topology execution. The frozen Linux client dispatches `--run-vm` before
+Qt and includes the addon plus read-only guest image. Windows has no local VM runtime.
+
+Ownership journals record owner PID/start/boot identity and namespace/socket identities;
+recovery refuses ambiguous ownership and retains failed cleanup. Real guest boot, service
+networking, clone isolation and failure cleanup acceptance remain NOT RUN here. Implementation
+and packaging are not VM security acceptance. See [addon contracts](addons/l1-vm/README.md)
+and [SECURITY.md](SECURITY.md).

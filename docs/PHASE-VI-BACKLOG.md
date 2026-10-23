@@ -31,54 +31,29 @@ implementation backlog was found. The completed L0 large run will not be repeate
    bounded sampling/export and exact remaining integration gaps. Preserve raw gate
    logs. Commit only coherent code with passing applicable local gates.
 
-## Status update: VM runtime implemented
+## Current experimental runtime candidate
 
-The scaffold-only state described below is historical. The addon now boots two real Alpine
-guests on KVM in rootless (`userns`) mode and the integration test passes; the `netns` mode
-is implemented but not integration-verified. Core exposes `/v1/vm/*`, the client has a
-Virtual machines page, and the guest image ships with the program. See
-[the addon README](../addons/l1-vm/README.md). Still open: `netns` verification, attaching
-guests to L0/namespace nodes, scenarios and SSH/VNC to guests, guest-side metrics.
+The scaffold-only closeout is historical. The current addon implements QEMU/KVM lifecycle,
+image acquisition, isolated userns/netns networking, probes and recovery; core exposes
+`/v1/vm/*` and the client has a VM page. Linux client bundles include the addon and pinned
+read-only image. See [the addon README](../addons/l1-vm/README.md).
 
-## Host and scope decisions
+Real guest acceptance is **NOT RUN** in this executor: `/dev/kvm`, the QEMU system emulator
+and ISO tools are absent, and user namespace creation is denied. Neither network mode is
+accepted on the basis of source, fake, QCOW storage or packaging checks. Independent guest
+boot, networking, guest-written clone isolation, measured costs and failure cleanup remain
+required for VM functional/security claims. An honestly limited experimental prerelease is
+permitted after runnable local/native gates pass (see RELEASE.md and SECURITY.md).
 
-Rechecked: `qemu-img` and `qemu-io` exist; `qemu-system-x86_64`, `/dev/kvm`, and
-CPU vmx/svm flags are absent. No host install is authorized. Cloud environment
-status tool and policy snapshot are unavailable in this executor. No credentials
-were inspected. Existing unrelated Claude sessions have different working trees;
-the POLMON pane is the active Codex harness, not the fulfilled old Claude draft.
+Still open: real guest acceptance in both modes, mixed L0/namespace attachment, scenarios,
+SSH/VNC to guests, guest-side metrics and persistent VM time series. Resource history for
+namespace deployments remains separate from addon VM measurements.
 
-The addon is a full OS VM with higher costs than namespace L1. Its separate CLI
-makes the fidelity explicit and avoids exposing an unvalidated VM action through
-existing namespace console/scenario APIs. Cross-addon L0/namespace attachment and
-GUI VM controls are deferred until real VM integration can validate the boundary.
-They must be reported as limitations, never implied by ordinary L1 support.
+## Historical intermediate candidate
 
-## Closeout correction and remaining backlog
-
-The previous draft exceeded the scaffold-only instruction by providing unvalidated
-VM runtime/acquisition/recovery code. Intermediate closeout removed those paths;
-all VM lifecycle calls now fail explicitly with `vm.scaffold_only`, even if host
-prerequisites exist. Pure configuration/clone/network/seed plans and storage-only
-utilities remain. Historical logs are retained, without treating fake coverage or
-empty-disk QCOW2 tests as guest evidence.
-
-Resource history is implemented and measured on a real namespace HTTP service;
-discovery, task enumeration, child-list reads and retention are bounded. Non-POSIX
-process counters return unavailable rather than failing on Windows.
-
-Remaining work, in order: implement and accept real KVM lifecycle/isolation/
-admission/recovery on an authorized capable host; validate guest networking,
-services and guest-written clone isolation; measure full VM resource costs and
-failure cleanup; then consider mixed-fidelity attachment and UI integration.
-Exact current gates/publication status: [handoff](../HANDOFF-PHASE-VI-ASTRA.md).
-
-## Intermediate release blocker
-
-`v0.7.0-rc.1` / candidate `16b8f4a` reached native workflow `39771278495` but
-Windows pytest collection failed: `test_live_resource_analytics.py` imports
-`tests.integration`, unavailable under that entry-point invocation. Publication
-stopped under the mandate; no GitHub prerelease/assets exist. Before another
-release, fix helper import portability, reproduce the actual pytest entry point,
-rerun affected full/native gates and use a fresh version/tag. The failed tag is
-immutable. Real VM work remains separately blocked as above.
+`v0.7.0-rc.1` points to `16b8f4ad7c7a446aad68acd509be09b88bac28df` and is immutable.
+Its original run `39771278495` failed Windows test collection. A later repair run
+`39931136601` uploaded release assets but ended cancelled; post-publication verification
+was cancelled. Those assets are not a fully verified release. The current candidate uses a
+new version/tag and fixes test-helper imports without deselecting runnable Windows tests.
+The [Phase VI handoff](../HANDOFF-PHASE-VI-ASTRA.md) preserves the earlier closeout record.
