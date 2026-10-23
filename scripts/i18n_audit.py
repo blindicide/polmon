@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "src/polmon/client"
 BACKEND = ROOT / "src/polmon"
+ADDON_VM = ROOT / "addons/l1-vm/src"
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
@@ -61,6 +62,7 @@ KEPT_TERMS = {
     "netns", "Wireshark", "ID", "SHA-256", "systemd", "journalctl", "POLMON_API_TOKEN",
     "SmartScreen", "veth", "chmod", "stdout", "stderr", "UTF-8", "unicast", "multicast",
     "loopback", "root", "true", "false", "tcp_probe", "icmp_probe", "self-test", "OK", "PNG",
+    "KVM", "QEMU", "genisoimage", "qemu-img", "qemu-system-x86_64", "userns", "x86-64",
 }
 # Messages of raised exceptions are developer diagnostics (the UI maps errors to catalog
 # problems), and these calls match text produced by other software.
@@ -291,9 +293,9 @@ def problem_keys() -> set[str]:
 def backend_message_codes() -> set[str]:
     """Every message code the backend can send (literal codes plus the generated families)."""
     codes: set[str] = set()
-    for path in BACKEND.rglob("*.py"):
-        if "client" in path.parts:
-            continue
+    sources = [path for path in BACKEND.rglob("*.py") if "client" not in path.parts]
+    sources += sorted(ADDON_VM.rglob("*.py"))  # the VM add-on raises and reports its own codes
+    for path in sources:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.keyword)
@@ -321,7 +323,7 @@ def backend_message_codes() -> set[str]:
             if (
                 isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
-                and re.fullmatch(r"(experiment|benchmark)\.[a-z_]+", node.value)
+                and re.fullmatch(r"(experiment|benchmark|vm)\.[a-z0-9_]+", node.value)
             ):
                 codes.add(node.value)  # codes assigned to job/experiment records
     from polmon.core.errors import ConfigurationError, PolmonError
