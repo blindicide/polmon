@@ -33,6 +33,11 @@ def test_version_contract_and_headless_self_test(capsys) -> None:
     assert report.rstrip().endswith(f"polmon {__version__} self-test: PASS")
     visible_after = [widget for widget in QApplication.topLevelWidgets() if widget.isVisible()]
     assert len(visible_after) <= len(visible_before)  # nothing new was shown
+    # ...and nothing was left behind: a hidden survivor is re-polished by every later theme.apply.
+    from polmon.client.mainwindow import MainWindow
+
+    survivors = [item for item in QApplication.topLevelWidgets() if isinstance(item, MainWindow)]
+    assert not survivors
 
 
 def test_title_shows_version_and_theme_toggles(window, qtbot) -> None:
@@ -314,6 +319,9 @@ def test_smoke_start_shows_the_window_and_reports(qapp) -> None:
     assert "exposed after" in output
     platform = QApplication.platformName()
     assert f"polmon {__version__} smoke-start: PASS platform={platform}" in output
+    from polmon.client.mainwindow import MainWindow
+
+    assert not [item for item in QApplication.topLevelWidgets() if isinstance(item, MainWindow)]
 
 
 def test_gui_entry_point_builds_and_runs_the_main_window(qapp, monkeypatch, tmp_path) -> None:

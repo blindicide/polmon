@@ -55,6 +55,7 @@ jobs:
             -C dist -cf - "$name" | gzip -n -9 > "dist/$name.tar.gz"
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
           python -m pip wheel --no-deps --wheel-dir dist .
+          python -m pip wheel --no-deps --wheel-dir dist addons/l1-vm
           dpkg-deb --info dist/polmon-client_*.deb
           dpkg-deb --contents dist/polmon-client_*.deb > deb-contents.txt
           rpm -qip dist/polmon-client-*.rpm
@@ -116,6 +117,7 @@ jobs:
             dist/polmon-*-linux-x64.tar.gz
             dist/polmon-*-linux-x64.tar.gz.sha256
             dist/polmon-*-py3-none-any.whl
+            dist/polmon_l1_vm-*-py3-none-any.whl
             dist/polmon-client_*.deb
             dist/polmon-client-*.rpm
             dist/SHA256SUMS-packages.txt

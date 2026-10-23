@@ -29,6 +29,9 @@ class ResourceLimits(StrictModel):
     max_experiment_duration_seconds: float = Field(default=300, gt=0, le=86_400)
     memory_safety_threshold_mb: int = Field(default=256, ge=0, le=1_048_576)
     monitor_interval_seconds: float = Field(default=0.25, gt=0, le=60)
+    analytics_interval_seconds: float = Field(default=2, ge=0.25, le=3600)
+    analytics_retention: int = Field(default=120, ge=1, le=1000)
+    analytics_max_bytes: int = Field(default=2_097_152, ge=4096, le=16_777_216)
     # Experiment artefacts (telemetry, captures, reports) are never deleted automatically; new
     # experiments are refused instead once either storage bound would be crossed.
     max_data_directory_mb: int = Field(default=1_024, ge=1, le=10_485_760)
@@ -77,6 +80,23 @@ class AdmissionController:
             raise ResourceLimitError(
                 "topology exceeds configured resource limits", details=violations,
                 message_code="admission.topology_limits",
+            )
+
+    def admit_memory(self, required_mb: int, *, message: str, message_code: str) -> None:
+        """Refuse a new process stack that would leave less than the reserve available."""
+        available = self.snapshot().available_memory_bytes
+        required = required_mb + self.limits.memory_safety_threshold_mb
+        if available is not None and required * 1_048_576 > available:
+            raise ResourceLimitError(
+                message,
+                details={
+                    "available_memory": {
+                        "required_mb_including_reserve": required,
+                        "available_mb": available // 1_048_576,
+                    }
+                },
+                message_code=message_code,
+                params={"required_mb": required, "available_mb": available // 1_048_576},
             )
 
     def admit_experiment(

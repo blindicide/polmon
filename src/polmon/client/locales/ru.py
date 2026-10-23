@@ -1076,6 +1076,13 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.not_deployed": "Сначала разверните топологию на лабораторном бэкенде Linux.",
     "backend.console.session_closed": "Консольный сеанс закрыт.",
     "backend.console.session_unknown": "Консольный сеанс не найден.",
+    "backend.console.vnc_unavailable": "Не удалось запустить графический экран; повторите попытку.",
+    "backend.console.vnc_memory": (
+        "Недостаточно свободной памяти для графического экрана "
+        "(нужно {required_mb} МиБ)."
+    ),
+    "backend.console.session_limit": "Слишком много сеансов консоли (лимит {limit}).",
+    "backend.console.node_session_limit": "Слишком много сеансов на этой машине (лимит {limit}).",
     "backend.console.l1_required": "Консоль доступна только для машин L1.",
     "backend.console.sshd_missing": "На хосте не установлен сервер защищённого доступа.",
     "backend.console.ssh_client_missing": "На хосте не установлен клиент защищённого доступа.",
@@ -1201,6 +1208,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "({cause}).",
     "backend.admission.topology_limits": "Топология превышает заданные лимиты ресурсов.",
     "backend.admission.experiment_limits": "Эксперимент превышает заданные лимиты ресурсов.",
+    "backend.lab.ownership_conflict": "Лабораторные объекты этой топологии принадлежат другому "
+    "работающему бэкенду или не могли быть освобождены.",
     "backend.reset.incomplete": "Сброс окружения разобрал не все развёртывания.",
     "backend.orchestration.backend_failed": "Бэкенд «{backend}» завершился ошибкой на этапе "
     "{operation} ({cause}).",

@@ -271,6 +271,11 @@ def reset(request: Request) -> dict[str, object]:
     return control(request).reset_all()
 
 
+@router.get("/resources/history")
+def resource_history(request: Request, limit: int = Query(default=120, ge=1, le=1000)) -> dict:
+    return control(request).resource_history(limit=limit)
+
+
 @router.get("/resources")
 def resource_status(request: Request) -> dict[str, object]:
     return control(request).resource_status()

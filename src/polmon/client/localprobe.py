@@ -48,7 +48,7 @@ def gui_lifecycle_probe(
     if sys.platform == "win32":  # offscreen Qt looks for fonts only in its own directory
         windows = os.environ.get("WINDIR", r"C:\Windows")
         os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(windows, "Fonts"))
-    from PySide6.QtCore import QSettings
+    from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 
     from polmon.client.app import create_application
     from polmon.client.mainwindow import MainWindow
@@ -71,9 +71,10 @@ def gui_lifecycle_probe(
             print(f"local-backend GUI probe: FAIL {record['error']}", file=out)
             return 1
         finally:
+            # processEvents() never delivers DeferredDelete; an embedding app would keep the window.
             window.deleteLater()
-            app.processEvents()
-            del settings
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            del window, settings
     output.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(record, indent=2, sort_keys=True), file=out)
     print("local-backend GUI probe: PASS", file=out)

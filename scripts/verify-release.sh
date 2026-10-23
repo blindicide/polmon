@@ -12,10 +12,16 @@ tag="${1:?usage: $0 vX.Y.Z [owner/repo]}"
 repo="${2:-blindicide/polmon}"
 version="${tag#v}"
 version="${version%%+*}"
+if [[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(alpha|beta|rc)\.([0-9]+)$ ]]; then
+  phase="${BASH_REMATCH[2]}"
+  case "$phase" in alpha) phase=a ;; beta) phase=b ;; esac
+  version="${BASH_REMATCH[1]}${phase}${BASH_REMATCH[3]}"
+fi
 
 expected=("polmon-${version}-windows-x64.exe")
 IFS=. read -r major minor _ <<< "$version"
 IFS=. read -r _ _ patch <<< "$version"
+patch="${patch%%[!0-9]*}"
 if (( major > 0 || minor >= 2 )); then
   expected+=("polmon-${version}-linux-x64.tar.gz" "polmon-${version}-py3-none-any.whl"
              "polmon-backend.service")
@@ -40,6 +46,10 @@ if [[ -f "$workdir/package-manifest.json" ]]; then
             "polmon-client-${version}-1.x86_64.rpm"
             "package-manifest.json" "SHA256SUMS-packages.txt")
 fi
+shopt -s nullglob
+for addon in "$workdir"/polmon_l1_vm-*-py3-none-any.whl; do
+  expected+=("${addon##*/}")
+done
 status=0
 for asset in "${expected[@]}"; do
   if [[ ! -f "$workdir/$asset" ]]; then

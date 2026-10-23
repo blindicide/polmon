@@ -8,7 +8,6 @@ import os
 import re
 import secrets
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -18,7 +17,7 @@ from pathlib import Path
 
 from polmon.backends.namespace.packet import parse_frame, require_lab_destination
 from polmon.backends.namespace.packet_io import PACKET_MODE_FLAG
-from polmon.backends.namespace.runner import CommandRunner
+from polmon.backends.namespace.runner import CommandRunner, stop_process_group
 from polmon.backends.namespace.static_http import HTTP_MODE_FLAG
 from polmon.core.errors import ConfigurationError
 from polmon.orchestration.base import BackendInspection
@@ -96,6 +95,7 @@ class NamespaceBackend:
         self.vnc_processes: dict[
             str, tuple[subprocess.Popen[bytes], subprocess.Popen[bytes], subprocess.Popen[bytes]]
         ] = {}
+        self.vnc_displays: dict[str, dict[str, object]] = {}
         self.running = False
 
     @staticmethod
@@ -129,6 +129,20 @@ class NamespaceBackend:
                 host_veths[key] = self._name("veth", seed, "h")
                 peer_veths[key] = self._name("veth", seed, "p")
         return NamespaceNames(namespaces, bridges, host_veths, peer_veths)
+
+    def lab_names(self) -> tuple[list[str], list[str]]:
+        """(namespaces, host links) this deployment may create, for the ownership journal."""
+        if self.names is None:
+            return [], []
+        namespaces = sorted(self.names.namespaces.values())
+        if self.hostless_pair:
+            return namespaces, []  # both veth ends are created inside the owned namespaces
+        links = [
+            *self.names.bridges.values(),
+            *self.names.host_veths.values(),
+            *self.names.peer_veths.values(),
+        ]
+        return namespaces, sorted(links)
 
     def validate(self, topology: Topology) -> None:
         if self.require_linux and not sys.platform.startswith("linux"):
@@ -366,26 +380,24 @@ class NamespaceBackend:
                     )
         self.running = True
 
+    def _stop_vnc(self, node_id: str) -> None:
+        for process in self.vnc_processes.pop(node_id, ()):
+            if process.poll() is None:
+                stop_process_group(process, grace=3)
+        self.vnc_displays.pop(node_id, None)
+
     def stop(self) -> None:
-        for processes in list(self.vnc_processes.values()):
-            for process in processes:
-                if process.poll() is None:
-                    try:
-                        os.killpg(process.pid, signal.SIGTERM)
-                        process.wait(timeout=3)
-                    except (PermissionError, ProcessLookupError, subprocess.TimeoutExpired):
-                        pass
-        self.vnc_processes.clear()
+        for node_id in list(self.vnc_processes):
+            self._stop_vnc(node_id)
         for process in list(self.services.values()):
-            poll = process.poll()
-            if poll is None:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    process.wait(timeout=3)
-                except (PermissionError, ProcessLookupError, subprocess.TimeoutExpired):
-                    pass
+            if process.poll() is None:
+                stop_process_group(process, grace=3)
         self.services.clear()
         self.running = False
+
+    def vnc_running(self, node_id: str) -> bool:
+        current = self.vnc_processes.get(node_id)
+        return current is not None and all(process.poll() is None for process in current)
 
     def start_vnc(self, node_id: str) -> dict[str, object]:
         if self.run_directory is None:
@@ -395,10 +407,20 @@ class NamespaceBackend:
         node = next((item for item in self.topology.nodes if item.id == node_id), None)
         if node is None or node.node_class is not NodeClass.L1:
             raise ValueError("console.l1_required")
+        if self.vnc_running(node_id):
+            return dict(self.vnc_displays[node_id])  # one display per node, shared
+        self._stop_vnc(node_id)  # a partly dead stack is replaced, never leaked
         address, port = self.vnc_service(node_id)
         directory = self.run_directory / "vnc" / node_id
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        display = f":{100 + (int(secrets.token_hex(2), 16) % 800)}"
+        free = [
+            number
+            for number in (100 + (int(secrets.token_hex(2), 16) % 800) for _ in range(16))
+            if not Path(f"/tmp/.X11-unix/X{number}").exists()
+        ]
+        if not free:
+            raise RuntimeError("console.vnc_unavailable")
+        display = f":{free[0]}"
         display_number = display[1:]
         log = directory / "vnc.log"
         stream = log.open("ab")
@@ -416,6 +438,15 @@ class NamespaceBackend:
             ),
             privileged=True,
         )
+        # X clients started before the server listens fail with "cannot open display".
+        socket_path = Path(f"/tmp/.X11-unix/X{display_number}")
+        deadline = time.monotonic() + 10
+        while not socket_path.exists() and xvfb.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not socket_path.exists():
+            stream.close()
+            stop_process_group(xvfb, grace=3)
+            raise RuntimeError("console.vnc_unavailable")
         xclock = self.runner.start(
             self._as_owner(namespace, "env", f"DISPLAY={display}", "xclock", "-digital"),
             privileged=True,
@@ -432,6 +463,7 @@ class NamespaceBackend:
                 str(port),
                 "-listen",
                 address,
+                "-noipv6",  # otherwise x11vnc also binds [::] and peers reach it link-local
                 "-forever",
                 "-shared",
                 "-nopw",
@@ -442,22 +474,23 @@ class NamespaceBackend:
         )
         stream.close()
         self.vnc_processes[node_id] = (xvfb, xclock, x11vnc)
-        return {
+        self.vnc_displays[node_id] = {
             "node_id": node_id,
             "address": address,
             "port": port,
             "display": display,
             "display_number": display_number,
         }
+        return dict(self.vnc_displays[node_id])
 
     def vnc_service(self, node_id: str) -> tuple[str, int]:
+        """The password-less listener is on the namespace's own loopback, unreachable from peers."""
         if self.topology is None:
             raise ValueError("topology is unavailable")
         node = next((item for item in self.topology.nodes if item.id == node_id), None)
         if node is None:
             raise ValueError("console.node_unknown")
-        address = str(node.interfaces[0].ipv4)
-        return address, 5900 + node.interfaces[0].ipv4.packed[-1]
+        return "127.0.0.1", 5900 + node.interfaces[0].ipv4.packed[-1]
 
     def vnc_proxy_argv(self, node_id: str) -> list[str]:
         address, port = self.vnc_service(node_id)
@@ -496,18 +529,8 @@ class NamespaceBackend:
                 "            raise SystemExit",
             )
         )
-        return [
-            "ip",
-            "netns",
-            "exec",
-            namespace,
-            sys.executable,
-            "-u",
-            "-c",
-            proxy,
-            address,
-            str(port),
-        ]
+        # The relay end runs as the invoking user: it only needs the namespace's loopback.
+        return self._as_owner(namespace, sys.executable, "-u", "-c", proxy, address, str(port))
 
     def destroy(self) -> None:
         self.stop()

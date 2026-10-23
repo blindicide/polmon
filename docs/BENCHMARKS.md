@@ -77,7 +77,10 @@ endpoint costing a few KiB of heap does not mean an L1 or L2 endpoint could be r
 The results of each milestone's recorded run, with host description, workload, limits, source
 commit, and limitations, are in `benchmarks/results/`; `benchmarks/results/SUMMARY-*.md` renders
 them as tables. See the v0.0.14 milestone report for the run that established the Phase I
-baseline.
+baseline; `SUMMARY-v0.6.0-frontier.md` re-measures L0, L1 and the target on v0.6.0 (commit
+19736d9). The interactive console stack (sshd, VNC displays) is outside the benchmark target and
+is measured by `scripts/measure-console-stack.py` (`console-stack-*.json`, see
+[RESOURCE-BUDGET.md](../RESOURCE-BUDGET.md)).
 
 Comparisons between runs are generated the same way, by passing several result files to
 `summarize`; for example `SUMMARY-wave4-batched-ip.md` compares L1 and target runs before (commit
