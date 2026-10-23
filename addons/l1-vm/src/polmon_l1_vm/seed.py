@@ -1,11 +1,19 @@
 """Offline NoCloud seed; only declared lab addresses/services are generated."""
 
+import os
+import re
+import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
 
 from polmon.backends.namespace.runner import CommandRunner
 from polmon.topology.models import Node, Topology
+from polmon_l1_vm.images import VMError
+
+# Метка тома, по которой cloud-init находит источник NoCloud.
+SEED_VOLUME_ID = "cidata"
 
 
 def seed_documents(node: Node, topology: Topology) -> dict[str, str]:
@@ -60,6 +68,33 @@ def seed_documents(node: Node, topology: Topology) -> dict[str, str]:
 
 
 def create_seed(directory: Path, node: Node, topology: Topology, runner: CommandRunner) -> Path:
-    from polmon_l1_vm.images import VMError
-
-    raise VMError("vm.scaffold_only")
+    """Собирает ISO-образ NoCloud для одного узла; существующий файл не перезаписывается."""
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", node.id):
+        raise VMError("vm.node_id")
+    path = directory / f"{node.id}-seed.iso"
+    # Резервируем имя эксклюзивно: genisoimage не должен затереть чужой файл.
+    os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    staging = Path(tempfile.mkdtemp(prefix=".seed-", dir=directory))
+    try:
+        for name, content in seed_documents(node, topology).items():
+            (staging / name).write_text(content, encoding="utf-8")
+        runner.run(
+            [
+                "genisoimage",
+                "-quiet",
+                "-output",
+                str(path),
+                "-volid",
+                SEED_VOLUME_ID,
+                "-joliet",
+                "-rock",
+                str(staging),
+            ],
+            timeout=30,
+        )
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return path
