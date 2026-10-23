@@ -377,6 +377,27 @@ class ApiClient:
     def benchmark_result(self, name: str) -> dict[str, object]:
         return self._dict("GET", f"/v1/benchmarks/results/{_segment(name)}")
 
+    def vm_status(self) -> dict[str, object]:
+        return self._dict("GET", "/v1/vm/status")
+
+    def vm_readiness(self) -> dict[str, object]:
+        return self._dict("GET", "/v1/vm/readiness")
+
+    def start_vm_job(self, request: dict[str, object]) -> dict[str, object]:
+        return self._dict("POST", "/v1/vm/jobs", request)
+
+    def vm_job(self, job_id: str) -> dict[str, object]:
+        return self._dict("GET", f"/v1/vm/jobs/{_segment(job_id)}")
+
+    def vm_jobs(self) -> list[dict[str, object]]:
+        return self._list("/v1/vm/jobs")
+
+    def cancel_vm_job(self, job_id: str) -> dict[str, object]:
+        return self._dict("POST", f"/v1/vm/jobs/{_segment(job_id)}/cancel")
+
+    def recover_vm(self) -> dict[str, object]:
+        return self._dict("POST", "/v1/vm/recover")
+
 
 def _segment(value: str) -> str:
     """Quote one path segment so identifiers can never change the request path."""
