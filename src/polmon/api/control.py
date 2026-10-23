@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import os
 import re
 import secrets
 import shutil
@@ -17,6 +19,7 @@ from threading import RLock, Thread
 from polmon.api.benchmarks import BenchmarkJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
+from polmon.backends.namespace.journal import LabJournal
 from polmon.backends.synthetic.backend import SyntheticBackend
 from polmon.console import ConsoleSessions
 from polmon.core.diagnostics import ResourceSnapshot, fidelity_readiness, resource_snapshot
@@ -27,6 +30,7 @@ from polmon.orchestration import Orchestrator
 from polmon.orchestration.lifecycle import LifecycleState
 from polmon.reporting import write_experiment_report
 from polmon.resources import AdmissionController, ResourceLimits, ResourceMonitor
+from polmon.resources.analytics import ResourceAnalytics, Subject
 from polmon.resources.policy import ResourceLimitError, directory_size_bytes
 from polmon.scenarios import ScenarioEngine, dump_scenario, parse_scenario
 from polmon.scenarios.engine import ActionExecutor, Observation, ScenarioError
@@ -84,6 +88,12 @@ class SyntheticScenarioExecutor:
 
 # Finished experiments kept in memory with full detail; older ones are served from SQLite.
 MAX_EXPERIMENT_RECORDS = 256
+MAX_VNC_SESSIONS = 32
+MAX_VNC_RELAYS = 8
+MAX_VNC_RELAYS_PER_NODE = 2
+# A display (Xvfb 1024x768x24 + x11vnc + xclock) measured 90.3–90.6 MiB RSS on the development
+# host (benchmarks/results/console-stack-20261021T225614Z.json); each new one is admitted first.
+VNC_DISPLAY_MEMORY_MB = 96
 
 
 class ControlPlane:
@@ -100,7 +110,10 @@ class ControlPlane:
         self.logs = StructuredLogStore(self.data_directory / "logs")
         self.telemetry = TelemetryStore(self.data_directory / "telemetry.sqlite3")
         self.console_sessions = ConsoleSessions(self.data_directory / "logs" / "console")
+        self.lab_journal = LabJournal(self.data_directory / "state" / "lab-ownership")
+        self.last_lab_recovery: dict[str, object] | None = None
         self.vnc_sessions: dict[str, tuple[str, str]] = {}
+        self.vnc_relays: dict[tuple[str, str], int] = {}
         self.topology_library = YamlLibrary(
             self.data_directory / "library" / "topologies",
             parse=parse_topology,
@@ -119,6 +132,12 @@ class ControlPlane:
         self.experiments: dict[str, dict[str, object]] = {}
         self.active_experiments: dict[str, ScenarioEngine] = {}
         self.limits = limits or ResourceLimits()
+        self.analytics = ResourceAnalytics(
+            interval_seconds=self.limits.analytics_interval_seconds,
+            retention=self.limits.analytics_retention,
+            max_bytes=self.limits.analytics_max_bytes,
+            max_subjects=min(1000, self.limits.max_endpoint_count + 1),
+        )
         self.l0_only = l0_only
         self._snapshot = snapshot
         self.admission = AdmissionController(self.limits, snapshot=self._snapshot)
@@ -129,6 +148,8 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+        # A previous backend on this data directory may have died without its shutdown cleanup.
+        self.recover_lab("startup")
 
     def _node_context(self, topology_id: str, node_id: str | None) -> dict[str, object] | None:
         if node_id is None:
@@ -415,14 +436,18 @@ class ControlPlane:
                 topology_id=topology.id,
                 params={"node_count": len(topology.nodes), "network_count": len(topology.networks)},
             )
-            control = Orchestrator(topology, self._backend(topology))
+            backend = self._backend(topology)
+            control = Orchestrator(topology, backend)
             started = time.perf_counter()
             try:
                 control.validate()
+                self._journal_lab(topology_id, backend)
                 control.create()
+                self.lab_journal.confirm(topology_id)
                 control.start()
             except Exception:
                 control.destroy()
+                self.lab_journal.settle(topology_id)
                 raise
             self.deployment_seconds[topology_id] = time.perf_counter() - started
             self.deployments[topology_id] = control
@@ -533,11 +558,15 @@ class ControlPlane:
         self._log("INFO", "lab.teardown.start", "tearing down topology", topology_id=topology_id)
         self.console_sessions.close_topology(topology_id)
         with self._lock:
+            for session, (owner, _) in list(self.vnc_sessions.items()):
+                if owner == topology_id:
+                    self.vnc_sessions.pop(session, None)
             control = self.deployments.get(topology_id)
             if control is not None:
                 control.destroy()
                 self.deployments.pop(topology_id, None)
                 self.deployment_seconds.pop(topology_id, None)
+                self.lab_journal.settle(topology_id)
         if topology is not None:
             for node in topology.nodes:
                 self._log(
@@ -611,9 +640,23 @@ class ControlPlane:
                 "topology must be deployed on the namespace backend",
                 message_code="console.not_deployed",
             )
+        if not control.backend.vnc_running(node_id):
+            self.admission.admit_memory(
+                VNC_DISPLAY_MEMORY_MB,
+                message="not enough available memory to start a VNC display",
+                message_code="console.vnc_memory",
+            )
         session = secrets.token_urlsafe(24)
-        display = control.backend.start_vnc(node_id)
-        self.vnc_sessions[session] = (topology_id, node_id)
+        try:
+            display = control.backend.start_vnc(node_id)
+        except RuntimeError as error:
+            raise ConfigurationError(
+                "the VNC display could not be started", message_code="console.vnc_unavailable"
+            ) from error
+        with self._lock:
+            self.vnc_sessions[session] = (topology_id, node_id)
+            while len(self.vnc_sessions) > MAX_VNC_SESSIONS:  # the oldest grant expires first
+                self.vnc_sessions.pop(next(iter(self.vnc_sessions)))
         return {
             "session_id": session,
             "node": readiness["node"],
@@ -631,10 +674,36 @@ class ControlPlane:
         if control is None or not isinstance(control.backend, NamespaceBackend):
             await websocket.close(code=4409)
             return
+        # Relays only run on the event loop, so these counters need no lock.
+        if (
+            sum(self.vnc_relays.values()) >= MAX_VNC_RELAYS
+            or self.vnc_relays.get(session, 0) >= MAX_VNC_RELAYS_PER_NODE
+        ):
+            self._log(
+                "WARNING",
+                "console.vnc.relay_limit",
+                "VNC relay refused: concurrency limit reached",
+                topology_id=topology_id,
+                node_id=node_id,
+            )
+            await websocket.close(code=4429)
+            return
+        self.vnc_relays[session] = self.vnc_relays.get(session, 0) + 1
+        try:
+            await self._relay_vnc(control.backend, node_id, websocket)
+        finally:
+            self.vnc_relays[session] -= 1
+            if not self.vnc_relays[session]:
+                del self.vnc_relays[session]
+        # The VNC side ended (or the client left): tell a still-connected client explicitly.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=1000)
+
+    async def _relay_vnc(self, backend: NamespaceBackend, node_id: str, websocket) -> None:  # noqa: ANN001
         process = await asyncio.create_subprocess_exec(
             "sudo",
             "-n",
-            *control.backend.vnc_proxy_argv(node_id),
+            *backend.vnc_proxy_argv(node_id),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
         )
@@ -659,15 +728,25 @@ class ControlPlane:
         except Exception:
             pass
         finally:
+            # Signal before the first await: a cancelled relay (client gone, server stopping)
+            # is cancelled again at every await and would otherwise never stop the proxy.
+            if process.stdin is not None:
+                process.stdin.close()  # EOF alone ends the proxy, even if sudo is killed
+            if process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.terminate()
             client_task.cancel()
             vnc_task.cancel()
-            await asyncio.gather(client_task, vnc_task, return_exceptions=True)
-            if process.stdin is not None:
-                process.stdin.close()
-            if process.returncode is None:
-                process.terminate()
-            await process.wait()
-            process._transport.close()  # type: ignore[attr-defined]
+            try:
+                # Not gather(): if this task is cancelled meanwhile, gather would re-raise the
+                # children's anonymous cancellation and hide the canceller's own (anyio scopes).
+                await asyncio.wait((client_task, vnc_task))
+                for task in (client_task, vnc_task):
+                    if not task.cancelled():
+                        task.exception()  # retrieved; the relay ends either way
+                await process.wait()
+            finally:
+                process._transport.close()  # type: ignore[attr-defined]
             await asyncio.sleep(0)
 
     @staticmethod
@@ -807,13 +886,103 @@ class ControlPlane:
                 self.destroy(topology_id)
             except Exception as error:
                 failures.append(f"{topology_id}: {type(error).__name__}")
+        # Reclaim what a crashed predecessor or a failed teardown above left journaled.
+        recovery = self.recover_lab("reset")
+        failures += [
+            f"{item['topology_id']}: lab objects remain"  # type: ignore[index]
+            for item in recovery["failures"]  # type: ignore[union-attr]
+        ]
         if failures:
             raise ConfigurationError(
                 "environment reset did not clean every deployment",
                 details={"failures": failures},
                 message_code="reset.incomplete",
             )
-        return {"state": "reset", "deployments_destroyed": len(topology_ids)}
+        return {
+            "state": "reset",
+            "deployments_destroyed": len(topology_ids),
+            "lab_reclaimed": len(recovery["reclaimed"]),  # type: ignore[arg-type]
+        }
+
+    def _journal_lab(self, topology_id: str, backend: object) -> None:
+        """Persist the generated names a deployment is about to create (crash recovery)."""
+        lab_names = getattr(backend, "lab_names", None)
+        if lab_names is None:
+            return
+        namespaces, links = lab_names()
+        if not namespaces and not links:
+            return
+        if self.lab_journal.get(topology_id) is not None:
+            self.recover_lab("deploy", topology_id=topology_id)
+            if self.lab_journal.get(topology_id) is not None:
+                raise ConfigurationError(
+                    "laboratory objects of this topology belong to another running backend or "
+                    "could not be reclaimed",
+                    details={"recovery": self.last_lab_recovery},
+                    message_code="lab.ownership_conflict",
+                )
+        self.lab_journal.record(topology_id, namespaces, links)
+
+    def recover_lab(self, reason: str, *, topology_id: str | None = None) -> dict[str, object]:
+        """Reclaim journaled lab objects whose owning backend died or no longer deploys them."""
+        empty: dict[str, object] = {
+            "reclaimed": [],
+            "skipped_live_owner": [],
+            "foreign": [],
+            "processes_stopped": 0,
+            "processes_remaining": [],
+            "failures": [],
+        }
+        if not self.lab_journal.entries():
+            return empty
+        with self._lock:
+            result = self.lab_journal.reconcile(keep=set(self.deployments), topology_id=topology_id)
+        for item in result["reclaimed"]:  # type: ignore[union-attr]
+            self._log(
+                "INFO",
+                "lab.recovery.reclaimed",
+                "reclaimed laboratory objects left by a previous backend",
+                topology_id=item["topology_id"],
+                params={
+                    "reason": reason,
+                    "namespaces": item["namespaces"],
+                    "links": item["links"],
+                    "owner_pid": item["owner_pid"],
+                },
+            )
+        for item in result["foreign"]:  # type: ignore[union-attr]
+            self._log(
+                "WARNING",
+                "lab.recovery.foreign",
+                "same-named objects are no longer the recorded ones; left untouched",
+                topology_id=item["topology_id"],
+                params={"reason": reason, "names": item["names"]},
+            )
+        for item in result["failures"]:  # type: ignore[union-attr]
+            self._log(
+                "ERROR",
+                "lab.recovery.failed",
+                "journaled laboratory objects could not be removed",
+                topology_id=item["topology_id"],
+                params={"reason": reason, "remaining": item["remaining"]},
+            )
+        for identifier in result["skipped_live_owner"]:  # type: ignore[union-attr]
+            self._log(
+                "INFO",
+                "lab.recovery.skipped_live_owner",
+                "journaled objects belong to another running backend",
+                topology_id=str(identifier),
+                params={"reason": reason},
+            )
+        if result["processes_remaining"]:
+            self._log(
+                "WARNING",
+                "lab.recovery.processes_remaining",
+                "processes inside reclaimed namespaces did not stop",
+                params={"reason": reason, "pids": result["processes_remaining"]},
+            )
+        self.last_lab_recovery = {"reason": reason, "at": time.time(), **result}
+        return result
 
     def run_experiment(
         self,
@@ -1203,6 +1372,46 @@ class ControlPlane:
         """Release the telemetry database handle (Windows cannot delete open files)."""
         self.telemetry.close()
 
+    def resource_history(self, *, limit: int = 120) -> dict[str, object]:
+        """Sample only on request, rate-limited globally; no background polling workload."""
+        with self._lock:
+            subjects = [Subject("_control", "shared", "shared", "shared-control",
+                                (os.getpid(),), include_children=False)]
+            for topology_id, deployment in self.deployments.items():
+                backend = deployment.backend
+                namespace = backend.namespace if isinstance(backend, HybridBackend) else backend
+                for node in self.topologies[topology_id].nodes:
+                    roots = []
+                    netns = None
+                    if isinstance(namespace, NamespaceBackend):
+                        roots.extend(
+                            process.pid for (owner, _), process in namespace.services.items()
+                            if owner == node.id and process.poll() is None
+                        )
+                        roots.extend(
+                            process.pid for process in namespace.vnc_processes.get(node.id, ())
+                            if process.poll() is None
+                        )
+                        if namespace.names and node.id in namespace.names.namespaces:
+                            netns = Path('/run/netns') / namespace.names.namespaces[node.id]
+                    subjects.append(Subject(
+                        topology_id, node.id, str(node.uuid), str(node.node_class), tuple(roots),
+                        node.resources.memory_mb * 1_048_576 if node.resources else None, netns,
+                    ))
+            # An intentionally smaller analytics budget must not break deployment operations.
+            if len(subjects) <= self.analytics.max_subjects:
+                try:
+                    self.analytics.sample(subjects)
+                except ValueError:
+                    result = self.analytics.export(limit=limit)
+                    result['sample_error'] = 'analytics.sample_budget'
+                    return result
+            else:
+                result = self.analytics.export(limit=limit)
+                result['sample_error'] = 'analytics.subject_budget'
+                return result
+            return self.analytics.export(limit=limit)
+
     def resource_status(self) -> dict[str, object]:
         snapshot = self._sample()
         return {
@@ -1210,6 +1419,7 @@ class ControlPlane:
             "limits": self.limits.model_dump(mode="json"),
             "data_directory_bytes": directory_size_bytes(self.data_directory),
             "active_deployments": len(self.deployments),
+            "lab_recovery": self.last_lab_recovery,
             "active_experiments": len(self.active_experiments),
             "benchmark_running": self.benchmarks.running() is not None,
             "snapshot": asdict(snapshot),

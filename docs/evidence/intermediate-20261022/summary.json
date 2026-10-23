@@ -1,0 +1,88 @@
+{
+  "version": "0.7.0rc1",
+  "addon_version": "0.1.0rc1",
+  "tag": "v0.7.0-rc.1",
+  "rootless": {
+    "command": "QT_QPA_PLATFORM=offscreen scripts/check.sh",
+    "exit_code": 0,
+    "passed": 487,
+    "deselected": 25,
+    "warnings": 1,
+    "seconds": 139.57,
+    "log": "rootless.txt"
+  },
+  "privileged": {
+    "command": "scripts/privileged-tests.sh -m privileged --ignore=tests/integration/test_vm_guest.py -s",
+    "exit_code": 0,
+    "passed": 23,
+    "deselected": 488,
+    "warnings": 1,
+    "seconds": 31.61,
+    "host_network_unchanged": true,
+    "lab_leftovers": false,
+    "log": "privileged.txt"
+  },
+  "vm_acceptance": {
+    "status": "NOT RUN",
+    "reasons": [
+      "vm.qemu_missing",
+      "vm.seed_tool_missing",
+      "vm.kvm_unavailable",
+      "vm.scaffold_only"
+    ],
+    "guest_test_executed": false
+  },
+  "i18n": {
+    "status": "PASS",
+    "problems": 0,
+    "log": "i18n.txt"
+  },
+  "format": {
+    "status": "PASS",
+    "files": 11,
+    "log": "format.txt"
+  },
+  "builds": {
+    "status": "PASS",
+    "core": "polmon-0.7.0rc1-py3-none-any.whl",
+    "addon": "polmon_l1_vm-0.1.0rc1-py3-none-any.whl",
+    "logs": [
+      "core-build.txt",
+      "addon-build.txt",
+      "wheel-smoke.txt",
+      "wheel-metadata.json"
+    ]
+  },
+  "release_metadata": "PASS",
+  "native_prerelease_ordering": {
+    "dpkg": "PASS",
+    "rpm_vercmp": -1
+  },
+  "publication": {
+    "status": "BLOCKED",
+    "candidate_commit": "16b8f4ad7c7a446aad68acd509be09b88bac28df",
+    "tag_object": "85c5b3cbd50ee443cf7886c87fefcaa60cd26b04",
+    "workflow_run_id": 39771278495,
+    "workflow_url": "https://github.com/blindicide/polmon/actions/runs/39771278495",
+    "candidate_job": "success",
+    "windows_build_job": "failure",
+    "error": "ModuleNotFoundError: No module named 'tests' during test collection",
+    "failure_location": "tests/integration/test_live_resource_analytics.py:11",
+    "remaining_linux_build": "cancelled after required Windows failure",
+    "release_exists": false,
+    "published_assets": [],
+    "published_checksum_verification": "NOT RUN \u2014 no release",
+    "tag_moved": false,
+    "main_changed": false,
+    "workflow_status": "completed",
+    "workflow_conclusion": "cancelled",
+    "workflow_artifact_count": 0,
+    "local_entrypoint_reproduction": {
+      "command": "QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/integration/test_live_resource_analytics.py --collect-only -q",
+      "exit_code": 2,
+      "log": "pytest-entrypoint-repro.txt"
+    }
+  },
+  "raw_logs_committed": false,
+  "protected_files_unchanged": true
+}

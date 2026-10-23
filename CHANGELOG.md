@@ -4,50 +4,80 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
-### Changed
+## [0.7.0rc1] - 2026-10-22
 
-- **Units are localized** (operator order after v0.4.1; it supersedes the Phase IV rule that
-  unit symbols stay untranslated). Durations read as Russian words that agree with the number
-  — *250 миллисекунд*, *1 секунда*, *4,2 секунды*, *5 минут* (was *5 min 00 s*), *1 минута
-  15 секунд*, *2 часа 5 минут* — sizes as *512 байт*, *3,0 МиБ*, *2,2 ГиБ*, CPU shares as
-  *250 миллиядер*, with the Russian decimal comma and a no-break space before the unit. This
-  covers every screen: dashboard limits, tiles and latency, topology estimates, deployment
-  times, scenario and report durations, the Markdown report, admission-limit items (values now
-  carry their unit instead of a *(MiB)* label), backend messages with a duration or size
-  parameter, the activity log, progress lines and tooltips. Spin boxes show the unit after the
-  value and change its form with it (*1 секунда*, *30 секунд*, *0,5 секунды*). English keeps
-  the symbols (*5 min*, *3.0 MiB*). Values render on display, so they follow a language
-  switch.
-- The header timeout field has no step buttons (arrow keys, the wheel and typing still work),
-  so the longer Russian unit leaves the URL whole at 1440×900; the token field is narrower.
+Intermediate prerelease `v0.7.0-rc.1`. Local clients remain L0-only; namespace L1
+requires an authorized Linux lab backend. The optional VM addon is a non-executing
+scaffold: real guest boot, networking/services, guest-written clone isolation,
+resource footprint and VM cleanup are NOT RUN. This host has no KVM and VM runtime
+installation, downloads and guest execution are forbidden.
 
 ### Added
 
-- Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled
-  in client code (`" s"`, `f"{v} MiB"`), `i18n-completeness` on an English unit symbol in the
-  Russian catalog, and the GUI suite walks every screen of a connected window — labels, tiles,
-  table cells and tooltips, spin boxes, the report and the activity log — and fails on a
-  number followed by an English unit; the same test asserts that the connected pages still fit
-  1440×900. All three fail on v0.4.1 ([evidence](docs/evidence/i18n/unit-leak-guard.txt)).
+- Bounded on-demand per-node/deployment resource history and JSON export with
+  identity-safe CPU deltas, explicit unavailable counters and shared-process attribution.
+- Separately packaged optional VM-backed L1 planning/configuration scaffold, pinned image
+  contracts, clone/network plans and explicit `vm.scaffold_only` lifecycle refusals.
+  No guest runtime, image acquisition, GUI/API VM dispatch or recovery is available.
+- Native prerelease automation with SemVer tags mapped to canonical Python package
+  versions, Debian/RPM preview ordering, exact-version notes and published asset checks.
 
 ### Fixed
 
-- The topology node inspector re-renders node resources after a language switch.
-- The benchmark progress line showed the backend's English step text (`starting`,
-  `endpoints=10 repeat=1`, `cancelling`) in the Russian UI. Job progress now also carries
-  `detail_code` and `detail_params` (approach (a), docs/API.md) and the client renders
-  *запуск*, *конечных точек: 10 · повтор 1*, *отмена…*; an older backend's text is quoted.
-- An unknown remaining time reads *осталось: —* instead of *осталось: ≈ —*.
-- The scenario sequence table shows each action's status right after its number, and hides
-  the service column when no action has a service: status and details had scrolled out of the
-  analysis card (its last visible header was cut to *Слу…*).
-- A connected deployment page with a problem banner scrolled by a few pixels at 1440×900 (in
-  both languages, since v0.4.0): the owned-resources list and the backend-details tree now
-  need 48 px each instead of Qt's default 60. The GUI suite checks every connected page with a
-  banner at 1440×900 for scroll bars; before, only a disconnected window was checked.
+- Bound resource discovery queues, thread enumeration and child-list reads.
+- Report procfs process counters as unavailable on platforms without POSIX counters.
 
-- Status colours in tables, trees and lists follow a theme switch: they kept the previous
-  theme's colour (a dark-green "✓ успешно" on the dark theme's background).
+### Carried-forward changes since 0.6.0
+
+### Added
+
+- **Crash-safe laboratory ownership journal.** A backend killed with SIGKILL, by the OOM killer
+  or a power loss no longer leaves namespaces, bridges, veths, TAPs, in-namespace `sshd`, HTTP
+  and VNC processes behind until someone runs root cleanup: generated names are journaled
+  atomically before creation and pinned to their kernel identities afterwards, and the next
+  backend on the same data directory reclaims records whose owner is gone at startup, on
+  `POST /v1/reset` and before redeploying the topology. Same-named objects with a different
+  identity and records of a live backend are never touched. New `lab.recovery.*` log events,
+  `lab_recovery` in `GET /v1/resources`, `lab_reclaimed` in the reset response and the
+  `lab.ownership_conflict` error code (docs/REPORTING-RECOVERY.md).
+- **Bounded interactive resources.** At most 16 live console sessions (4 per machine) and 8
+  VNC relays (2 per node); further opens are refused with HTTP 429
+  `console.session_limit` / `console.node_session_limit` or WebSocket close code `4429`. VNC
+  relay grants are capped at 32 and dropped on destroy/reset, and a repeated VNC start reuses
+  the node's running display instead of starting another `Xvfb`/`xclock`/`x11vnc` set.
+- **VNC displays are admitted against available memory.** A display stack measured 90 MiB RSS
+  (Xvfb 68, x11vnc 14, xclock 9) — almost three times the 32 MiB L1 estimate admitted at
+  deploy — and was started without any memory check, so 16 namespaces could add about 1.4 GiB
+  after admission. A new display now needs 96 MiB plus the memory reserve available, or is
+  refused with HTTP 429 `console.vnc_memory`; joining a running display is free.
+  `scripts/measure-console-stack.py` reproduces the measurement with a real backend and lab.
+- Recorded benchmark re-run on v0.6.0 (`benchmarks/results/SUMMARY-v0.6.0-frontier.md`): the
+  50 L0 + 2 L1 target uses 38.5 MiB attributed memory (host delta median 14.3 MiB) against the
+  ≈1 GiB target, with 0 % loss and complete cleanup, matching v0.1.1. RESOURCE-BUDGET.md gains
+  the console stack's measured cost.
+- `scripts/privileged-tests.sh` also fails when a lab process outlives the run (a process of
+  the operator outside the host network namespace, or an `ip netns exec polmon…` launcher).
+- Russian README (`README.ru.md`), cross-linked with the English one, using the client's
+  glossary terms; the English README stays authoritative.
+
+### Fixed
+
+- **VNC containment:** the password-less `x11vnc` listened on the node's lab address and on
+  `[::]`, so any peer node could open the display without the relay. It now listens only on
+  the namespace loopback with IPv6 disabled, and the relay proxy runs as the operator instead
+  of root.
+- A console command that hit its timeout killed only the `sudo` launcher; the `ssh` client
+  survived in the deleted namespace for minutes. Timeouts, session close and service/VNC stop
+  now terminate the launched process group.
+- A VNC relay cancelled while closing (server shutdown, or a client leaving at that moment)
+  could leave its proxy running and leaked an `Event loop is closed` transport warning; a
+  relay whose display ended never closed the WebSocket, so the client waited forever.
+- `x11vnc` could start before `Xvfb` listened and exit with *cannot open display*.
+- The client self-test, the smoke start and the local-backend GUI probe left their main window
+  alive (`deleteLater` without returning to an event loop), so every later stylesheet change of
+  the host application re-polished it; in the GUI suite this crashed the interpreter with a
+  segmentation fault in `theme.apply` depending on garbage-collection timing. Each window is
+  now destroyed before the check returns.
 
 ## [0.6.0] - 2026-10-10
 
@@ -79,6 +109,9 @@ Phase VI — native Linux packages, embedded L0 clients, and an isolated packet 
 
 Phase V — Topology Studio & lab access.
 
+Entries for the localized units, unit guards and the client fixes below shipped in v0.5.0
+(commits 253af01–97d804d) but were listed under *Unreleased* until the v0.6.0 audit.
+
 ### Added
 
 - Topology Studio canvas authoring with deterministic lab-profile allocation, persisted layout,
@@ -91,11 +124,49 @@ Phase V — Topology Studio & lab access.
   experiment correlation, cursor-filtered API/SSE access, diagnostics, and the localized Logs page.
 - Headless phase evidence under `docs/evidence/phase-v/` and a release report with resource costs
   and explicit limitations.
+- Guards against English units in the Russian UI: `i18n-lint` fails on a unit symbol spelled
+  in client code (`" s"`, `f"{v} MiB"`), `i18n-completeness` on an English unit symbol in the
+  Russian catalog, and the GUI suite walks every screen of a connected window — labels, tiles,
+  table cells and tooltips, spin boxes, the report and the activity log — and fails on a
+  number followed by an English unit; the same test asserts that the connected pages still fit
+  1440×900. All three fail on v0.4.1 ([evidence](docs/evidence/i18n/unit-leak-guard.txt)).
 
 ### Changed
 
 - The public application/package version is now `0.5.0`; health, all CLI version flags, reports,
   telemetry metadata, client header/About and package names use the same single version source.
+- **Units are localized** (operator order after v0.4.1; it supersedes the Phase IV rule that
+  unit symbols stay untranslated). Durations read as Russian words that agree with the number
+  — *250 миллисекунд*, *1 секунда*, *4,2 секунды*, *5 минут* (was *5 min 00 s*), *1 минута
+  15 секунд*, *2 часа 5 минут* — sizes as *512 байт*, *3,0 МиБ*, *2,2 ГиБ*, CPU shares as
+  *250 миллиядер*, with the Russian decimal comma and a no-break space before the unit. This
+  covers every screen: dashboard limits, tiles and latency, topology estimates, deployment
+  times, scenario and report durations, the Markdown report, admission-limit items (values now
+  carry their unit instead of a *(MiB)* label), backend messages with a duration or size
+  parameter, the activity log, progress lines and tooltips. Spin boxes show the unit after the
+  value and change its form with it (*1 секунда*, *30 секунд*, *0,5 секунды*). English keeps
+  the symbols (*5 min*, *3.0 MiB*). Values render on display, so they follow a language
+  switch.
+- The header timeout field has no step buttons (arrow keys, the wheel and typing still work),
+  so the longer Russian unit leaves the URL whole at 1440×900; the token field is narrower.
+
+### Fixed
+
+- The topology node inspector re-renders node resources after a language switch.
+- The benchmark progress line showed the backend's English step text (`starting`,
+  `endpoints=10 repeat=1`, `cancelling`) in the Russian UI. Job progress now also carries
+  `detail_code` and `detail_params` (approach (a), docs/API.md) and the client renders
+  *запуск*, *конечных точек: 10 · повтор 1*, *отмена…*; an older backend's text is quoted.
+- An unknown remaining time reads *осталось: —* instead of *осталось: ≈ —*.
+- The scenario sequence table shows each action's status right after its number, and hides
+  the service column when no action has a service: status and details had scrolled out of the
+  analysis card (its last visible header was cut to *Слу…*).
+- A connected deployment page with a problem banner scrolled by a few pixels at 1440×900 (in
+  both languages, since v0.4.0): the owned-resources list and the backend-details tree now
+  need 48 px each instead of Qt's default 60. The GUI suite checks every connected page with a
+  banner at 1440×900 for scroll bars; before, only a disconnected window was checked.
+- Status colours in tables, trees and lists follow a theme switch: they kept the previous
+  theme's colour (a dark-green "✓ успешно" on the dark theme's background).
 
 ## [0.4.1] - 2026-09-27
 

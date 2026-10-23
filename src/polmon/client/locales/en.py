@@ -1013,6 +1013,13 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.console.not_deployed": "Deploy this topology on a Linux lab backend first.",
     "backend.console.session_closed": "The console session is closed.",
     "backend.console.session_unknown": "The console session was not found.",
+    "backend.console.vnc_unavailable": "The VNC display could not be started; try again.",
+    "backend.console.vnc_memory": (
+        "Not enough free memory for the VNC display "
+        "({required_mb} MiB needed)."
+    ),
+    "backend.console.session_limit": "Too many open console sessions (limit {limit}); close one.",
+    "backend.console.node_session_limit": "Too many sessions on this machine (limit {limit}).",
     "backend.console.l1_required": "SSH console access is available only for L1 machines.",
     "backend.console.sshd_missing": "OpenSSH server (sshd) is not installed on the host.",
     "backend.console.ssh_client_missing": "OpenSSH client (ssh) is not installed on the host.",
@@ -1130,6 +1137,8 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.admission.topology_limits": "The topology exceeds the configured resource limits.",
     "backend.admission.experiment_limits": "The experiment exceeds the configured resource "
     "limits.",
+    "backend.lab.ownership_conflict": "Laboratory objects of this topology belong to another "
+    "running backend or could not be reclaimed.",
     "backend.reset.incomplete": "The environment reset did not clean every deployment.",
     "backend.orchestration.backend_failed": "Backend “{backend}” failed during {operation} "
     "({cause}).",

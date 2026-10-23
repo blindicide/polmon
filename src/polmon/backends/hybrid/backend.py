@@ -112,6 +112,24 @@ class HybridBackend:
         self.namespace.validate(self._l1_topology)
         self.topology = topology
 
+    def _planned_taps(self, topology: Topology) -> dict[str, str]:
+        l0_networks = {
+            interface.network
+            for node in self._l0_topology.nodes  # type: ignore[union-attr]
+            for interface in node.interfaces
+        }
+        return {
+            network_id: NamespaceBackend._name("polmon", f"{topology.id}:{network_id}:tap", "t")
+            for network_id in sorted(l0_networks)
+        }
+
+    def lab_names(self) -> tuple[list[str], list[str]]:
+        """(namespaces, host links) this deployment may create, for the ownership journal."""
+        if self.topology is None or self._l0_topology is None:
+            return [], []
+        namespaces, links = self.namespace.lab_names()
+        return namespaces, sorted([*links, *self._planned_taps(self.topology).values()])
+
     def create(self, topology: Topology) -> set[str]:
         if self._l0_topology is None or self._l1_topology is None:
             self.validate(topology)
@@ -119,15 +137,7 @@ class HybridBackend:
         try:
             resources.update(self.namespace.create(self._l1_topology))  # type: ignore[arg-type]
             resources.update(self.synthetic.create(self._l0_topology))  # type: ignore[arg-type]
-            l0_networks = {
-                interface.network
-                for node in self._l0_topology.nodes  # type: ignore[union-attr]
-                for interface in node.interfaces
-            }
-            planned = {
-                network_id: NamespaceBackend._name("polmon", f"{topology.id}:{network_id}:tap", "t")
-                for network_id in sorted(l0_networks)
-            }
+            planned = self._planned_taps(topology)
             links = self.runner.run(["ip", "-o", "link", "show"], check=False).stdout
             existing = sorted(name for name in planned.values() if f" {name}:" in links)
             if existing:

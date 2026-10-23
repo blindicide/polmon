@@ -23,6 +23,11 @@ def test_gui_probe_proves_refusal_and_reaps_the_backend_on_every_exit_path(
 
     assert gui_lifecycle_probe(output, screenshot=screenshot, stream=stream) == 0, stream.getvalue()
     assert stream.getvalue().rstrip().endswith("local-backend GUI probe: PASS")
+    from PySide6.QtWidgets import QApplication
+
+    from polmon.client.mainwindow import MainWindow
+
+    assert not [item for item in QApplication.topLevelWidgets() if isinstance(item, MainWindow)]
     record = json.loads(output.read_text(encoding="utf-8"))
 
     assert tr("connection.local_label") in record["connected"]["status_bar"]

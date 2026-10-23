@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "polmon"
-version = "0.6.0"
+version = "0.7.0rc1"
 description = "Resource-efficient isolated network attack simulation platform"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -44,6 +44,8 @@ packages = ["src/polmon"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
+# Optional addon tests use source without installing any VM runtime dependency.
+pythonpath = ["addons/l1-vm/src"]
 markers = [
   "integration: integration tests",
   "privileged: requires authorized laboratory networking privileges",

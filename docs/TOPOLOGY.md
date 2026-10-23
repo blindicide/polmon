@@ -54,3 +54,12 @@ Migrate a v0.4 file atomically in place with:
 Networks are assigned profile `/24`s in document order. Each interface keeps its host offset where
 usable and its MAC unchanged; collisions fall back to the first free host. IDs, names, UUIDs,
 resources and services are preserved.
+
+### Standalone VM scaffold
+
+The optional addon validates and plans L1-only topologies without mutation;
+`l1-vm-addon.yml` is a planning example. Ordinary API/GUI L1 remains namespaces.
+The scaffold has separate estimated VM limits and rejects namespace resource
+overrides. Static addresses and TCP `static_http` seed documents are planning
+contracts; boot/services/networking/console/scenario integration are unavailable.
+See [addon documentation](../addons/l1-vm/README.md).

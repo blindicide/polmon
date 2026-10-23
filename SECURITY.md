@@ -20,6 +20,10 @@ Controls in the implementation:
   `polmon*`/`veth*` names. Every workload inside a lab namespace (built-in services, ICMP and TCP
   probes) is started through `setpriv` as the invoking user; only `ip` itself and `setpriv` run as
   root.
+- Crash recovery (`docs/REPORTING-RECOVERY.md`) adds no privileged verb: it deletes only names
+  that its own mode-600 journal recorded, that match the generated patterns and, once created,
+  still carry the recorded kernel identity; it signals only the invoking user's processes inside
+  those namespaces and its own `sudo` launchers (which relay the signal), never other users'.
 - Known limit of the Phase I privilege model: `sudo ip` is root-equivalent, because
   `ip netns exec` can run any program. A sudoers rule restricted to `ip` therefore does not confine
   a compromised backend. Run the backend only on a dedicated laboratory host under an account
@@ -36,6 +40,11 @@ Controls in the implementation:
   Interactive commands execute in that namespace, not on the host; sessions have bounded live
   buffers, timeouts, retained transcripts and authenticated API access. L0/L2 and missing host
   prerequisites are refused with stable reason codes. See `docs/CONSOLE.md`.
+- The password-less `x11vnc` listener is bound to the node namespace's loopback with IPv6
+  disabled, so neither the host nor a peer lab node can reach it; the only path is the
+  authenticated relay, whose proxy runs as the unprivileged operator. Live console sessions
+  (16, 4 per node), VNC relays (8, 2 per node) and relay grants (32) are capped. See
+  `docs/VNC.md`.
 - API identifiers are pattern-checked before they reach file paths; request bodies are capped at
   2 MB per document and 5 MiB per request.
 - The Phase VI packet workbench is backend-enforced and limited to a running, owned, hostless pair
@@ -75,3 +84,11 @@ are built only on GitHub-hosted runners from the tagged source, with third-party
 to commit SHAs, and every published asset is listed in `SHA256SUMS.txt`. Audit them before a release with
 `uvx pip-audit -r <(uv pip freeze --python .venv/bin/python | grep -v polmon)`; the 2026-09-26 audit
 after the starlette 1.7.0 upgrade reported no known vulnerabilities.
+
+## Optional VM scaffold boundary
+
+The [standalone scaffold](addons/l1-vm/README.md) cannot launch or recover a VM,
+download an image or create a seed ISO. `vm.scaffold_only` remains a hard refusal
+on capable hosts too. Future KVM runtime isolation, image trust, unprivileged TAP
+networking, ownership recovery and cleanup require independent real-guest evidence.
+No VM security acceptance is claimed. Core namespace/L0 behavior is unchanged.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import signal
 import subprocess
 import time
 from collections import deque
@@ -12,11 +11,15 @@ from pathlib import Path
 from threading import Event, RLock, Thread
 
 from polmon.backends.namespace.backend import NamespaceBackend
+from polmon.backends.namespace.runner import stop_process_group
 from polmon.core.errors import ConfigurationError
+from polmon.resources.policy import ResourceLimitError
 
 MAX_SESSION_BUFFER_BYTES = 524_288
 MAX_INPUT_BYTES = 4096
 IDLE_TIMEOUT_SECONDS = 900
+MAX_LIVE_SESSIONS = 16
+MAX_LIVE_SESSIONS_PER_NODE = 4
 
 
 class ConsoleSession:
@@ -106,12 +109,7 @@ class ConsoleSession:
 
     def close(self) -> None:
         if self.process.poll() is None:
-            try:
-                os.killpg(self.process.pid, signal.SIGTERM)
-                self.process.wait(timeout=3)
-            except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):
-                if self.process.poll() is None:
-                    self.process.kill()
+            stop_process_group(self.process, grace=3)
         self.reader.join(timeout=3)
 
 
@@ -131,8 +129,27 @@ class ConsoleSessions:
         if self.sweeper is None:
             self.sweeper = Thread(target=self._sweep, daemon=True, name="console-sweeper")
             self.sweeper.start()
-        session = ConsoleSession(session_id, topology_id, node_id, backend, transcript)
         with self.lock:
+            # Counted and inserted under one lock so concurrent opens cannot overshoot the cap.
+            live = [item for item in self.sessions.values() if item.process.poll() is None]
+            on_node = [
+                item
+                for item in live
+                if (item.topology_id, item.node_id) == (topology_id, node_id)
+            ]
+            if len(live) >= MAX_LIVE_SESSIONS:
+                raise ResourceLimitError(
+                    "too many live console sessions",
+                    message_code="console.session_limit",
+                    params={"limit": MAX_LIVE_SESSIONS},
+                )
+            if len(on_node) >= MAX_LIVE_SESSIONS_PER_NODE:
+                raise ResourceLimitError(
+                    "too many live console sessions on this node",
+                    message_code="console.node_session_limit",
+                    params={"limit": MAX_LIVE_SESSIONS_PER_NODE},
+                )
+            session = ConsoleSession(session_id, topology_id, node_id, backend, transcript)
             self.sessions[session_id] = session
             if len(self.sessions) > 256:
                 closed = [

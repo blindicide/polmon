@@ -1,0 +1,17 @@
+# Use only with polmon-l1-vm run. Ordinary POLMON deploy still means namespaces.
+id: vm-clones
+networks:
+  - {id: lab, ipv4_subnet: 192.168.240.0/24}
+nodes:
+  - id: alpha
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:50:4f:06:00:01', ipv4: 192.168.240.11}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}
+  - id: bravo
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:50:4f:06:00:02', ipv4: 192.168.240.12}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}

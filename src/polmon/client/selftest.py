@@ -97,7 +97,7 @@ def _self_test(out) -> int:  # noqa: ANN001
         return f"platform {name}"
 
     def window() -> str:
-        from PySide6.QtCore import QSettings
+        from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 
         from polmon.client import theme
         from polmon.client.mainwindow import MainWindow
@@ -113,9 +113,11 @@ def _self_test(out) -> int:  # noqa: ANN001
                 raise RuntimeError("the main window did not render")
             pages = len(main.pages)
             main.shutdown(wait_ms=1000)
+            # processEvents() never delivers DeferredDelete: without this the hidden window would
+            # outlive the check and be re-polished by every later setStyleSheet of the host app.
             main.deleteLater()
-            app.processEvents()  # type: ignore[attr-defined]
-            del settings
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            del main, settings
         size = f"{image.width()}x{image.height()}"
         return f"built, rendered {size} off screen, destroyed ({pages} pages)"
 
@@ -175,7 +177,7 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
     cold start from process launch to that line) and, at the end, the idle resident set size.
     """
     out = stream or sys.stdout
-    from PySide6.QtCore import QEventLoop, QSettings, QTimer
+    from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QSettings, QTimer
     from PySide6.QtWidgets import QApplication
 
     from polmon.client import i18n
@@ -225,6 +227,7 @@ def smoke_start(seconds: float, argv: list[str], stream=None) -> int:  # noqa: A
         QTimer.singleShot(int(seconds * 1000), finish)
         loop.exec()
         window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)  # see window()
         del settings
     platform = QApplication.platformName()
     ok = bool(observed.get("visible")) and bool(observed.get("exposed"))
