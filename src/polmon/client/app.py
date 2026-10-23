@@ -162,6 +162,11 @@ def main(argv: list[str] | None = None) -> int:
         from polmon.backends.namespace.static_http import main as http_main
 
         return http_main(raw[1:])
+    if raw and raw[0] == "--run-vm":
+        # Fixed addon dispatch must run before Qt and client argument parsing.
+        from polmon_l1_vm.cli import main as vm_main
+
+        return vm_main(raw[1:])
     if raw and raw[0] == BACKEND_MODE_FLAG:
         # Embedded L0 backend: the frozen single-file client re-invokes itself in backend mode
         # instead of shipping a separate backend executable (binding on Linux and Windows).

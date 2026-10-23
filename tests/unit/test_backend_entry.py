@@ -27,9 +27,7 @@ def test_backend_self_test_releases_its_database_before_cleanup(monkeypatch, cap
         planes[0].telemetry._connection.execute("SELECT 1")
 
 
-def test_backend_self_test_closes_the_database_when_the_workflow_fails(
-    monkeypatch, capsys
-) -> None:
+def test_backend_self_test_closes_the_database_when_the_workflow_fails(monkeypatch, capsys) -> None:
     planes: list[ControlPlane] = []
 
     class FailingPlane(ControlPlane):
@@ -82,3 +80,12 @@ def test_data_dir_is_used_and_an_unwritable_one_is_a_clean_error(monkeypatch, tm
     message = str(raised.value)
     assert message.startswith("polmon-backend: cannot use data directory")
     assert "--data-dir" in message and os.fspath(blocker) in message
+
+
+def test_client_dispatches_vm_commands_before_qt_parsing(capsys) -> None:
+    from polmon.client.app import main
+
+    with pytest.raises(SystemExit) as result:
+        main(["--run-vm", "--version"])
+    assert result.value.code == 0
+    assert capsys.readouterr().out.strip() == f"polmon {__version__}"

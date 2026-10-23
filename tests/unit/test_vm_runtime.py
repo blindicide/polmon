@@ -391,3 +391,20 @@ def test_recovery_refuses_live_owner_and_retains_failed_cleanup(tmp_path, monkey
     assert read_state(run) is not None
     monkeypatch.setattr(host, "process_start", lambda _: None)
     assert not host.alive([123, None])
+
+
+def test_http_probe_uses_fixed_frozen_dispatch(tmp_path, monkeypatch):
+    calls = []
+
+    class ProbeLab:
+        def run(self, argv, **kwargs):
+            calls.append((argv, kwargs))
+            return CommandResult("200 alpha", "", 0)
+
+    vm = VMBackend(base=tmp_path / "base", manifest=MANIFEST, directory=tmp_path / "run")
+    vm.topology = load_topology(EXAMPLE)
+    vm.lab = ProbeLab()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert vm.fetch_http("192.168.240.11", 8080) == (200, "alpha")
+    assert calls[0][0] == [sys.executable, "--run-vm", "probe-http", "192.168.240.11", "8080", "/"]
+    assert calls[0][1]["as_owner"] and calls[0][1]["timeout"] == 8

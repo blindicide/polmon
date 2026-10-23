@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import http.client
+import ipaddress
 import json
+import re
 import signal
 import sys
 import time
@@ -62,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"polmon {__version__}")
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("readiness")
+    sub.add_parser("bundle-check")
+    probe = sub.add_parser("probe-http")
+    probe.add_argument("address")
+    probe.add_argument("port", type=int, choices=range(1, 65536), metavar="PORT")
+    probe.add_argument("path")
     commands = {}
     for name in ("plan", "run", "verify-image", "acquire-image", "recover", "inspect"):
         commands[name] = sub.add_parser(name)
@@ -81,11 +89,43 @@ def main(argv: list[str] | None = None) -> int:
     # SIGTERM проходит через блоки finally: иначе остались бы гости, пространство, частичный образ.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
-        if args.action == "readiness":
+        if args.action == "probe-http":
+            address = str(ipaddress.IPv4Address(args.address))
+            if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", args.path):
+                raise VMError("vm.path_invalid")
+            connection = http.client.HTTPConnection(address, args.port, timeout=3)
+            try:
+                connection.request("GET", args.path)
+                response = connection.getresponse()
+                print(str(response.status) + " " + response.read(512).decode("utf-8", "replace"))
+            finally:
+                connection.close()
+            return 0
+        if args.action == "bundle-check":
+            import stat
+
+            from polmon.api.vm import MANIFEST, bundled_image
+            from polmon_l1_vm.images import digest
+
+            image = bundled_image()
+            manifest = ImageManifest.model_validate(MANIFEST)
+            if image.is_symlink() or not image.is_file() or image.stat().st_mode & 0o222:
+                raise VMError("vm.base_not_readonly")
+            if not stat.S_ISREG(image.stat().st_mode):
+                raise VMError("vm.image_missing")
+            if digest(image, limit=manifest.max_file_bytes) != manifest.sha256:
+                raise VMError("vm.image_checksum")
+            result = {
+                "version": __version__,
+                "sha256": manifest.sha256,
+                "image_bytes": image.stat().st_size,
+                "integration_verified": False,
+            }
+        elif args.action == "readiness":
             result = readiness()
             print(json.dumps(result))
             return 0 if result["ready"] else 2
-        if args.action == "verify-image":
+        elif args.action == "verify-image":
             from polmon.backends.namespace.runner import CommandRunner
 
             result = verify_image(args.image, _manifest(args.manifest), CommandRunner())

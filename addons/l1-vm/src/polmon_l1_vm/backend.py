@@ -31,14 +31,6 @@ from polmon_l1_vm.recovery import SOCKET_PREFIX, STATE_NAME, write_state
 from polmon_l1_vm.seed import create_seed
 
 LOG_LIMIT_BYTES = 262_144
-# Байты вывода python-фрагмента опроса: ответ гостя читается не дальше этой границы.
-PROBE_SNIPPET = (
-    "import http.client, sys\n"
-    "c = http.client.HTTPConnection(sys.argv[1], int(sys.argv[2]), timeout=3)\n"
-    "c.request('GET', sys.argv[3])\n"
-    "r = c.getresponse()\n"
-    "sys.stdout.write(str(r.status) + ' ' + r.read(512).decode('utf-8', 'replace'))\n"
-)
 
 
 class VMLimits(StrictModel):
@@ -446,8 +438,13 @@ class VMBackend(ExecutionBackend):
         host = str(ipaddress.IPv4Address(address))
         if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", path):
             raise VMError("vm.path_invalid")
+        command = (
+            [sys.executable, "--run-vm"]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "polmon_l1_vm.cli"]
+        )
         result = self.lab.run(
-            [sys.executable, "-I", "-c", PROBE_SNIPPET, host, str(int(port)), path],
+            [*command, "probe-http", host, str(int(port)), path],
             as_owner=True,
             check=False,
             timeout=8,
