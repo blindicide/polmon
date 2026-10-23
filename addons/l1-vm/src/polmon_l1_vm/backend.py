@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -31,7 +33,7 @@ LOG_LIMIT_BYTES = 262_144
 PROBE_SNIPPET = (
     "import http.client, sys\n"
     "c = http.client.HTTPConnection(sys.argv[1], int(sys.argv[2]), timeout=3)\n"
-    "c.request('GET', '/')\n"
+    "c.request('GET', sys.argv[3])\n"
     "r = c.getresponse()\n"
     "sys.stdout.write(str(r.status) + ' ' + r.read(512).decode('utf-8', 'replace'))\n"
 )
@@ -127,6 +129,7 @@ class VMBackend(ExecutionBackend):
         limits: VMLimits | None = None,
         runner: CommandRunner | None = None,
         mode: str = "userns",
+        peer_report: bool = False,
     ):
         self.base, self.manifest = base.resolve(), manifest
         self.directory = directory.resolve()
@@ -137,6 +140,7 @@ class VMBackend(ExecutionBackend):
         self.limits = limits or VMLimits()
         self.runner = runner or CommandRunner()
         self.mode = mode
+        self.peer_report = peer_report
         self.topology: Topology | None = None
         self.lab: Lab | None = None
         self.overlays: OverlayStore | None = None
@@ -250,7 +254,11 @@ class VMBackend(ExecutionBackend):
             for node in topology.nodes:
                 self.overlays.create(node.id)
                 self._journal()
-                self.seeds.append(create_seed(self.directory, node, topology, self.runner))
+                self.seeds.append(
+                    create_seed(
+                        self.directory, node, topology, self.runner, peer_report=self.peer_report
+                    )
+                )
                 self._journal()
         except BaseException:
             self.destroy()
@@ -408,21 +416,30 @@ class VMBackend(ExecutionBackend):
         assert self.topology is not None
         return next(item for item in self.topology.nodes if item.id == node_id)
 
-    def probe_http(self, address: str, port: int, node_id: str) -> bool:
-        """Запрашивает страницу узла из лаборатории и сверяет идентичность именно этого клона."""
+    def fetch_http(self, address: str, port: int, path: str = "/") -> tuple[int, str] | None:
+        """GET из лаборатории от имени владельца; None, если гость не ответил."""
         if self.lab is None or self.topology is None:
             raise VMError("vm.not_created")
-        import ipaddress
-
         host = str(ipaddress.IPv4Address(address))
-        node = self._node(node_id)
+        if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", path):
+            raise VMError("vm.path_invalid")
         result = self.lab.run(
-            [sys.executable, "-I", "-c", PROBE_SNIPPET, host, str(int(port))],
+            [sys.executable, "-I", "-c", PROBE_SNIPPET, host, str(int(port)), path],
             as_owner=True,
             check=False,
             timeout=8,
         )
-        return result.returncode == 0 and result.stdout == f"200 POLMON {node.id} {node.uuid}\n"
+        status, _, body = result.stdout.partition(" ")
+        if result.returncode != 0 or not status.isdigit():
+            return None
+        return int(status), body
+
+    def probe_http(self, address: str, port: int, node_id: str) -> bool:
+        """Запрашивает страницу узла и сверяет идентичность именно этого клона."""
+        if self.topology is None:
+            raise VMError("vm.not_created")
+        node = self._node(node_id)
+        return self.fetch_http(address, port) == (200, f"POLMON {node.id} {node.uuid}\n")
 
     def _node_ready(self, node: Node) -> bool:
         address = str(node.interfaces[0].ipv4)
