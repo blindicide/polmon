@@ -20,11 +20,15 @@ def process_start(pid: int) -> str | None:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
     except OSError:
         return None
-    return stat.rsplit(")", 1)[1].split()[19]
+    try:
+        return stat.rsplit(")", 1)[1].split()[19]
+    except IndexError:
+        return None
 
 
 def alive(identity: tuple[int, str] | list) -> bool:
-    return process_start(int(identity[0])) == identity[1]
+    current = process_start(int(identity[0]))
+    return current is not None and current == identity[1] and not _zombie(int(identity[0]))
 
 
 def terminate(identity: tuple[int, str] | list, *, grace: float = 3.0) -> bool:
@@ -32,7 +36,7 @@ def terminate(identity: tuple[int, str] | list, *, grace: float = 3.0) -> bool:
     pid = int(identity[0])
     if not alive(identity):
         return False
-    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, grace)):
+    for sig, wait in ((signal.SIGTERM, grace), (getattr(signal, "SIGKILL", signal.SIGTERM), grace)):
         with contextlib.suppress(OSError):
             os.kill(pid, sig)
         deadline = time.monotonic() + wait

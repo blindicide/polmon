@@ -41,6 +41,10 @@ elif action == "run":
         time.sleep(60)
     print(json.dumps({"ready_seconds": 1.5, "probes": {"alpha": [True]}, "sample": {}}))
 elif action == "recover":
+    for name in ("alpha.qcow2", "state.json"):
+        path = os.path.join(args["--directory"], name)
+        if os.path.isfile(path):
+            os.unlink(path)
     print(json.dumps({"recovered": True}))
 """
 
@@ -228,3 +232,22 @@ def test_http_contract_and_capability(tmp_path, monkeypatch):
         assert client.get("/v1/vm/jobs/not-an-id").status_code == 422
     finally:
         plane.close()
+
+
+def test_cleanup_failure_is_reported_as_failed_and_preserves_run(fake, monkeypatch):
+    jobs = fake()
+    with_image(jobs)
+    monkeypatch.setattr(jobs, "_cleanup", lambda _: False)
+    result = finished(jobs, str(jobs.start(VMRequest(action="run"))["job_id"]))
+    assert result["state"] == "failed" and result["message_params"]["left_behind"]
+    assert any((jobs.directory / "runs").glob("*/alpha.qcow2"))
+
+
+def test_recovery_preserves_unjournaled_files(fake):
+    jobs = fake()
+    leftover = jobs.directory / "runs" / "abc"
+    leftover.mkdir(parents=True)
+    foreign = leftover / "operator.txt"
+    foreign.write_text("keep")
+    assert jobs.recover() == {"directories": 1, "recovered": 0, "failed": 1}
+    assert foreign.read_text() == "keep"

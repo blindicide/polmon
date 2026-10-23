@@ -65,6 +65,8 @@ def test_model_limits_and_namespace_semantics(tmp_path):
 
 
 def test_readiness_reports_runtime_and_modes(monkeypatch):
+    monkeypatch.setattr(module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(module.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(module, "_userns_works", lambda: True)
     monkeypatch.setattr(module, "_sudo_works", lambda: False)
     monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/" + name)
@@ -105,6 +107,9 @@ def test_lifecycle_refuses_before_mutation(tmp_path):
     (fresh.directory / "operator.txt").write_text("keep")
     with pytest.raises(VMError, match="vm.directory_not_empty"):
         fresh.create(topology)
+    (fresh.directory / "state.json").write_text("operator state")
+    fresh.destroy()
+    assert (fresh.directory / "state.json").read_text() == "operator state"
     assert (fresh.directory / "operator.txt").read_text() == "keep"
     assert not runner.calls
 

@@ -13,7 +13,7 @@ import contextlib
 import hashlib
 import ipaddress
 import os
-import signal
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -88,12 +88,14 @@ class Lab:
         if mode not in MODES:
             raise VMError("vm.mode_invalid")
         self.topology, self.runner, self.mode = topology, runner, mode
-        self.owner_uid = os.getuid() if owner_uid is None else owner_uid
-        self.owner_gid = os.getgid() if owner_gid is None else owner_gid
+        self.owner_uid = getattr(os, "getuid", lambda: -1)() if owner_uid is None else owner_uid
+        self.owner_gid = getattr(os, "getgid", lambda: -1)() if owner_gid is None else owner_gid
         self.names = lab_names(topology)
         self.holder: subprocess.Popen[bytes] | None = None
         self.holder_identity: tuple[int, str] | None = None
         self.created = False
+        self.namespace_identity: list[int] | None = None
+        self.on_created = lambda: None
 
     # -- команды внутри пространства ------------------------------------------------------
 
@@ -166,16 +168,23 @@ class Lab:
         """Создаёт пространство, мосты и TAP; при любой ошибке откатывает уже созданное."""
         if self.created:
             raise VMError("vm.lab_exists")
-        if self.mode == "netns":
-            if self._existing():
-                # Чужое пространство с тем же именем не усыновляется: откат удалил бы его.
-                raise VMError("vm.lab_exists")
-            self.created = True
-            self.runner.run(["ip", "netns", "add", self.names.namespace], privileged=True)
-        else:
-            self.created = True
-            self._spawn_holder()
+        if self.owner_uid < 0 or self.owner_gid < 0:
+            raise VMError("vm.linux_x86_64_required")
         try:
+            if self.mode == "netns":
+                if self._existing():
+                    raise VMError("vm.lab_exists")
+                self.runner.run(["ip", "netns", "add", self.names.namespace], privileged=True)
+                self.namespace_identity = namespace_identity(self.names.namespace)
+                self.created = True
+                if self.namespace_identity is None:
+                    raise VMError("vm.state_invalid")
+            else:
+                self._spawn_holder()
+                self.namespace_identity = file_identity(Path(f"/proc/{self.holder.pid}/ns/net"))
+                self.created = True
+            # Persist ownership before configuring links or starting guests.
+            self.on_created()
             self.run(
                 ["ip", "-batch", "-"],
                 timeout=10 + len(self._lines()),
@@ -275,15 +284,9 @@ class Lab:
 
     def destroy(self) -> None:
         """Идемпотентно удаляет пространство; устройства внутри исчезают вместе с ним."""
-        if self.mode == "netns":
-            if self.created:
-                self.runner.run(
-                    ["ip", "netns", "del", self.names.namespace], privileged=True, check=False
-                )
-        elif self.holder is not None:
-            for pid in self.members():
-                with contextlib.suppress(OSError):
-                    os.kill(pid, signal.SIGKILL)
+        if self.created:
+            release(self.state(), self.runner)
+        if self.holder is not None:
             stop_process_group(self.holder, grace=1)
         self.holder = None
         self.holder_identity = None
@@ -304,28 +307,73 @@ class Lab:
             "mode": self.mode,
             "namespace": self.names.namespace,
             "holder": list(self.holder_identity) if self.holder_identity else None,
+            "namespace_identity": self.namespace_identity,
         }
 
 
-def release(state: dict, runner: CommandRunner) -> list[str]:
-    """Освобождает пространство по записи о владении (после аварии); возвращает снятые ресурсы."""
-    released = []
-    if state.get("mode") == "netns" and state.get("namespace"):
-        name = state["namespace"]
-        if not name.startswith("polmon") or not name.endswith("n"):
+def file_identity(path: Path) -> list[int] | None:
+    try:
+        stat = path.stat()
+        return [stat.st_dev, stat.st_ino]
+    except FileNotFoundError:
+        return None
+
+
+def namespace_identity(name: str) -> list[int] | None:
+    if not re.fullmatch(r"polmon[0-9a-f]{8}n", name):
+        raise VMError("vm.state_invalid")
+    return file_identity(Path("/run/netns") / name)
+
+
+def validate_release(state: dict) -> None:
+    """Validate kernel ownership before signalling any process or deleting anything."""
+    mode = state.get("mode")
+    recorded = state.get("namespace_identity")
+    if mode == "netns":
+        current = namespace_identity(str(state.get("namespace", "")))
+    elif mode == "userns":
+        holder = state.get("holder")
+        if not holder or not alive(holder):
+            return
+        current = file_identity(Path(f"/proc/{holder[0]}/ns/net"))
+        if current == file_identity(Path("/proc/self/ns/net")):
             raise VMError("vm.state_invalid")
-        runner.run(["ip", "netns", "del", name], privileged=True, check=False)
-        released.append(f"netns:{name}")
-    elif state.get("mode") == "userns" and state.get("holder"):
+    else:
+        raise VMError("vm.state_invalid")
+    if current is not None and (not recorded or current != recorded):
+        raise VMError("vm.state_invalid")
+
+
+def _stop_members(target: list[int], *, holder_pid: int | None = None) -> None:
+    if target == file_identity(Path("/proc/self/ns/net")):
+        raise VMError("vm.state_invalid")
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == holder_pid:
+            continue
+        with contextlib.suppress(OSError):
+            if entry.stat().st_uid == os.getuid() and file_identity(entry / "ns/net") == target:
+                identity = [int(entry.name), process_start(int(entry.name))]
+                if not terminate(identity, grace=1) and alive(identity):
+                    raise VMError("vm.cleanup_failed")
+
+
+def release(state: dict, runner: CommandRunner) -> list[str]:
+    """Reclaim only the recorded kernel namespace; failures preserve the journal."""
+    validate_release(state)
+    released = []
+    if state.get("mode") == "netns":
+        name = state["namespace"]
+        if namespace_identity(name) is not None:
+            _stop_members(state["namespace_identity"])
+            runner.run(["ip", "netns", "del", name], privileged=True)
+            if namespace_identity(name) is not None:
+                raise VMError("vm.cleanup_failed")
+            released.append(f"netns:{name}")
+    elif state.get("holder"):
         holder = state["holder"]
         if alive(holder):
-            target = os.readlink(f"/proc/{holder[0]}/ns/net")
-            for entry in Path("/proc").iterdir():
-                if not entry.name.isdigit() or int(entry.name) == holder[0]:
-                    continue
-                with contextlib.suppress(OSError):
-                    if os.readlink(entry / "ns" / "net") == target:
-                        os.kill(int(entry.name), signal.SIGKILL)
-            terminate(holder, grace=1)
+            _stop_members(state["namespace_identity"], holder_pid=holder[0])
+            if not terminate(holder, grace=1) and alive(holder):
+                raise VMError("vm.cleanup_failed")
             released.append(f"userns:{holder[0]}")
     return released

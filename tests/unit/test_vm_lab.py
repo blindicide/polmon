@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from polmon_l1_vm import lab as lab_module
 from polmon_l1_vm.images import VMError
 from polmon_l1_vm.lab import Lab, lab_names, probe_address
 
@@ -46,10 +47,18 @@ def test_probe_address_is_free_and_inside_the_subnet():
     assert str(probe_address(topology, "lab")) == "192.168.240.253/24"
 
 
-def test_netns_mode_plan_is_privileged_owned_and_has_no_uplink():
+def test_netns_mode_plan_is_privileged_owned_and_has_no_uplink(monkeypatch):
     topology = load_topology(EXAMPLE)
     runner = RecordingRunner()
     lab = Lab(topology, runner, mode="netns", owner_uid=1000, owner_gid=1001)
+    monkeypatch.setattr(lab_module, "_stop_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        lab_module,
+        "namespace_identity",
+        lambda _: [1, 2]
+        if not any(call[0][:3] == ["ip", "netns", "del"] for call in runner.calls)
+        else None,
+    )
     # Проверку изоляции на пустом фиктивном выводе пропускаем: нужен только план команд.
     lab.verify_isolated = lambda: {}
     lab.create()
@@ -75,7 +84,7 @@ def test_netns_mode_never_adopts_an_existing_namespace():
     topology = load_topology(EXAMPLE)
     names = lab_names(topology)
     runner = RecordingRunner(listing=f"{names.namespace} (id: 0)\n")
-    lab = Lab(topology, runner, mode="netns")
+    lab = Lab(topology, runner, mode="netns", owner_uid=1000, owner_gid=1000)
     with pytest.raises(VMError, match="vm.lab_exists"):
         lab.create()
     assert [call[0][:3] for call in runner.calls] == [["ip", "netns", "list"]]
