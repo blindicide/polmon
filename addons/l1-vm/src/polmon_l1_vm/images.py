@@ -147,6 +147,7 @@ def acquire_image(destination: Path, manifest: ImageManifest, *, opener=_open_ht
     temporary = Path(name)
     hasher, total = hashlib.sha256(), 0
     deadline = time.monotonic() + 900
+    published = False
     try:
         with os.fdopen(fd, "wb") as stream, opener(manifest.source_url) as response:
             while chunk := response.read(1_048_576):
@@ -160,10 +161,16 @@ def acquire_image(destination: Path, manifest: ImageManifest, *, opener=_open_ht
         temporary.chmod(0o444)
         # Жёсткая ссылка не заменяет существующий файл, в отличие от rename.
         os.link(temporary, destination)
+        published = True
     except OSError as error:
         raise VMError("vm.image_download") from error
     finally:
+        # Windows refuses unlinking a read-only hard link; restore the published file after it.
+        if os.name == "nt" and temporary.exists():
+            temporary.chmod(0o600)
         temporary.unlink(missing_ok=True)
+        if published:
+            destination.chmod(0o444)
     return {
         "path": str(destination),
         "sha256": manifest.sha256,
