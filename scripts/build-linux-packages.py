@@ -182,6 +182,8 @@ Self-contained Qt client with embedded L0 backend and SQLite runtime.
 %install
 mkdir -p %{{buildroot}}
 cp -a root/. %{{buildroot}}/
+# RPM source extraction makes files owner-writable; restore the pinned base invariant.
+chmod 0444 %{{buildroot}}/opt/polmon/_internal/vm/*.qcow2
 
 %files
 %defattr(-,root,root,-)
