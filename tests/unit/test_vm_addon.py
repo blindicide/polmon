@@ -1,15 +1,23 @@
 """VM planning/failure tests are not evidence of a booted guest."""
 
 import hashlib
+import io
 import json
 import shutil
 from pathlib import Path
 
 import pytest
 from polmon_l1_vm import backend as module
+from polmon_l1_vm import images
 from polmon_l1_vm.backend import VMBackend, VMLimits, readiness
 from polmon_l1_vm.cli import main
-from polmon_l1_vm.images import ImageManifest, OverlayStore, VMError, verify_image
+from polmon_l1_vm.images import (
+    ImageManifest,
+    OverlayStore,
+    VMError,
+    acquire_image,
+    verify_image,
+)
 from polmon_l1_vm.seed import SEED_VOLUME_ID, create_seed, seed_documents
 
 from polmon.backends.namespace.runner import CommandResult, CommandRunner
@@ -100,14 +108,6 @@ def test_lifecycle_refuses_before_mutation(tmp_path):
     assert not runner.calls
 
 
-def test_image_acquisition_is_not_implemented_yet(tmp_path):
-    from polmon_l1_vm.images import acquire_image
-
-    with pytest.raises(VMError, match="vm.scaffold_only"):
-        acquire_image(tmp_path / "image", manifest())
-    assert not list(tmp_path.iterdir())
-
-
 def test_generated_seed_addresses_identity_and_no_egress():
     topology = load_topology(EXAMPLE)
     first, second = [seed_documents(node, topology) for node in topology.nodes]
@@ -188,11 +188,74 @@ def test_overlay_never_overwrites_existing_file(tmp_path):
     assert target.read_bytes() == b"operator-file"
 
 
-def test_cli_runtime_refuses_before_reading_operator_files(tmp_path, capsys):
-    for operation in ("run", "recover", "acquire-image", "verify-image", "inspect"):
-        assert main([operation, "--image", str(tmp_path / "absent")]) == 2
-        assert json.loads(capsys.readouterr().err)["error_code"] == "vm.scaffold_only"
+class FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def test_acquire_image_verifies_before_publishing_read_only(tmp_path):
+    data = b"qcow2-bytes" * 1000
+    good = manifest(hashlib.sha256(data).hexdigest())
+    target = tmp_path / "images" / "base.qcow2"
+    result = acquire_image(target, good, opener=lambda url: FakeResponse(data))
+    assert result["bytes"] == len(data) and target.read_bytes() == data
+    assert target.stat().st_mode & 0o777 == 0o444
+    assert [item.name for item in target.parent.iterdir()] == ["base.qcow2"]
+    with pytest.raises(VMError, match="vm.image_exists"):
+        acquire_image(target, good, opener=lambda url: FakeResponse(b"other"))
+    assert target.read_bytes() == data
+
+
+def test_acquire_image_rejects_bad_digest_oversize_and_leaves_nothing(tmp_path):
+    data = b"x" * 4096
+    cases = [
+        (manifest("0" * 64), data, "vm.image_checksum"),
+        (
+            manifest(hashlib.sha256(data).hexdigest()).model_copy(update={"max_file_bytes": 1024}),
+            data,
+            "vm.image_size",
+        ),
+    ]
+    for item, payload, code in cases:
+        with pytest.raises(VMError, match=code):
+            acquire_image(
+                tmp_path / "base.qcow2", item, opener=lambda url, p=payload: FakeResponse(p)
+            )
+        assert not list(tmp_path.iterdir())
+
+    def broken(url):
+        raise OSError("network down")
+
+    with pytest.raises(VMError, match="vm.image_download"):
+        acquire_image(tmp_path / "base.qcow2", manifest(), opener=broken)
     assert not list(tmp_path.iterdir())
+
+
+def test_acquisition_refuses_redirect_to_plain_http():
+    handler = images._HttpsOnly()
+    with pytest.raises(VMError, match="vm.image_redirect"):
+        handler.redirect_request(None, None, 302, "Found", {}, "http://example.invalid/x")
+
+
+def test_cli_inspection_recovery_and_image_commands(tmp_path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    assert main(["inspect", "--directory", str(run)]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "absent"
+    assert main(["recover", "--directory", str(run)]) == 0
+    assert json.loads(capsys.readouterr().out)["recovered"] is False
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(manifest().model_dump_json())
+    arguments = ["--manifest", str(manifest_path), "--image", str(tmp_path / "absent")]
+    assert main(["verify-image", *arguments]) == 2
+    assert json.loads(capsys.readouterr().err)["error_code"] == "vm.image_missing"
+    manifest_path.write_text("x" * 20000)
+    assert main(["verify-image", *arguments]) == 2
+    assert json.loads(capsys.readouterr().err)["error_code"] == "vm.manifest_size"
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["manifest.json", "run"]
 
 
 def test_seed_iso_is_created_with_nocloud_label_and_documents(tmp_path):

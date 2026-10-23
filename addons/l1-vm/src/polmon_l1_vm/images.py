@@ -7,6 +7,9 @@ import json
 import os
 import re
 import stat
+import tempfile
+import time
+import urllib.request
 from pathlib import Path
 
 from pydantic import Field
@@ -116,6 +119,54 @@ class OverlayStore:
             self.owned.remove(path)
 
 
-def acquire_image(destination: Path, manifest: ImageManifest) -> dict:
-    """Acquisition is deferred until an authorized image/runtime implementation exists."""
-    raise VMError("vm.scaffold_only")
+class _HttpsOnly(urllib.request.HTTPRedirectHandler):
+    """Перенаправления допускаются, но только на https: понижение до http отклоняется."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        if not newurl.startswith("https://"):
+            raise VMError("vm.image_redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_https(url: str):  # noqa: ANN202
+    opener = urllib.request.build_opener(_HttpsOnly)
+    return opener.open(url, timeout=30)
+
+
+def acquire_image(destination: Path, manifest: ImageManifest, *, opener=_open_https) -> dict:
+    """Скачивает образ из манифеста: только https, с лимитом размера и проверкой sha256.
+
+    Файл появляется по месту назначения лишь после успешной проверки, только для чтения;
+    существующий файл не перезаписывается.
+    """
+    destination = destination.absolute()
+    if destination.exists() or destination.is_symlink():
+        raise VMError("vm.image_exists")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, name = tempfile.mkstemp(prefix=".image-", suffix=".part", dir=destination.parent)
+    temporary = Path(name)
+    hasher, total = hashlib.sha256(), 0
+    deadline = time.monotonic() + 900
+    try:
+        with os.fdopen(fd, "wb") as stream, opener(manifest.source_url) as response:
+            while chunk := response.read(1_048_576):
+                total += len(chunk)
+                if total > manifest.max_file_bytes or time.monotonic() > deadline:
+                    raise VMError("vm.image_size")
+                hasher.update(chunk)
+                stream.write(chunk)
+        if hasher.hexdigest() != manifest.sha256:
+            raise VMError("vm.image_checksum")
+        temporary.chmod(0o444)
+        # Жёсткая ссылка не заменяет существующий файл, в отличие от rename.
+        os.link(temporary, destination)
+    except OSError as error:
+        raise VMError("vm.image_download") from error
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "path": str(destination),
+        "sha256": manifest.sha256,
+        "bytes": total,
+        "source_url": manifest.source_url,
+    }
