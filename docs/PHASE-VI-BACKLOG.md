@@ -56,4 +56,4 @@ Its original run `39771278495` failed Windows test collection. A later repair ru
 `39931136601` uploaded release assets but ended cancelled; post-publication verification
 was cancelled. Those assets are not a fully verified release. The current candidate uses a
 new version/tag and fixes test-helper imports without deselecting runnable Windows tests.
-The [Phase VI handoff](../HANDOFF-PHASE-VI-ASTRA.md) preserves the earlier closeout record.
+The [Phase VI handoff](history/HANDOFF-PHASE-VI-ASTRA.md) preserves the earlier closeout record.
