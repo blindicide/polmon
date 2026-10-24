@@ -204,7 +204,7 @@ class VMBackend(ExecutionBackend):
         files = sorted(
             name
             for node in (self.topology.nodes if self.topology else [])
-            for name in (f"{node.id}.qcow2", f"{node.id}-seed.iso")
+            for name in (f"{node.id}.qcow2", f"{node.id}-seed.iso", f"{node.id}-qemu.log")
         )
         write_state(
             self.directory,
@@ -417,6 +417,9 @@ class VMBackend(ExecutionBackend):
         for path in self.pidfiles.values():
             path.unlink(missing_ok=True)
         self.pidfiles.clear()
+        # Журналы QEMU принадлежат запуску; оставленные, они мешают повторному созданию.
+        for node in self.topology.nodes if self.topology else []:
+            (self.directory / f"{node.id}-qemu.log").unlink(missing_ok=True)
         self.identities.clear()
         if self.socket_dir is not None:
             if self.socket_dir.exists():
