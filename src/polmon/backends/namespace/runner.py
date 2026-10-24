@@ -93,7 +93,7 @@ class CommandRunner:
             assert process.stdout is not None
             written = 0
             with destination.open("ab") as stream:
-                while chunk := process.stdout.read(8192):
+                while chunk := process.stdout.read1(8192):
                     remaining = max_output_bytes - written
                     if remaining > 0:
                         stream.write(chunk[:remaining])

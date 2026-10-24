@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -34,6 +35,26 @@ def wait_for(check, timeout=90):
             return value
         time.sleep(1)
     return check()
+
+
+def diagnose(vm, topology) -> None:
+    """Состояние лабораторной сети и сырой результат опроса: что видит хост, а что гость."""
+    if vm.lab is None:
+        return
+    probes = [["ip", "-o", "addr"], ["ip", "neigh"], ["ip", "-s", "-o", "link"]]
+    for node in topology.nodes:
+        address = str(node.interfaces[0].ipv4)
+        probes.append(["ping", "-c", "1", "-W", "1", address])
+        probes.append(
+            [sys.executable, "-m", "polmon_l1_vm.cli", "probe-http", address, "8080", "/"]
+        )
+    for command in probes:
+        try:
+            result = vm.lab.run(command, as_owner=True, check=False, timeout=15)
+            print(f"--- {' '.join(command)} -> rc={result.returncode}")
+            print((result.stdout + result.stderr)[-1500:])
+        except Exception as error:  # noqa: BLE001 - диагностика не должна скрывать исходный отказ
+            print(f"--- {' '.join(command)} -> {type(error).__name__}: {error}")
 
 
 @pytest.mark.integration
@@ -125,6 +146,12 @@ def test_real_two_guest_lifecycle_identity_isolation_and_cleanup(tmp_path, mode)
             )
             assert same.returncode == 1, same.stdout
         assert hashlib.sha256(base.read_bytes()).hexdigest() == manifest.sha256
+    except BaseException:
+        # Консоль гостя исчезнет вместе с запуском: сохраняем её в выводе до очистки.
+        for log in sorted(vm.directory.glob("*-qemu.log")):
+            print(f"--- {log.name} (tail) ---\n{log.read_text(errors='replace')[-6000:]}")
+        diagnose(vm, topology)
+        raise
     finally:
         vm.destroy()
 

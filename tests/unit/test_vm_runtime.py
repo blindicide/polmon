@@ -255,6 +255,7 @@ def test_failed_create_rolls_back_everything(tmp_path, monkeypatch):
         runner=FailingOverlayRunner(),
     )
     sockets_before = set(Path(tempfile.gettempdir()).glob("pmvm-*"))
+    (tmp_path / "base.qcow2").write_bytes(b"verified base")
     with pytest.raises(RuntimeError, match="qemu-img failed"):
         vm.create(load_topology(EXAMPLE))
     assert FakeLab.instances[0].destroyed >= 1
@@ -277,7 +278,7 @@ def test_recover_stops_recorded_processes_and_removes_only_owned_files(tmp_path,
     outside = tmp_path / "evil"
     outside.write_text("keep")
     (run / "operator.txt").write_text("keep")
-    owned = ["alpha.qcow2", "alpha-seed.iso"]
+    owned = ["alpha.qcow2", "alpha-seed.iso", "alpha-qemu.log"]
     for name in owned:
         (run / name).write_text("x")
     socket_dir = Path(tempfile.mkdtemp(prefix="pmvm-"))

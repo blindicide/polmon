@@ -1,5 +1,7 @@
 # Phase VI intermediate release handoff
 
+> Superseded for current status by [../HANDOFF.md](../HANDOFF.md) (2026-10-24).
+
 VERSION: core 0.7.0rc1; addon distribution 0.1.0rc1; SemVer tag v0.7.0-rc.1.
 STATUS: PARTIAL / RELEASE BLOCKED — local gates pass; Windows release gate failed.
 Real VM runtime/acceptance remains unavailable / NOT RUN.

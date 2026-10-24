@@ -1,0 +1,87 @@
+name: VM gate
+
+# Real KVM guests on a GitHub-hosted runner. A runner without /dev/kvm or user namespaces
+# yields NOT_RUN (a warning, never a pass); see scripts/vm-gate.py.
+on:
+  pull_request:
+    paths:
+      - "addons/l1-vm/**"
+      - "scripts/vm-*"
+      - "tests/integration/test_vm_guest.py"
+      - "src/polmon/api/vm.py"
+      - ".github/workflows/vm-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vm-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  vm-gate:
+    name: KVM guests (userns + netns)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install QEMU and lab tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends qemu-system-x86 qemu-utils \
+            genisoimage iproute2 util-linux
+      - name: Allow KVM and unprivileged user namespaces for the runner user
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          ls -l /dev/kvm /dev/net/tun || true
+      - name: Project environment
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e ".[dev]"
+      - name: Acquire the digest-pinned guest image
+        run: |
+          PYTHONPATH=addons/l1-vm/src .venv/bin/python -m polmon_l1_vm.cli acquire-image \
+            --manifest examples/vm/alpine-3.24.1-manifest.json \
+            --image "$RUNNER_TEMP/alpine.qcow2"
+      - name: Run the gate
+        env:
+          # The guest tests do not use Qt; pytest-qt would refuse to load without PySide6.
+          PYTEST_ADDOPTS: -p no:pytest-qt
+        run: |
+          set +e
+          .venv/bin/python scripts/vm-gate.py --mode both \
+            --image "$RUNNER_TEMP/alpine.qcow2" \
+            --manifest examples/vm/alpine-3.24.1-manifest.json \
+            --output vm-gate-evidence
+          code=$?
+          {
+            echo '### VM gate'
+            echo '```json'
+            cat vm-gate-evidence/summary.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ $code -eq 2 ]]; then
+            echo "::warning::VM gate NOT RUN on this runner (see summary); not a pass"
+            exit 0
+          fi
+          exit $code
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: vm-gate-evidence
+          path: vm-gate-evidence
+          if-no-files-found: ignore
