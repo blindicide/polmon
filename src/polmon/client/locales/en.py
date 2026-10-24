@@ -1319,6 +1319,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.host_disk": "The host does not have enough free disk space.",
     "backend.vm.host_memory": "The host does not have enough free memory for the guests.",
     "backend.vm.image_checksum": "The image checksum does not match the pinned value.",
+    "backend.vm.image_changed": "The base image changed after it was verified.",
     "backend.vm.image_download": "The image could not be downloaded.",
     "backend.vm.image_format": "The image has an unsupported format.",
     "backend.vm.image_redirect": "The image source redirected to a disallowed address.",

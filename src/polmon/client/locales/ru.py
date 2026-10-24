@@ -1395,6 +1395,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.host_disk": "На хосте недостаточно места на диске.",
     "backend.vm.host_memory": "На хосте недостаточно свободной памяти для гостей.",
     "backend.vm.image_checksum": "Контрольная сумма образа не совпадает с закреплённой.",
+    "backend.vm.image_changed": "Базовый образ изменился после проверки.",
     "backend.vm.image_download": "Не удалось скачать образ.",
     "backend.vm.image_format": "Образ имеет недопустимый формат.",
     "backend.vm.image_redirect": "Источник образа перенаправил запрос на недопустимый адрес.",
