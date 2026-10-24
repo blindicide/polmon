@@ -30,24 +30,31 @@ jobs:
         run: |
           sudo modprobe nbd max_part=8
           sudo qemu-nbd -r -c /dev/nbd0 "$RUNNER_TEMP/alpine.qcow2"
-          sleep 2; lsblk /dev/nbd0
+          sleep 2
           sudo mkdir -p /mnt/img
           for p in /dev/nbd0p1 /dev/nbd0p2 /dev/nbd0; do sudo mount -o ro $p /mnt/img 2>/dev/null && break; done
-          echo "--- extlinux"; sudo cat /mnt/img/boot/extlinux.conf || sudo find /mnt/img -maxdepth 2 | head -30
-          echo "--- inittab"; sudo grep -v '^#' /mnt/img/etc/inittab | head -30
-          echo "--- tiny-cloud"; sudo cat /mnt/img/etc/tiny-cloud.ini 2>&1 | head -20
-          echo "--- python"; ls -l /mnt/img/usr/bin/python3* 2>&1 | head -3
-          echo "--- os-release"; sudo cat /mnt/img/etc/os-release | head -3
+          echo "--- initramfs virtio/sd modules"
+          sudo zcat /mnt/img/boot/initramfs-virt | cpio -t 2>/dev/null | grep -E "virtio_blk|virtio_scsi|virtio_pci|sd_mod|ata_piix|ahci|ext4|virtio_net" | head -20
+          echo "--- mkinitfs.conf"; sudo cat /mnt/img/etc/mkinitfs/mkinitfs.conf
+          echo "--- cloud-init"; ls /mnt/img/usr/bin/cloud-init /mnt/img/etc/cloud/cloud.cfg 2>&1; sudo grep -n "datasource" /mnt/img/etc/cloud/cloud.cfg | head
+          echo "--- openrc default runlevel"; ls /mnt/img/etc/runlevels/default /mnt/img/etc/runlevels/boot 2>&1 | head -40
           sudo umount /mnt/img; sudo qemu-nbd -d /dev/nbd0
-      - name: Plain boot with the same drive layout, 60 s of serial
+      - name: Boot twice with full serial capture (virtio disk vs IDE disk)
         run: |
           mkdir -p seed && printf 'instance-id: dbg\nlocal-hostname: dbg\n' > seed/meta-data
           printf '#cloud-config\nhostname: dbg\n' > seed/user-data
           genisoimage -quiet -output seed.iso -volid cidata -joliet -rock seed
-          qemu-img create -q -f qcow2 -F qcow2 -b "$RUNNER_TEMP/alpine.qcow2" overlay.qcow2
-          timeout 60 qemu-system-x86_64 -name dbg -machine pc,accel=kvm -cpu host -m 256 -smp 1 \
-            -nodefaults -no-user-config -display none -no-reboot \
-            -chardev stdio,id=serial0,signal=off -serial chardev:serial0 \
-            -drive file=overlay.qcow2,if=virtio,format=qcow2 \
-            -drive file=seed.iso,if=virtio,format=raw,readonly=on \
-            | tail -c 5000 || true
+          for variant in virtio ide; do
+            qemu-img create -q -f qcow2 -F qcow2 -b "$RUNNER_TEMP/alpine.qcow2" "$variant.qcow2"
+            if [[ $variant == virtio ]]; then
+              disks=(-drive file=$variant.qcow2,if=virtio,format=qcow2 -drive file=seed.iso,if=virtio,format=raw,readonly=on)
+            else
+              disks=(-drive file=$variant.qcow2,if=ide,index=0,format=qcow2 -drive file=seed.iso,if=ide,index=1,media=cdrom,readonly=on)
+            fi
+            timeout 75 qemu-system-x86_64 -name dbg -machine pc,accel=kvm -cpu host -m 256 -smp 1 \
+              -nodefaults -no-user-config -display none -no-reboot \
+              -serial file:$variant.serial "${disks[@]}" || true
+            echo "=== $variant: $(wc -c < $variant.serial) bytes; last 25 lines"
+            tail -n 25 $variant.serial
+            grep -c "login:" $variant.serial || true
+          done
