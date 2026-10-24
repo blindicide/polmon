@@ -111,6 +111,7 @@ def run_mode(mode: str, output: Path, image: Path | None, manifest: Path | None)
         "counts": counts,
         "seconds": round(time.monotonic() - started, 1),
         "not_run_reason": reason if status == NOT_RUN else None,
+        "log_tail": (done.stdout + done.stderr)[-2000:] if status == FAIL else None,
         "evidence": evidence_lines(done.stdout),
     }
 
@@ -137,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"vm-gate: {summary['status']} — {output}/summary.json")
     for item in results:
         print(f"  {item['mode']}: {item['status']} {item['counts']} {item['not_run_reason'] or ''}")
+        if item["log_tail"]:
+            print(item["log_tail"])
     return {PASS: 0, FAIL: 1, NOT_RUN: 2}[summary["status"]]
 
 

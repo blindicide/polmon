@@ -58,6 +58,9 @@ jobs:
             --manifest examples/vm/alpine-3.24.1-manifest.json \
             --image "$RUNNER_TEMP/alpine.qcow2"
       - name: Run the gate
+        env:
+          # The guest tests do not use Qt; pytest-qt would refuse to load without PySide6.
+          PYTEST_ADDOPTS: -p no:pytest-qt
         run: |
           set +e
           .venv/bin/python scripts/vm-gate.py --mode both \
