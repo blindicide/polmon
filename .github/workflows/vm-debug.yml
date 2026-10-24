@@ -1,0 +1,53 @@
+name: VM debug (temporary)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/vm-debug.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends qemu-system-x86 qemu-utils genisoimage
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules; sudo udevadm trigger --name-match=kvm || true
+          python -m venv .venv && .venv/bin/python -m pip install -q -e ".[dev]"
+          PYTHONPATH=addons/l1-vm/src .venv/bin/python -m polmon_l1_vm.cli acquire-image --manifest examples/vm/alpine-3.24.1-manifest.json --image "$RUNNER_TEMP/alpine.qcow2"
+      - name: Inspect the image
+        run: |
+          sudo modprobe nbd max_part=8
+          sudo qemu-nbd -r -c /dev/nbd0 "$RUNNER_TEMP/alpine.qcow2"
+          sleep 2; lsblk /dev/nbd0
+          sudo mkdir -p /mnt/img
+          for p in /dev/nbd0p1 /dev/nbd0p2 /dev/nbd0; do sudo mount -o ro $p /mnt/img 2>/dev/null && break; done
+          echo "--- extlinux"; sudo cat /mnt/img/boot/extlinux.conf || sudo find /mnt/img -maxdepth 2 | head -30
+          echo "--- inittab"; sudo grep -v '^#' /mnt/img/etc/inittab | head -30
+          echo "--- tiny-cloud"; sudo cat /mnt/img/etc/tiny-cloud.ini 2>&1 | head -20
+          echo "--- python"; ls -l /mnt/img/usr/bin/python3* 2>&1 | head -3
+          echo "--- os-release"; sudo cat /mnt/img/etc/os-release | head -3
+          sudo umount /mnt/img; sudo qemu-nbd -d /dev/nbd0
+      - name: Plain boot with the same drive layout, 60 s of serial
+        run: |
+          mkdir -p seed && printf 'instance-id: dbg\nlocal-hostname: dbg\n' > seed/meta-data
+          printf '#cloud-config\nhostname: dbg\n' > seed/user-data
+          genisoimage -quiet -output seed.iso -volid cidata -joliet -rock seed
+          qemu-img create -q -f qcow2 -F qcow2 -b "$RUNNER_TEMP/alpine.qcow2" overlay.qcow2
+          timeout 60 qemu-system-x86_64 -name dbg -machine pc,accel=kvm -cpu host -m 256 -smp 1 \
+            -nodefaults -no-user-config -display none -no-reboot \
+            -chardev stdio,id=serial0,signal=off -serial chardev:serial0 \
+            -drive file=overlay.qcow2,if=virtio,format=qcow2 \
+            -drive file=seed.iso,if=virtio,format=raw,readonly=on \
+            | tail -c 5000 || true
