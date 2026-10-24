@@ -10,6 +10,7 @@ import pytest
 
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.namespace.journal import (
+    KILL_SIGNAL,
     LINK_PATTERN,
     NAMESPACE_PATTERN,
     LabJournal,
@@ -106,16 +107,29 @@ def crashed_deployment(kernel: FakeKernel, directory: Path) -> LabJournal:
     return kernel.journal(directory, ME)
 
 
-def test_record_is_atomic_private_and_refuses_unsafe_names(kernel, tmp_path) -> None:
+def test_record_is_atomic_private_and_refuses_unsafe_names(kernel, tmp_path, monkeypatch) -> None:
     journal = kernel.journal(tmp_path / "j", ME)
     with pytest.raises(ValueError, match="non-generated"):
         journal.record("lab", ["ens3"], [])
     with pytest.raises(ValueError, match="non-generated"):
         journal.record("lab", [NS_A], ["tailscale0"])
+    modes = []
+    real_open = os.open
+
+    def record_open(path, flags, mode=0o777):
+        if flags & os.O_CREAT:
+            modes.append(mode)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", record_open)
     journal.record("lab", [NS_A], [BRIDGE])
+    assert modes == [0o600]
     files = list((tmp_path / "j").iterdir())
     assert len(files) == 1 and files[0].suffix == ".json"
-    assert files[0].stat().st_mode & 0o777 == 0o600
+    # Windows stat cannot represent POSIX access bits. Still verify the creation
+    # mode there, and retain the actual filesystem privacy check on POSIX.
+    if os.name == "posix":
+        assert files[0].stat().st_mode & 0o777 == 0o600
     entry = json.loads(files[0].read_text())
     assert entry["state"] == "planned" and entry["owner"]["pid"] == ME.pid
     with pytest.raises(RuntimeError, match="already journaled"):
@@ -210,8 +224,8 @@ def test_stuck_launcher_is_never_sigkilled(kernel, tmp_path) -> None:
     kernel.add_process(601, ["xclock"], netns_inode=inode)
     kernel.ignore_term.update({600, 601})
     result = journal.reconcile()
-    assert (600, signal.SIGKILL) not in kernel.signals
-    assert (601, signal.SIGKILL) in kernel.signals
+    assert (600, KILL_SIGNAL) not in kernel.signals
+    assert (601, KILL_SIGNAL) in kernel.signals
     assert result["processes_remaining"] == [600]
 
 
@@ -272,15 +286,18 @@ def test_control_plane_startup_and_reset_reclaim_dead_owner_records(tmp_path) ->
         plane.close()
 
 
-def test_deploy_refuses_names_journaled_by_another_live_backend(tmp_path) -> None:
+def test_deploy_refuses_names_journaled_by_another_live_backend(kernel, tmp_path) -> None:
     from polmon.api.control import ControlPlane
     from polmon.core.errors import ConfigurationError
 
     plane = ControlPlane(tmp_path / "data")
     try:
-        parent = LabOwner.current()
-        parent = LabOwner(os.getppid(), None, parent.boot_id)  # a live process that is not us
-        LabJournal(plane.lab_journal.directory, owner=parent).record("lab", [NS_A], [])
+        # Model the Linux procfs boundary, rather than relying on the host's parent PID.
+        parent = LabOwner(77, 4242, "boot-1")
+        kernel.add_process(parent.pid, ["polmon-backend"])
+        plane.lab_journal.proc_root = kernel.proc
+        plane.lab_journal.current_boot = "boot-1"
+        kernel.journal(plane.lab_journal.directory, parent).record("lab", [NS_A], [])
 
         class Backend:
             def lab_names(self):

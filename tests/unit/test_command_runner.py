@@ -1,8 +1,10 @@
+import os
+import subprocess
 import sys
 
 import pytest
 
-from polmon.backends.namespace.runner import TIMEOUT_RETURNCODE, CommandRunner
+from polmon.backends.namespace.runner import TIMEOUT_RETURNCODE, CommandRunner, stop_process_group
 
 SLEEPER = [sys.executable, "-c", "import time; time.sleep(5)"]
 
@@ -31,3 +33,15 @@ def test_bounded_runner_caps_output_and_times_out() -> None:
     assert len(result.stdout.encode()) == 128 and result.truncated is True
     sleeper = CommandRunner().run_bounded(SLEEPER, timeout=0.1)
     assert sleeper.timed_out is True and sleeper.returncode == TIMEOUT_RETURNCODE
+
+
+def test_stop_reaps_child_without_posix_process_groups(monkeypatch) -> None:
+    monkeypatch.delattr(os, "killpg", raising=False)
+    process = subprocess.Popen(SLEEPER)
+    try:
+        stop_process_group(process, grace=0.2)
+        assert process.poll() is not None
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=3)

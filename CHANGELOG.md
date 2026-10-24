@@ -4,6 +4,47 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0rc3] - 2026-10-23
+
+Experimental prerelease `v0.7.0-rc.3`, core `0.7.0rc3`, optional addon `0.1.0rc3`.
+Ordinary local topology execution remains L0-only on Windows and Linux; namespace L1/hybrid
+requires an authorized Linux lab backend. Separate VM jobs are Linux-only and experimental.
+**Real guest/KVM acceptance: NOT RUN.** The release executor lacks `/dev/kvm`,
+`qemu-system-x86_64` and ISO tools, and denies user namespace creation. Guest boot,
+networking/services, guest-written clone isolation, resource costs and failure cleanup
+are unverified. No VM functional or security acceptance is claimed.
+
+### Added
+
+- Optional QEMU/KVM runtime implementation: isolated userns/netns labs, independent QCOW2
+  overlays, NoCloud seeds, service probes, bounded admission/measurements and recovery.
+- `/v1/vm/*` subprocess jobs and a desktop VM page with readiness, image state, bounded
+  run/cancel controls and history, independent of namespace topology fidelity.
+- Linux client bundles include the addon and pinned, read-only Alpine image; native package
+  and fresh-runner checks verify their presence, digest and frozen dispatch without guest boot.
+  Windows remains L0-only locally and does not bundle the addon or guest image.
+
+### Fixed
+
+- Recovery validates dead owner and kernel/file identities before destructive operations,
+  refuses host/foreign namespaces and directories, retains failed cleanup journals and leaves
+  unjournaled files intact. Ambiguous legacy VM journals require operator inspection.
+- Frozen addon/probe commands dispatch before Qt instead of treating the executable as Python.
+- Linux packaging collects the actual shipped client graph and preserves read-only image mode.
+- Missing POSIX UID APIs no longer break Windows VM status; subprocess cancellation is portable.
+- VM controls fit the supported window width; native pytest resolves shared test helpers.
+- Portable bounded subprocess termination and coded QMP errors on Windows; Linux kernel
+  ownership tests use explicit procfs fixtures on every platform without dropping assertions.
+- RPM source extraction no longer leaves the bundled pinned guest image writable.
+
+## [0.7.0rc2] - 2026-10-23
+
+Unpublished candidate `v0.7.0-rc.2`. Native Actions run
+[39950685245](https://github.com/blindicide/polmon/actions/runs/39950685245)
+failed Windows portability tests and the installed RPM read-only image check.
+Its tag remains immutable; its experimental runtime changes are included in rc3 above.
+Real guest/KVM acceptance was NOT RUN; no release acceptance is claimed.
+
 ## [0.7.0rc1] - 2026-10-22
 
 Intermediate prerelease `v0.7.0-rc.1`. Local clients remain L0-only; namespace L1

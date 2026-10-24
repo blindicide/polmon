@@ -1,0 +1,6 @@
+{
+  "sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6",
+  "source_url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/cloud/generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2",
+  "distribution": "alpine-3.24.1-x86_64-bios-cloudinit",
+  "license_notice": "Alpine Linux cloud image; its components are distributed under their own open-source licenses, see https://alpinelinux.org/cloud/"
+}

@@ -1,16 +1,25 @@
 """VM planning/failure tests are not evidence of a booted guest."""
 
 import hashlib
+import io
 import json
 import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 from polmon_l1_vm import backend as module
+from polmon_l1_vm import images
 from polmon_l1_vm.backend import VMBackend, VMLimits, readiness
 from polmon_l1_vm.cli import main
-from polmon_l1_vm.images import ImageManifest, OverlayStore, VMError, verify_image
-from polmon_l1_vm.seed import seed_documents
+from polmon_l1_vm.images import (
+    ImageManifest,
+    OverlayStore,
+    VMError,
+    acquire_image,
+    verify_image,
+)
+from polmon_l1_vm.seed import SEED_VOLUME_ID, create_seed, seed_documents
 
 from polmon.backends.namespace.runner import CommandResult, CommandRunner
 from polmon.topology import load_topology
@@ -55,37 +64,54 @@ def test_model_limits_and_namespace_semantics(tmp_path):
         vm.validate(topology)
 
 
-def test_scaffold_refuses_runtime_even_on_capable_host(tmp_path, monkeypatch):
-    from polmon_l1_vm.images import acquire_image
-    from polmon_l1_vm.recovery import recover
-    from polmon_l1_vm.seed import create_seed
+def test_readiness_reports_runtime_and_modes(monkeypatch):
+    monkeypatch.setattr(module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(module.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(module, "_userns_works", lambda: True)
+    monkeypatch.setattr(module, "_sudo_works", lambda: False)
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(module.os, "access", lambda *args: True)
+    result = readiness()
+    assert result["ready"] and result["runtime_implemented"]
+    assert result["modes"] == {"userns": True, "netns": False}
+    assert result["missing"] == []
+    monkeypatch.setattr(module, "_userns_works", lambda: False)
+    result = readiness()
+    assert not result["ready"]
+    assert {"vm.userns_unavailable", "vm.sudo_unavailable"} <= set(result["missing"])
+    monkeypatch.setattr(module.os, "access", lambda *args: False)
+    assert {"vm.kvm_unavailable", "vm.tun_unavailable"} <= set(readiness()["missing"])
 
+
+def test_lifecycle_refuses_before_mutation(tmp_path):
     runner = FakeRunner()
     vm = backend(tmp_path, runner=runner)
     topology = load_topology(EXAMPLE)
-    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/" + name)
-    monkeypatch.setattr(module.os, "access", lambda *args: True)
-    assert not readiness()["ready"]
-    assert "vm.scaffold_only" in readiness()["missing"]
-    actions = [
-        lambda: vm.create(topology),
-        vm.start,
-        vm.stop,
-        vm.destroy,
-        vm.wait_ready,
-        vm.sample,
-        lambda: vm.probe_http("192.168.236.20", 8080, "server"),
-        lambda: acquire_image(tmp_path / "image", manifest()),
-        lambda: recover(vm.directory, runner),
-        lambda: create_seed(vm.directory, topology.nodes[0], topology, runner),
-    ]
-    for action in actions:
-        with pytest.raises(VMError, match="vm.scaffold_only"):
+    for action in (vm.start, vm.wait_ready, vm.sample):
+        with pytest.raises(VMError, match="vm.not_"):
             action()
+    with pytest.raises(VMError, match="vm.not_created"):
+        vm.probe_http("192.168.236.20", 8080, "server")
+    # Образа нет: отказ происходит до создания каталога, пространства и дисков.
+    with pytest.raises(VMError, match="vm.image_missing"):
+        vm.create(topology)
+    vm.stop()
+    vm.destroy()
+    vm.destroy()  # повторный вызов безопасен
     assert not runner.calls
     assert not list(tmp_path.iterdir())
     assert not vm.inspect().resources
-    assert vm.inspect().details["guest_memory_bytes"] is None
+    # Непустой каталог запуска чужой: он не используется и не затирается.
+    fresh = backend(tmp_path, runner=runner)
+    fresh.directory.mkdir()
+    (fresh.directory / "operator.txt").write_text("keep")
+    with pytest.raises(VMError, match="vm.directory_not_empty"):
+        fresh.create(topology)
+    (fresh.directory / "state.json").write_text("operator state")
+    fresh.destroy()
+    assert (fresh.directory / "state.json").read_text() == "operator state"
+    assert (fresh.directory / "operator.txt").read_text() == "keep"
+    assert not runner.calls
 
 
 def test_generated_seed_addresses_identity_and_no_egress():
@@ -96,14 +122,29 @@ def test_generated_seed_addresses_identity_and_no_egress():
     assert "192.168.236.10/24" in first["network-config"]
     assert "gateway" not in first["network-config"] and "dns" not in first["network-config"]
     assert "package_update: false" in first["user-data"]
-    assert "busybox" in second["user-data"]
+    assert "http.server" in second["user-data"]
+
+
+def test_peer_report_is_opt_in_and_names_only_declared_peers():
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    assert "polmon-peers" not in seed_documents(node, topology)["user-data"]
+    documents = seed_documents(node, topology, peer_report=True)
+    user_data = yaml.safe_load(documents["user-data"])
+    assert [item["path"] for item in user_data["write_files"]][1:] == [
+        "/usr/local/bin/polmon-peers.py"
+    ]
+    other = topology.nodes[1]
+    command = user_data["runcmd"][-1][-1]
+    assert other.id in command and str(other.uuid) in command and str(node.uuid) not in command
+    compile(user_data["write_files"][1]["content"], "polmon-peers.py", "exec")
 
 
 def test_clone_and_network_plans_keep_distinct_identities(tmp_path):
     vm = backend(tmp_path)
     topology = load_topology(EXAMPLE)
     plan = vm.plan(topology)
-    assert not plan["runtime_implemented"]
+    assert plan["runtime_implemented"]
     assert plan["estimated_memory_mb"] == 640
     assert len({node["uuid"] for node in plan["nodes"]}) == 2
     assert len({node["overlay"] for node in plan["nodes"]}) == 2
@@ -168,8 +209,111 @@ def test_overlay_never_overwrites_existing_file(tmp_path):
     assert target.read_bytes() == b"operator-file"
 
 
-def test_cli_runtime_refuses_before_reading_operator_files(tmp_path, capsys):
-    for operation in ("run", "recover", "acquire-image", "verify-image", "inspect"):
-        assert main([operation, "--image", str(tmp_path / "absent")]) == 2
-        assert json.loads(capsys.readouterr().err)["error_code"] == "vm.scaffold_only"
+class FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def test_acquire_image_verifies_before_publishing_read_only(tmp_path):
+    data = b"qcow2-bytes" * 1000
+    good = manifest(hashlib.sha256(data).hexdigest())
+    target = tmp_path / "images" / "base.qcow2"
+    result = acquire_image(target, good, opener=lambda url: FakeResponse(data))
+    assert result["bytes"] == len(data) and target.read_bytes() == data
+    assert target.stat().st_mode & 0o777 == 0o444
+    assert [item.name for item in target.parent.iterdir()] == ["base.qcow2"]
+    with pytest.raises(VMError, match="vm.image_exists"):
+        acquire_image(target, good, opener=lambda url: FakeResponse(b"other"))
+    assert target.read_bytes() == data
+
+
+def test_acquire_image_rejects_bad_digest_oversize_and_leaves_nothing(tmp_path):
+    data = b"x" * 4096
+    cases = [
+        (manifest("0" * 64), data, "vm.image_checksum"),
+        (
+            manifest(hashlib.sha256(data).hexdigest()).model_copy(update={"max_file_bytes": 1024}),
+            data,
+            "vm.image_size",
+        ),
+    ]
+    for item, payload, code in cases:
+        with pytest.raises(VMError, match=code):
+            acquire_image(
+                tmp_path / "base.qcow2", item, opener=lambda url, p=payload: FakeResponse(p)
+            )
+        assert not list(tmp_path.iterdir())
+
+    def broken(url):
+        raise OSError("network down")
+
+    with pytest.raises(VMError, match="vm.image_download"):
+        acquire_image(tmp_path / "base.qcow2", manifest(), opener=broken)
     assert not list(tmp_path.iterdir())
+
+
+def test_acquisition_refuses_redirect_to_plain_http():
+    handler = images._HttpsOnly()
+    with pytest.raises(VMError, match="vm.image_redirect"):
+        handler.redirect_request(None, None, 302, "Found", {}, "http://example.invalid/x")
+
+
+def test_cli_inspection_recovery_and_image_commands(tmp_path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    assert main(["inspect", "--directory", str(run)]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "absent"
+    assert main(["recover", "--directory", str(run)]) == 0
+    assert json.loads(capsys.readouterr().out)["recovered"] is False
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(manifest().model_dump_json())
+    arguments = ["--manifest", str(manifest_path), "--image", str(tmp_path / "absent")]
+    assert main(["verify-image", *arguments]) == 2
+    assert json.loads(capsys.readouterr().err)["error_code"] == "vm.image_missing"
+    manifest_path.write_text("x" * 20000)
+    assert main(["verify-image", *arguments]) == 2
+    assert json.loads(capsys.readouterr().err)["error_code"] == "vm.manifest_size"
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["manifest.json", "run"]
+
+
+def test_seed_iso_is_created_with_nocloud_label_and_documents(tmp_path):
+    if not shutil.which("genisoimage") or not shutil.which("isoinfo"):
+        pytest.skip("NOT RUN — environment unavailable: genisoimage/isoinfo")
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    path = create_seed(tmp_path, node, topology, CommandRunner())
+    assert path == tmp_path / f"{node.id}-seed.iso"
+    # Метка тома — позиция 0x8028 первичного дескриптора ISO 9660.
+    assert path.read_bytes()[0x8028:0x8048].decode().strip() == SEED_VOLUME_ID
+    runner = CommandRunner()
+    listing = runner.run(["isoinfo", "-R", "-l", "-i", str(path)]).stdout
+    for name in ("meta-data", "user-data", "network-config"):
+        assert name in listing
+    user_data = runner.run(["isoinfo", "-R", "-x", "/user-data", "-i", str(path)]).stdout
+    assert user_data == seed_documents(node, topology)["user-data"]
+    # Рабочий каталог удалён, остался только образ.
+    assert [item.name for item in tmp_path.iterdir()] == [path.name]
+
+
+def test_seed_refuses_existing_file_and_cleans_up_on_failure(tmp_path):
+    topology = load_topology(EXAMPLE)
+    node = topology.nodes[0]
+    (tmp_path / f"{node.id}-seed.iso").write_bytes(b"operator-file")
+    with pytest.raises(FileExistsError):
+        create_seed(tmp_path, node, topology, FakeRunner())
+    assert (tmp_path / f"{node.id}-seed.iso").read_bytes() == b"operator-file"
+
+    class Failing(FakeRunner):
+        def run(self, argv, **kwargs):
+            raise RuntimeError("genisoimage failed")
+
+    (tmp_path / f"{node.id}-seed.iso").unlink()
+    with pytest.raises(RuntimeError):
+        create_seed(tmp_path, node, topology, Failing())
+    assert not list(tmp_path.iterdir())
+    node.id = "Bad_ID"
+    with pytest.raises(VMError, match="vm.node_id"):
+        create_seed(tmp_path, node, topology, FakeRunner())
