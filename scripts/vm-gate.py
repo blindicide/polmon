@@ -35,9 +35,7 @@ def classify(junit_text: str | None, returncode: int) -> tuple[str, dict]:
     suite = ET.fromstring(junit_text)
     if suite.tag == "testsuites":
         suite = suite[0]
-    counts = {
-        key: int(suite.get(key, 0)) for key in ("tests", "failures", "errors", "skipped")
-    }
+    counts = {key: int(suite.get(key, 0)) for key in ("tests", "failures", "errors", "skipped")}
     if counts["failures"] or counts["errors"] or returncode not in (0, 5):
         return FAIL, counts
     if counts["tests"] == 0 or counts["skipped"]:
@@ -106,9 +104,7 @@ def run_mode(mode: str, output: Path, image: Path | None, manifest: Path | None)
     )
     log.write_text(done.stdout + done.stderr)
     status, counts = classify(junit.read_text() if junit.exists() else None, done.returncode)
-    reason = next(
-        (line for line in done.stderr.splitlines() if line.startswith("NOT RUN")), None
-    )
+    reason = next((line for line in done.stderr.splitlines() if line.startswith("NOT RUN")), None)
     return {
         "mode": mode,
         "status": status,
