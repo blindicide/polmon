@@ -125,6 +125,11 @@ def test_real_two_guest_lifecycle_identity_isolation_and_cleanup(tmp_path, mode)
             )
             assert same.returncode == 1, same.stdout
         assert hashlib.sha256(base.read_bytes()).hexdigest() == manifest.sha256
+    except BaseException:
+        # Консоль гостя исчезнет вместе с запуском: сохраняем её в выводе до очистки.
+        for log in sorted(vm.directory.glob("*-qemu.log")):
+            print(f"--- {log.name} (tail) ---\n{log.read_text(errors='replace')[-6000:]}")
+        raise
     finally:
         vm.destroy()
 
