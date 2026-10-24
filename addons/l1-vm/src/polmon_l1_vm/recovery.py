@@ -19,7 +19,7 @@ from polmon_l1_vm.lab import file_identity, release, validate_release
 STATE_NAME = "state.json"
 STATE_VERSION = 2
 SOCKET_PREFIX = "pmvm-"
-OWNED_FILE = re.compile(r"[a-z][a-z0-9-]{0,31}(\.qcow2|-seed\.iso)")
+OWNED_FILE = re.compile(r"[a-z][a-z0-9-]{0,31}(\.qcow2|-seed\.iso|-qemu\.log)")
 
 
 def write_state(directory: Path, state: dict) -> None:

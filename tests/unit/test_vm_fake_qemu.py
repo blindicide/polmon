@@ -99,6 +99,7 @@ def vm(tmp_path, monkeypatch):
         runner=FileRunner(),
     )
     sockets_before = set(Path(tempfile.gettempdir()).glob("pmvm-*"))
+    (tmp_path / "base.qcow2").write_bytes(b"verified base")
     backend.create(load_topology(EXAMPLE))
     yield backend
     backend.destroy()
@@ -139,3 +140,47 @@ def test_failed_launch_reports_a_code_and_stops_earlier_guests(vm):
         ProcessLab.overrides = {}
     assert vm.qemu_pids == [] and vm.phase == "created"
     assert "simulated rejection" in (vm.directory / "bravo-qemu.log").read_text()
+
+
+def test_stop_attempts_every_guest_before_reporting_a_cleanup_failure(vm, monkeypatch):
+    vm.start()
+    first, second = list(vm.identities.values())
+    real = module.terminate
+    monkeypatch.setattr(
+        module,
+        "terminate",
+        lambda identity, grace=3: False if identity == first else real(identity),
+    )
+    with pytest.raises(VMError, match="vm.cleanup_failed"):
+        vm.stop()
+    # Второй гость остановлен, несмотря на отказ первого; первый остаётся записанным.
+    assert not module.alive(second) and vm.phase == "started"
+    monkeypatch.setattr(module, "terminate", real)
+    vm.stop()
+
+
+def test_start_refuses_a_base_image_replaced_after_verification(vm):
+    vm.base.write_bytes(b"swapped after hashing")
+    with pytest.raises(VMError, match="vm.image_changed"):
+        vm.start()
+    assert vm.qemu_pids == [] and vm.phase == "created"
+
+
+def test_socket_directory_with_a_comma_is_refused_before_anything_is_created(tmp_path, monkeypatch):
+    comma = tmp_path / "a,b"
+    comma.mkdir()
+    make = tempfile.mkdtemp  # тот же модуль: подмену нужно вызывать через исходную функцию
+    monkeypatch.setattr(tempfile, "mkdtemp", lambda prefix: make(prefix=prefix, dir=comma))
+    monkeypatch.setattr(module, "Lab", ProcessLab)
+    monkeypatch.setattr(module, "verify_image", lambda *a: {"virtual_bytes": 1 << 20})
+    monkeypatch.setattr(module, "admit", lambda **kw: {})
+    backend = VMBackend(
+        base=tmp_path / "base.qcow2",
+        manifest=MANIFEST,
+        directory=tmp_path / "run",
+        runner=FileRunner(),
+    )
+    (tmp_path / "base.qcow2").write_bytes(b"x")
+    with pytest.raises(VMError, match="vm.path_invalid"):
+        backend.create(load_topology(EXAMPLE))
+    assert list(comma.iterdir()) == [] and list((tmp_path / "run").iterdir()) == []

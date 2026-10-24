@@ -147,6 +147,7 @@ class VMBackend(ExecutionBackend):
         self.socket_identity = None
         self.phase = "new"
         self.image_info: dict = {}
+        self.base_identity: tuple[int, ...] | None = None
         self.admission: dict = {}
         self.started_at: float | None = None
 
@@ -230,6 +231,7 @@ class VMBackend(ExecutionBackend):
         ):
             raise VMError("vm.directory_not_empty")
         self.image_info = verify_image(self.base, self.manifest, self.runner)
+        self.base_identity = self._base_identity()
         self.admission = admit(
             count=len(topology.nodes),
             memory_mb=self.limits.memory_mb,
@@ -252,6 +254,9 @@ class VMBackend(ExecutionBackend):
             # Короткий каталог: путь UNIX-сокета QMP не должен превышать 108 байт.
             self.socket_dir = Path(tempfile.mkdtemp(prefix=SOCKET_PREFIX)).resolve()
             self.socket_identity = file_identity(self.socket_dir)
+            # Запятая в пути сокета добавила бы собственные параметры в -qmp.
+            if any(c in str(self.socket_dir) for c in ",\n\r"):
+                raise VMError("vm.path_invalid")
             self._journal()
             self.lab = Lab(topology, self.runner, mode=self.mode)
             self.lab.on_created = self._journal
@@ -285,6 +290,10 @@ class VMBackend(ExecutionBackend):
         if self.socket_dir is not None and self.socket_dir.exists():
             found.add(f"dir:{self.socket_dir}")
         return found
+
+    def _base_identity(self) -> tuple[int, ...]:
+        info = self.base.stat()
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
 
     def _command(self, node: Node, overlay: Path, seed: Path) -> list[str]:
         assert self.lab is not None and self.socket_dir is not None
@@ -338,6 +347,13 @@ class VMBackend(ExecutionBackend):
         if self.phase != "created" or self.topology is None or self.lab is None:
             raise VMError("vm.not_created")
         assert self.overlays is not None
+        # Образ хэшируется при создании, а читается гостями позже: подмену файла не пропускаем.
+        try:
+            unchanged = self._base_identity() == self.base_identity
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            raise VMError("vm.image_changed")
         self.phase = "starting"
         try:
             for node, seed in zip(self.topology.nodes, self.seeds, strict=True):
@@ -384,16 +400,20 @@ class VMBackend(ExecutionBackend):
         return [pid for pid, start in self.identities.values() if alive((pid, start))]
 
     def stop(self) -> None:
+        # Каждый гость получает свою попытку остановки: отказ одного не оставляет остальных.
+        failed = False
         for node_id, identity in list(self.identities.items()):
             if alive(identity) and self.socket_dir is not None:
                 with contextlib.suppress(VMError):
                     qmp.command(str(self.socket_dir / f"{node_id}.qmp"), "quit", timeout=2)
             if not terminate(identity, grace=3) and alive(identity):
-                raise VMError("vm.cleanup_failed")
+                failed = True
         for launcher in self.launchers.values():
             if launcher.poll() is None:
                 stop_process_group(launcher, grace=1)
         self.launchers.clear()
+        if failed:
+            raise VMError("vm.cleanup_failed")
         if self.phase in ("started", "starting"):
             self.phase = "stopped"
 
