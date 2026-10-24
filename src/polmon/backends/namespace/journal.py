@@ -32,6 +32,8 @@ from polmon.backends.namespace.runner import CommandRunner
 NAMESPACE_PATTERN = re.compile(r"^polmon[0-9a-f]{8}n$")
 LINK_PATTERN = re.compile(r"^(polmon[0-9a-f]{8}[bt]|veth[0-9a-f]{8}[hp])$")
 JOURNAL_VERSION = 1
+# This journal models Linux signals, including when its kernel boundary is faked.
+KILL_SIGNAL = getattr(signal, "SIGKILL", 9)
 
 
 def boot_id(path: Path = Path("/proc/sys/kernel/random/boot_id")) -> str | None:
@@ -302,7 +304,7 @@ class LabJournal:
         # because that would orphan its root child instead of stopping it.
         for pid in sorted(remaining & members):
             with suppress(ProcessLookupError, PermissionError):
-                self.kill(pid, signal.SIGKILL)
+                self.kill(pid, KILL_SIGNAL)
         if remaining & members:
             time.sleep(0.2)
         remaining = self._alive(remaining)

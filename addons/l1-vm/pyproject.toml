@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "polmon-l1-vm"
-version = "0.1.0rc1"
-description = "Non-executing optional VM-backed L1 scaffold for POLMON"
+version = "0.1.0rc3"
+description = "Experimental optional QEMU/KVM L1 runtime for POLMON"
 requires-python = ">=3.12,<3.13"
-dependencies = ["polmon==0.7.0rc1"]
+dependencies = ["polmon==0.7.0rc3"]
 
 [project.scripts]
 polmon-l1-vm = "polmon_l1_vm.cli:main"

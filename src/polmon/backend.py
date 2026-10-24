@@ -120,6 +120,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=argparse.REMAINDER,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--run-vm",
+        nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
         "--data-dir",
@@ -237,6 +242,10 @@ def main(argv: list[str] | None = None) -> int:
         from polmon.benchmarks.cli import main as benchmark_main
 
         return benchmark_main(args.run_benchmark)
+    if args.run_vm is not None:
+        from polmon_l1_vm.cli import main as vm_main
+
+        return vm_main(args.run_vm)
     if args.self_test:
         return _self_test()
     if args.diagnostics:

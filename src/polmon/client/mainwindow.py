@@ -59,6 +59,7 @@ from polmon.client.pages.reports import ReportsPage
 from polmon.client.pages.scenarios import ScenariosPage
 from polmon.client.pages.telemetry import TelemetryPage
 from polmon.client.pages.topologies import TopologiesPage
+from polmon.client.pages.vm import VMPage
 from polmon.client.state import ConnectionState, Session
 from polmon.client.tasks import CancelToken, TaskRunner
 from polmon.client.widgets import (
@@ -96,6 +97,7 @@ PAGES = (
     LogsPage,
     ReportsPage,
     BenchmarksPage,
+    VMPage,
 )
 PAGE_SHORTCUTS = {
     "dashboard": "Ctrl+1",

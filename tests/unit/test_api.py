@@ -46,7 +46,10 @@ def test_l0_only_backend_advertises_and_enforces_fidelity(tmp_path) -> None:
     plane = ControlPlane(tmp_path, l0_only=True)
     client = TestClient(create_app(plane))
     health = client.get("/v1/health").json()
-    assert health["capabilities"] == {
+    capabilities = dict(health["capabilities"])
+    # Виртуальные машины зависят от хоста и не меняют границу L0.
+    assert isinstance(capabilities.pop("vm"), bool)
+    assert capabilities == {
         "fidelity": "l0_only",
         "l0": True,
         "l1": False,

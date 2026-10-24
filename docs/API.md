@@ -12,6 +12,10 @@ L0 synthetic nodes only; L1/L2 requires a polmon backend on a Linux host with ne
 privileges.” L1/hybrid deployment on Linux first runs read-only host readiness checks and returns
 an actionable 422 when tools or privileges are missing.
 
+From v0.8.0 `capabilities` also carries `vm`: true on Linux when the optional `polmon-l1-vm` add-on
+is importable. It is independent of `fidelity`, so a `--local-l0-only` backend (the one the desktop
+client starts) can serve the VM endpoints below without changing any L0-only refusal.
+
 Run an experiment with `POST /v1/experiments` and fields `experiment_id`, `topology_id`, and
 `scenario_yaml`. Read its result at `GET /v1/experiments/{experiment_id}` and ordered telemetry at
 `GET /v1/experiments/{experiment_id}/telemetry`. The durable machine-readable report is returned by
@@ -66,6 +70,28 @@ Every response has a stable `operation_id`, `topology_id`, `node_id` and `state`
 or `error`). A successful response includes the actual `interface` and `byte_count`; a refusal or
 error includes `message_code` and a safe message. Bounded `packet.send` structured records include
 the operation ID, selected identifiers, state and byte count, never the frame payload.
+
+## L1 virtual machines (v0.8.0)
+
+Optional, Linux-only and driven by the `polmon-l1-vm` add-on. The backend never imports the add-on:
+every job runs `python -m polmon_l1_vm.cli` in its own process group, like benchmarks. The guest
+image (Alpine cloud qcow2, pinned SHA-256) is stored under `<data>/vm/`, never overwritten, and
+fetched only over HTTPS from the URL reported by `GET /v1/vm/status`.
+
+| Route | Purpose |
+|---|---|
+| `GET /v1/vm/status` | `{available, as_root, image, running}`; `image` is `{present, name, size_bytes, sha256, source_url, distribution, license_notice}`; `running` is the active job id or `null`. |
+| `GET /v1/vm/readiness` | Add-on host readiness: `{ready, modes: {userns, netns}, missing, version, integration_verified}`. `missing` holds `vm.*` codes. |
+| `POST /v1/vm/jobs` | Starts one job (HTTP 202). Body: `action` (`acquire`, `verify`, `run`) and `mode` (`userns`, default, or `netns`). `run` boots two guests on an isolated lab network, probes their HTTP services, samples resources and always destroys the lab. |
+| `GET /v1/vm/jobs`, `GET /v1/vm/jobs/{job_id}` | Job state `running`, `succeeded`, `failed` or `cancelled`, with `elapsed_seconds`, `limit_seconds`, `result`, `message_code` + `message_params`, `exit_code` and `stderr_tail`. The newest 20 jobs are kept. |
+| `POST /v1/vm/jobs/{job_id}/cancel` | SIGTERM to the job's process group; the add-on cleans up, then the backend removes the run directory before the job is reported `cancelled`. |
+| `POST /v1/vm/recover` | Releases and removes run directories left by a dead backend; HTTP 422 while a job runs. Also done at startup. |
+
+Only one job runs at a time (`vm.job_running`). Each job has a time limit (acquire 1000 s, verify
+300 s, run 900 s) and fails with `vm.timeout` beyond it. Jobs are refused with `vm.running_as_root`
+when the backend runs as root, so QEMU never inherits root. `userns` mode needs no privileges;
+`netns` needs passwordless `sudo -n` and is only accepted when readiness reports it
+(`vm.mode_unavailable` otherwise).
 
 ## Detailed logs (v0.5.0)
 

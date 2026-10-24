@@ -17,6 +17,7 @@ from pathlib import Path
 from threading import RLock, Thread
 
 from polmon.api.benchmarks import BenchmarkJobs
+from polmon.api.vm import VMJobs
 from polmon.backends.hybrid.backend import HybridBackend
 from polmon.backends.namespace.backend import NamespaceBackend
 from polmon.backends.namespace.journal import LabJournal
@@ -148,8 +149,10 @@ class ControlPlane:
         self.benchmarks = BenchmarkJobs(
             self.data_directory / "benchmarks", self.limits, busy=self._benchmark_conflicts
         )
+        self.vm = VMJobs(self.data_directory / "vm")
         # A previous backend on this data directory may have died without its shutdown cleanup.
         self.recover_lab("startup")
+        self.vm.recover_at_startup()
 
     def _node_context(self, topology_id: str, node_id: str | None) -> dict[str, object] | None:
         if node_id is None:
@@ -202,6 +205,8 @@ class ControlPlane:
             "l1": not self.l0_only,
             "l2": False,
             "hybrid_tap": not self.l0_only,
+            # Виртуальные машины L1 не зависят от границы L0: их запускает отдельное дополнение.
+            "vm": self.vm.available,
         }
 
     def _benchmark_conflicts(self) -> dict[str, object]:
@@ -1366,6 +1371,7 @@ class ControlPlane:
             thread.join(timeout=timeout)
         self.console_sessions.close()
         self.benchmarks.shutdown()
+        self.vm.shutdown()
         return self.reset_all()
 
     def close(self) -> None:

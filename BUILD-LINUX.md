@@ -1,6 +1,6 @@
 # Linux build
 
-The Phase VI `Build Linux` workflow builds one PyInstaller client bundle with embedded L0 and
+The `Build Linux` workflow builds one PyInstaller client bundle with embedded L0 and
 SQLite. The client runs without Python, a source checkout, or a sibling backend executable. The
 same bundle is distributed as a tarball, a Debian package, and an RPM; a Python wheel remains
 available for source-style installations. No standalone backend bundle or service is produced.
@@ -19,19 +19,32 @@ L0 experiment. `--polmon-run-embedded-backend --diagnostics` exercises backend s
 loading Qt. The Linux job verifies these operations from the extracted tarball with an empty
 environment, plus Qt startup under Xvfb. It installs, tests, reinstalls, and removes the native
 packages in fresh Debian and Fedora containers and checks that user-owned data survives removal.
-A second runner downloads the built artifacts and checks their hashes and embedded backend.
+A second runner downloads the built artifacts and checks their hashes, embedded backend,
+addon import/dispatch and pinned image digest/read-only permissions. Native package installation
+also verifies the addon/image bundle. These checks do not boot a guest.
+
+The Linux client includes `polmon_l1_vm` and the exact Alpine 3.24.1 QCOW2 image from
+`examples/vm/alpine-3.24.1-manifest.json` (183,697,408 bytes, SHA-256 pinned in that manifest).
+The fetcher enforces HTTPS, size/time limits and digest verification. The build refuses a
+missing, writable or mismatched image and preserves read-only permissions through tarball,
+Debian and RPM staging. Windows and Python wheels do not include the guest image.
+Independent VM jobs require external QEMU/KVM, `qemu-img`, `genisoimage`, `/dev/net/tun`
+and a permitted network mode under an unprivileged operator account. No host tools or
+privileges are installed by the application. Real guest acceptance remains NOT RUN here;
+see SECURITY.md for the claim boundary.
 
 Native packages have no maintainer scripts or systemd unit. L1/hybrid traffic requires a
 separately configured Linux laboratory backend with the documented namespace privileges; the
 packaged local backend supports L0 only. Package removal leaves results in
 `$XDG_STATE_HOME/polmon/data` (usually `~/.local/state/polmon/data`) and settings under the
 user's config directory untouched. POLMON has no granted license; the package metadata says
-`Proprietary`, and bundled PySide6/Qt libraries retain their separate terms.
+`Proprietary`; bundled PySide6/Qt libraries and Alpine components retain their separate terms.
 
 ## Local build
 
 ```bash
 uv pip install -e '.[dev,gui,build]'
+.venv/bin/python scripts/fetch-vm-image.py
 .venv/bin/pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m polmon.client.icon dist/polmon.png
 version="$(.venv/bin/python -c 'from polmon.version import __version__; print(__version__)')"

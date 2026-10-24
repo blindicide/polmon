@@ -85,10 +85,26 @@ to commit SHAs, and every published asset is listed in `SHA256SUMS.txt`. Audit t
 `uvx pip-audit -r <(uv pip freeze --python .venv/bin/python | grep -v polmon)`; the 2026-09-26 audit
 after the starlette 1.7.0 upgrade reported no known vulnerabilities.
 
-## Optional VM scaffold boundary
+## Experimental VM runtime boundary
 
-The [standalone scaffold](addons/l1-vm/README.md) cannot launch or recover a VM,
-download an image or create a seed ISO. `vm.scaffold_only` remains a hard refusal
-on capable hosts too. Future KVM runtime isolation, image trust, unprivileged TAP
-networking, ownership recovery and cleanup require independent real-guest evidence.
-No VM security acceptance is claimed. Core namespace/L0 behavior is unchanged.
+The [optional Linux addon](addons/l1-vm/README.md) implements QEMU/KVM lifecycle,
+pinned image acquisition, per-node overlays, NoCloud seed creation, isolated TAP labs,
+bounded probes and recovery. `/v1/vm/*` starts fixed addon subprocesses; the client exposes
+these jobs separately from namespace topology execution. Windows VM execution is unavailable.
+KVM is mandatory; there is no TCG fallback and no automatic host package installation.
+
+Recovery requires a version-2 ownership journal with a dead owner (PID, start ticks and
+boot ID), checks recorded namespace and socket device/inode identities before destructive
+work, and refuses host namespace reclamation. Failed deletion retains the journal; API
+cleanup removes only an empty run directory and reports leftovers as a failure. Older or
+ambiguous VM journals are refused and require operator inspection. Journals are trusted
+operator data, not a privilege boundary against the same account rewriting them. The existing
+root-equivalent `sudo ip` limitation also applies to the addon netns mode.
+
+Real guest boot, service networking, guest-written clone isolation, resource costs and failure
+cleanup are **NOT RUN** for this candidate: the release executor has no `/dev/kvm`, QEMU system
+emulator or ISO tools, and denies user namespace creation. Source tests, storage tools and
+frozen bundle/image checks do not establish VM security acceptance. Independent real guest
+evidence is required for that claim in both network modes. An experimental prerelease may
+ship with these explicit limitations after all runnable local and native release gates pass;
+no VM security or functional acceptance is claimed.

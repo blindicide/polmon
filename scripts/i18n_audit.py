@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "src/polmon/client"
 BACKEND = ROOT / "src/polmon"
+ADDON_VM = ROOT / "addons/l1-vm/src"
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
@@ -61,6 +62,8 @@ KEPT_TERMS = {
     "netns", "Wireshark", "ID", "SHA-256", "systemd", "journalctl", "POLMON_API_TOKEN",
     "SmartScreen", "veth", "chmod", "stdout", "stderr", "UTF-8", "unicast", "multicast",
     "loopback", "root", "true", "false", "tcp_probe", "icmp_probe", "self-test", "OK", "PNG",
+    "KVM", "QEMU", "Alpine", "POLMON", "Edition", "genisoimage", "qemu-img",
+    "qemu-system-x86_64", "userns", "x86-64",
 }
 # Messages of raised exceptions are developer diagnostics (the UI maps errors to catalog
 # problems), and these calls match text produced by other software.
@@ -291,9 +294,9 @@ def problem_keys() -> set[str]:
 def backend_message_codes() -> set[str]:
     """Every message code the backend can send (literal codes plus the generated families)."""
     codes: set[str] = set()
-    for path in BACKEND.rglob("*.py"):
-        if "client" in path.parts:
-            continue
+    sources = [path for path in BACKEND.rglob("*.py") if "client" not in path.parts]
+    sources += sorted(ADDON_VM.rglob("*.py"))  # the VM add-on raises and reports its own codes
+    for path in sources:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.keyword)
@@ -321,7 +324,7 @@ def backend_message_codes() -> set[str]:
             if (
                 isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
-                and re.fullmatch(r"(experiment|benchmark)\.[a-z_]+", node.value)
+                and re.fullmatch(r"(experiment|benchmark|vm)\.[a-z0-9_]+", node.value)
             ):
                 codes.add(node.value)  # codes assigned to job/experiment records
     from polmon.core.errors import ConfigurationError, PolmonError
@@ -341,6 +344,8 @@ def required_families() -> dict[str, set[str]]:
     from polmon.client.models import CATEGORIES
     from polmon.client.pages import FILE_PATTERNS
     from polmon.client.pages.benchmarks import KINDS, PROGRESS_CODES, PROGRESS_FIELDS
+    from polmon.client.pages.vm import ACTIONS as VM_ACTIONS
+    from polmon.client.pages.vm import MODES as VM_MODES
     from polmon.client.state import ConnectionState
     from polmon.topology.io import YAML_PROBLEMS
 
@@ -386,6 +391,10 @@ def required_families() -> dict[str, set[str]]:
         "units": {f"unit.{name}" for name in UNITS} | {"unit.decimal_separator"},
         "benchmark progress": {f"benchmarks.progress.{code}" for code in PROGRESS_CODES}
         | {f"benchmarks.progress.field.{name}" for name in PROGRESS_FIELDS},
+        "vm": {f"vm.mode.{m}{part}" for m in VM_MODES for part in ("", ".tip")}
+        | {f"vm.mode.short.{m}" for m in VM_MODES}
+        | {f"vm.host.mode.{m}" for m in VM_MODES}
+        | {f"vm.action.{a}" for a in VM_ACTIONS},
         "targets": {f"deployment.target.{v}" for v in ("editor", "loaded", "deployed")},
         "problems": {f"{key}.title" for key in problem_keys()},
         "limits": {f"limit.{name}" for name in (
