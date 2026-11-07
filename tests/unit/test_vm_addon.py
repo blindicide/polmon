@@ -317,3 +317,26 @@ def test_seed_refuses_existing_file_and_cleans_up_on_failure(tmp_path):
     node.id = "Bad_ID"
     with pytest.raises(VMError, match="vm.node_id"):
         create_seed(tmp_path, node, topology, FakeRunner())
+
+
+def test_vm_gate_never_reports_skipped_or_empty_runs_as_pass():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "vm_gate", Path(__file__).parents[2] / "scripts/vm-gate.py"
+    )
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+
+    def report(**counts):
+        values = {"tests": 1, "failures": 0, "errors": 0, "skipped": 0, **counts}
+        attributes = " ".join(f'{key}="{value}"' for key, value in values.items())
+        return f"<testsuites><testsuite {attributes}/></testsuites>"
+
+    assert gate.classify(report(), 0)[0] == "PASS"
+    assert gate.classify(report(skipped=1), 0)[0] == "NOT_RUN"
+    assert gate.classify(report(tests=0), 5)[0] == "NOT_RUN"
+    assert gate.classify(report(failures=1), 1)[0] == "FAIL"
+    assert gate.classify(None, 2)[0] == "NOT_RUN"
+    assert gate.overall(["PASS", "NOT_RUN"]) == "NOT_RUN"
+    assert gate.overall(["PASS", "FAIL"]) == "FAIL"

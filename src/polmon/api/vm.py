@@ -2,9 +2,9 @@
 
 Каждое задание запускает команду дополнения ``polmon-l1-vm`` отдельным процессом в собственной
 группе процессов, поэтому ограничения, допуск и очистка самого дополнения действуют без
-изменений, а API ничего не импортирует из ``polmon_l1_vm``. Образ гостя и топология зафиксированы
-здесь: по сети скачивается только закреплённый образ с проверкой sha256, а не произвольный адрес
-из запроса.
+изменений, а API ничего не импортирует из ``polmon_l1_vm``. По сети скачивается только закреплённый
+образ с проверкой sha256, а не произвольный адрес из запроса. Для запуска можно явно передать
+ограниченную топологию и выбрать узлы ВМ; без них используется встроенная топология.
 """
 
 from __future__ import annotations
@@ -23,10 +23,13 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock, Thread, Timer
-from typing import Literal
+from typing import Annotated, Literal
 
+from pydantic import Field, model_validator
+
+from polmon.backends.namespace.journal import process_start_ticks
 from polmon.core.errors import ConfigurationError
-from polmon.topology.models import StrictModel
+from polmon.topology.models import StrictModel, Topology
 
 # Закреплённый образ; тест сверяет эти данные с examples/vm/alpine-3.24.1-manifest.json.
 MANIFEST = {
@@ -70,6 +73,25 @@ NO_MODES = {"userns": False, "netns": False}
 class VMRequest(StrictModel):
     action: Literal["acquire", "verify", "run"]
     mode: Literal["userns", "netns"] = "userns"
+    hold_seconds: int = Field(default=0, ge=0, le=600)
+    topology: Topology | None = None
+    vm_nodes: list[Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,31}$")]] = Field(
+        default_factory=list, max_length=4
+    )
+
+    @model_validator(mode="after")
+    def run_options_only(self) -> VMRequest:
+        if self.action != "run" and (
+            self.topology is not None or self.vm_nodes or self.hold_seconds
+        ):
+            raise ValueError("topology, VM selection and hold time apply only to run jobs")
+        if len(set(self.vm_nodes)) != len(self.vm_nodes):
+            raise ValueError("VM node selection contains duplicates")
+        if self.topology is not None and (
+            len(self.topology.nodes) > 32 or len(self.topology.networks) > 4
+        ):
+            raise ValueError("VM job topology exceeds the bounded lab size")
+        return self
 
 
 def bundled_image() -> Path:
@@ -101,7 +123,9 @@ def addon_available() -> bool:
 def addon_environment() -> dict[str, str]:
     environment = {**os.environ, "PYTHONUTF8": "1"}
     source = addon_source()
-    if source is not None and not addon_importable():
+    # A package visible through the parent's sys.path (e.g. pytest or a source
+    # launcher) is not necessarily importable by a fresh child interpreter.
+    if source is not None:
         paths = [str(source), environment.get("PYTHONPATH", "")]
         environment["PYTHONPATH"] = os.pathsep.join(item for item in paths if item)
     return environment
@@ -335,7 +359,7 @@ class VMJobs:
             if self._recovering or self.running() is not None:
                 raise ConfigurationError("another VM job is running", message_code="vm.job_running")
             job_id = uuid.uuid4().hex[:12]
-            self._prepare()
+            self._prepare(request)
             run_directory = None
             if request.action == "run":
                 run_directory = self.directory / "runs" / job_id
@@ -367,13 +391,17 @@ class VMJobs:
             thread.start()
             return job.view()
 
-    def _prepare(self) -> None:
+    def _prepare(self, request: VMRequest) -> None:
         """Каталоги и закреплённые файлы задания; доступ только владельцу."""
         for path in (self.directory, self.directory / "image", self.directory / "runs"):
             path.mkdir(parents=True, exist_ok=True)
             path.chmod(0o700)
         (self.directory / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
-        (self.directory / "topology.yml").write_text(TOPOLOGY, encoding="utf-8")
+        topology = (
+            json.dumps(request.topology.model_dump(mode="json", by_alias=True))
+            if request.topology is not None else TOPOLOGY
+        )
+        (self.directory / "topology.yml").write_text(topology, encoding="utf-8")
 
     def _arguments(self, job: VMJob) -> list[str]:
         manifest = ["--manifest", str(self.directory / "manifest.json")]
@@ -384,6 +412,12 @@ class VMJobs:
         if action == "verify":
             return self._command("verify-image", *manifest, *image)
         assert job.directory is not None
+        options = ["--hold-seconds", str(job.request.hold_seconds)]
+        for node in job.request.vm_nodes:
+            options += ["--vm-node", node]
+        parent_start = process_start_ticks(os.getpid())
+        if parent_start is not None:
+            options += ["--parent-pid", str(os.getpid()), "--parent-start", str(parent_start)]
         return self._command(
             "run",
             "--topology",
@@ -394,6 +428,7 @@ class VMJobs:
             *image,
             "--mode",
             job.request.mode,
+            *options,
         )
 
     def _trim(self) -> None:

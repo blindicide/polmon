@@ -7,11 +7,12 @@ import sys
 import tempfile
 import threading
 from collections import namedtuple
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 from polmon_l1_vm import backend as module
-from polmon_l1_vm import host, qmp, recovery
+from polmon_l1_vm import cli, host, qmp, recovery
 from polmon_l1_vm import lab as lab_module
 from polmon_l1_vm.backend import VMBackend
 from polmon_l1_vm.images import ImageManifest, VMError
@@ -255,6 +256,7 @@ def test_failed_create_rolls_back_everything(tmp_path, monkeypatch):
         runner=FailingOverlayRunner(),
     )
     sockets_before = set(Path(tempfile.gettempdir()).glob("pmvm-*"))
+    (tmp_path / "base.qcow2").write_bytes(b"verified base")
     with pytest.raises(RuntimeError, match="qemu-img failed"):
         vm.create(load_topology(EXAMPLE))
     assert FakeLab.instances[0].destroyed >= 1
@@ -277,7 +279,10 @@ def test_recover_stops_recorded_processes_and_removes_only_owned_files(tmp_path,
     outside = tmp_path / "evil"
     outside.write_text("keep")
     (run / "operator.txt").write_text("keep")
-    owned = ["alpha.qcow2", "alpha-seed.iso"]
+    owned = [
+        "alpha.qcow2", "alpha-seed.iso", "alpha-qemu.log",
+        "peer-go", "peer-ready", "peer-peer.log",
+    ]
     for name in owned:
         (run / name).write_text("x")
     socket_dir = Path(tempfile.mkdtemp(prefix="pmvm-"))
@@ -426,6 +431,68 @@ def test_recovery_refuses_live_owner_and_retains_failed_cleanup(tmp_path, monkey
     assert not host.alive([123, None])
 
 
+@pytest.fixture
+def http_guest():
+    body = b""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def respond(text):
+        nonlocal body
+        body = text.encode("utf-8")
+        return server.server_port
+
+    try:
+        yield respond
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+@pytest.mark.parametrize("body", ["", "no newline", "identity\n", "peers\n\n"])
+def test_http_probe_cli_preserves_exact_body(http_guest, body, capsys):
+    port = http_guest(body)
+    assert cli.main(["probe-http", "127.0.0.1", str(port), "/"]) == 0
+    assert capsys.readouterr().out == f"200 {body}"
+
+
+def test_source_http_probe_works_without_pythonpath(tmp_path, monkeypatch, http_guest):
+    class ProbeLab:
+        def run(self, argv, **kwargs):
+            # Like sudo in netns mode: no inherited source path, and no repository cwd.
+            env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+            result = subprocess.run(
+                argv, env=env, cwd=tmp_path, capture_output=True, text=True, timeout=8
+            )
+            assert result.returncode == 0, result.stderr
+            assert kwargs["as_owner"]
+            return CommandResult(result.stdout, result.stderr, result.returncode)
+
+    vm = VMBackend(base=tmp_path / "base", manifest=MANIFEST, directory=tmp_path / "run")
+    vm.topology = load_topology(EXAMPLE)
+    vm.lab = ProbeLab()
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    node = vm.topology.nodes[0]
+    body = f"POLMON {node.id} {node.uuid}\n"
+    port = http_guest(body)
+    assert vm.fetch_http("127.0.0.1", port) == (200, body)
+    assert vm.probe_http("127.0.0.1", port, node.id)
+    assert not vm.probe_http("127.0.0.1", port, vm.topology.nodes[1].id)
+
+
 def test_http_probe_uses_fixed_frozen_dispatch(tmp_path, monkeypatch):
     calls = []
 
@@ -441,3 +508,99 @@ def test_http_probe_uses_fixed_frozen_dispatch(tmp_path, monkeypatch):
     assert vm.fetch_http("192.168.240.11", 8080) == (200, "alpha")
     assert calls[0][0] == [sys.executable, "--run-vm", "probe-http", "192.168.240.11", "8080", "/"]
     assert calls[0][1]["as_owner"] and calls[0][1]["timeout"] == 8
+
+
+def test_mixed_helper_uses_fixed_frozen_dispatch(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert module.addon_command("mixed-helper", "ports", "private.sock") == [
+        sys.executable, "--run-vm", "mixed-helper", "ports", "private.sock"
+    ]
+
+
+@pytest.mark.parametrize("peer_ready", [True, False])
+def test_readiness_is_published_only_after_additional_peers_pass(tmp_path, monkeypatch, peer_ready):
+    vm = VMBackend(base=tmp_path / "base", manifest=MANIFEST, directory=tmp_path / "run")
+    vm.topology = load_topology(EXAMPLE)
+    vm.phase = "started"
+    vm.identities = {node.id: (123, "1") for node in vm.topology.nodes}
+    published = []
+    monkeypatch.setattr(module, "alive", lambda identity: True)
+    monkeypatch.setattr(vm, "_node_ready", lambda node: True)
+    monkeypatch.setattr(vm, "_journal", lambda: published.append(vm.ready))
+
+    def check_peers():
+        assert not vm.ready and not published
+        if not peer_ready:
+            raise VMError("vm.mixed_start_failed")
+
+    monkeypatch.setattr(vm, "_additional_ready", check_peers)
+    if peer_ready:
+        vm.wait_ready()
+        assert vm.ready and published == [True]
+    else:
+        with pytest.raises(VMError, match="vm.mixed_start_failed"):
+            vm.wait_ready()
+        assert not vm.ready and not published
+
+
+def test_parent_guard_still_signals_when_dead_supervisor_closed_stderr(monkeypatch):
+    signalled = threading.Event()
+
+    class BrokenPipe:
+        def write(self, text):
+            raise BrokenPipeError("supervisor exited")
+
+    monkeypatch.setattr(cli, "alive", lambda identity: False)
+    monkeypatch.setattr(cli.os, "kill", lambda *args: signalled.set())
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stderr", BrokenPipe())
+        with cli._parent_guard(123, "1"):
+            assert signalled.wait(timeout=3)
+
+
+@pytest.mark.parametrize(("pid", "start"), [(0, "1"), (1, None), (None, "1"), (1, "bad")])
+def test_parent_guard_refuses_incomplete_identity(pid, start):
+    with pytest.raises(VMError, match="vm.state_invalid"), cli._parent_guard(pid, start):
+        pass
+
+
+def test_nested_namespace_ownership_is_validated_before_cleanup(tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    calls = []
+    monkeypatch.setattr(recovery, "file_identity", lambda path: [1, 99])
+    monkeypatch.setattr(recovery, "terminate", lambda *a, **kw: calls.append(a))
+    monkeypatch.setattr(recovery, "_stop_members", lambda *a: calls.append(a))
+    monkeypatch.setattr(recovery, "validate_release", lambda state: None)
+    state = {
+        "owner": _dead_owner(), "mode": "userns", "processes": {"peer": [123, "5"]},
+        "child_namespaces": [{"holder": [123, "5"], "namespace_identity": [1, 99]}],
+    }
+    write_state(run, state)
+    with pytest.raises(VMError, match="vm.state_invalid"):
+        recover(run)
+    assert not calls and read_state(run)
+    state["child_namespaces"][0]["namespace_identity"] = [1, 100]
+    monkeypatch.setattr(recovery, "alive", lambda identity: True)
+    write_state(run, state)
+    with pytest.raises(VMError, match="vm.state_invalid"):
+        recover(run)
+    assert not calls and read_state(run)
+
+
+def test_recovery_reclaims_recorded_nested_namespace_members(tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    calls = []
+    monkeypatch.setattr(recovery, "file_identity", lambda path: [1, 99])
+    monkeypatch.setattr(recovery, "alive", lambda identity: False)
+    monkeypatch.setattr(recovery, "terminate", lambda *a, **kw: True)
+    monkeypatch.setattr(recovery, "validate_release", lambda state: None)
+    monkeypatch.setattr(recovery, "release", lambda *args: [])
+    monkeypatch.setattr(recovery, "_stop_members", lambda ns: calls.append(ns))
+    write_state(run, {
+        "owner": _dead_owner(), "mode": "userns", "processes": {"peer": [123, "5"]},
+        "child_namespaces": [{"holder": [123, "5"], "namespace_identity": [1, 100]}],
+    })
+    assert recover(run)["recovered"]
+    assert calls == [[1, 100]]

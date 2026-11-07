@@ -24,8 +24,12 @@ fi
   echo 'NOT RUN — environment unavailable: image failed verification' >&2
   exit 2
 }
+# Дополнительные аргументы pytest (например, --junitxml для scripts/vm-gate.py).
+read -r -a extra <<<"${POLMON_VM_PYTEST_ARGS:-}"
+tests=(tests/integration/test_vm_guest.py tests/integration/test_vm_failures.py
+       tests/integration/test_vm_mixed.py)
 if [[ "$mode" == netns ]]; then
-  exec "$root/scripts/privileged-tests.sh" tests/integration/test_vm_guest.py -k netns -s
+  exec "$root/scripts/privileged-tests.sh" "${tests[@]}" -k netns -s "${extra[@]}"
 fi
 cd "$root"
-exec "$root/.venv/bin/python" -m pytest tests/integration/test_vm_guest.py -k userns -s
+exec "$root/.venv/bin/python" -m pytest "${tests[@]}" -k userns -s "${extra[@]}"

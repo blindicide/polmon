@@ -4,6 +4,47 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+Changes planned after the `0.7.1` development line.
+
+## [0.7.1] - Unreleased
+
+Core version `0.7.1`; optional experimental VM addon `0.1.1` pins that exact core.
+VM functionality and security acceptance remain experimental and are not promoted by
+this version metadata update. See the current handoff for validation boundaries.
+
+### Added
+
+- Re-enabled Windows unit/integration and GUI testing alongside Linux CI.
+- Real-KVM gate with separate userns/netns results and retained guest-test evidence;
+  skipped or unavailable runs are reported as NOT_RUN, not VM acceptance.
+- Fake-QEMU lifecycle tests for command hardening, shutdown escalation and early exit.
+- Real-KVM fault injection for guest crashes, probe timeouts, partial launch, API cancellation,
+  timeout, command SIGKILL and backend death/successor recovery in both lab modes.
+- Explicit mixed-addon VM selection with isolated L0/namespace peers and bounded API topology
+  and hold-time options; ordinary namespace dispatch is unchanged.
+
+### Fixed
+
+- VM HTTP probes preserve the exact response body instead of appending a newline that
+  made valid guest identities fail readiness checks. Source-mode probes locate the addon
+  explicitly after privilege dropping, without relying on sudo retaining `PYTHONPATH`.
+- VM shutdown attempts every guest even when one fails to stop; destruction and recovery
+  reclaim owned QEMU logs so run directories can be reused.
+- VM startup rechecks the base-image file identity, and QMP paths reject option separators.
+- Service and guest-console logs stream short output while processes are still running;
+  the regression test waits for asynchronous log creation on Windows.
+- VM-gate summaries retain measurements even when pytest prefixes the evidence line
+  with its test-file progress output.
+- VM jobs watch their owning backend identity and stop after backend death, even if its
+  closed stderr pipe prevents diagnostic output.
+- Dashboard padding leaves room for taller system fonts at 1440×900 without shrinking text,
+  hiding content or relaxing layout checks.
+
+### Changed
+
+- Align core package/source/lock versions and the optional addon's core dependency for
+  the `0.7.1` development line.
+
 ## [0.7.0rc3] - 2026-10-23
 
 Experimental prerelease `v0.7.0-rc.3`, core `0.7.0rc3`, optional addon `0.1.0rc3`.

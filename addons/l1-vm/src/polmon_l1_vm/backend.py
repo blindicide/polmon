@@ -109,6 +109,29 @@ def readiness() -> dict:
     }
 
 
+def addon_command(*arguments: str) -> list[str]:
+    """Dispatch addon helpers without depending on inherited Python environment."""
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, "--run-vm"]
+    else:
+        # sudo strips PYTHONPATH in netns mode. Pass this addon's source location
+        # explicitly, after Lab.wrap has dropped privileges; never preserve the
+        # caller's Python environment across sudo.
+        command = [
+            sys.executable,
+            "-c",
+            "import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); "
+            "runpy.run_module('polmon_l1_vm.cli', run_name='__main__')",
+            str(Path(__file__).resolve().parent.parent),
+        ]
+    return [*command, *arguments]
+
+
+def http_probe_command(address: str, port: int, path: str = "/") -> list[str]:
+    """Use the same probe dispatch for readiness and failure diagnostics."""
+    return addon_command("probe-http", address, str(int(port)), path)
+
+
 class VMBackend(ExecutionBackend):
     """Гости QEMU/KVM в отдельной лабораторной сети; владеет только созданными им ресурсами."""
 
@@ -142,13 +165,18 @@ class VMBackend(ExecutionBackend):
         self.socket_dir: Path | None = None
         self.launchers: dict[str, subprocess.Popen[bytes]] = {}
         self.identities: dict[str, tuple[int, str]] = {}
+        self.auxiliary_processes: dict[str, tuple[int, str]] = {}
+        self.auxiliary_files: set[Path] = set()
+        self.child_namespaces: list[dict] = []
         self.pidfiles: dict[str, Path] = {}
         self.owner = LabOwner.current()
         self.socket_identity = None
         self.phase = "new"
         self.image_info: dict = {}
+        self.base_identity: tuple[int, ...] | None = None
         self.admission: dict = {}
         self.started_at: float | None = None
+        self.ready = False
 
     def validate(self, topology: Topology) -> None:
         if not 1 <= len(topology.nodes) <= self.limits.max_vms:
@@ -199,12 +227,18 @@ class VMBackend(ExecutionBackend):
 
     # -- жизненный цикл -------------------------------------------------------------------
 
+    def _make_lab(self, topology: Topology) -> Lab:
+        return Lab(topology, self.runner, mode=self.mode)
+
+    def _seed_topology(self, topology: Topology) -> Topology:
+        return topology
+
     def _journal(self) -> None:
         # Journal intended filenames before creation; the run directory was admitted empty.
         files = sorted(
             name
             for node in (self.topology.nodes if self.topology else [])
-            for name in (f"{node.id}.qcow2", f"{node.id}-seed.iso")
+            for name in (f"{node.id}.qcow2", f"{node.id}-seed.iso", f"{node.id}-qemu.log")
         )
         write_state(
             self.directory,
@@ -214,10 +248,17 @@ class VMBackend(ExecutionBackend):
                 "mode": self.mode,
                 "topology": self.topology.id if self.topology else None,
                 **(self.lab.state() if self.lab else {}),
-                "files": files,
+                "files": [*files, *sorted(path.name for path in self.auxiliary_files)],
                 "pidfiles": sorted(path.name for path in self.pidfiles.values()),
                 "socket_dir": str(self.socket_dir) if self.socket_dir else None,
-                "processes": {node: list(identity) for node, identity in self.identities.items()},
+                "processes": {
+                    node: list(identity)
+                    for node, identity in {
+                        **self.identities, **self.auxiliary_processes
+                    }.items()
+                },
+                "child_namespaces": self.child_namespaces,
+                "ready": self.ready,
             },
         )
 
@@ -230,6 +271,7 @@ class VMBackend(ExecutionBackend):
         ):
             raise VMError("vm.directory_not_empty")
         self.image_info = verify_image(self.base, self.manifest, self.runner)
+        self.base_identity = self._base_identity()
         self.admission = admit(
             count=len(topology.nodes),
             memory_mb=self.limits.memory_mb,
@@ -252,8 +294,11 @@ class VMBackend(ExecutionBackend):
             # Короткий каталог: путь UNIX-сокета QMP не должен превышать 108 байт.
             self.socket_dir = Path(tempfile.mkdtemp(prefix=SOCKET_PREFIX)).resolve()
             self.socket_identity = file_identity(self.socket_dir)
+            # Запятая в пути сокета добавила бы собственные параметры в -qmp.
+            if any(c in str(self.socket_dir) for c in ",\n\r"):
+                raise VMError("vm.path_invalid")
             self._journal()
-            self.lab = Lab(topology, self.runner, mode=self.mode)
+            self.lab = self._make_lab(topology)
             self.lab.on_created = self._journal
             self.lab.create()
             self._journal()
@@ -262,7 +307,8 @@ class VMBackend(ExecutionBackend):
                 self._journal()
                 self.seeds.append(
                     create_seed(
-                        self.directory, node, topology, self.runner, peer_report=self.peer_report
+                        self.directory, node, self._seed_topology(topology), self.runner,
+                        peer_report=self.peer_report
                     )
                 )
                 self._journal()
@@ -282,9 +328,18 @@ class VMBackend(ExecutionBackend):
         found |= {
             f"qemu:{pid}:{start}" for pid, start in self.identities.values() if alive((pid, start))
         }
+        found |= {
+            f"process:{pid}:{start}"
+            for pid, start in self.auxiliary_processes.values() if alive((pid, start))
+        }
+        found |= {f"file:{path}" for path in self.auxiliary_files if path.exists()}
         if self.socket_dir is not None and self.socket_dir.exists():
             found.add(f"dir:{self.socket_dir}")
         return found
+
+    def _base_identity(self) -> tuple[int, ...]:
+        info = self.base.stat()
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
 
     def _command(self, node: Node, overlay: Path, seed: Path) -> list[str]:
         assert self.lab is not None and self.socket_dir is not None
@@ -338,6 +393,14 @@ class VMBackend(ExecutionBackend):
         if self.phase != "created" or self.topology is None or self.lab is None:
             raise VMError("vm.not_created")
         assert self.overlays is not None
+        self.ready = False
+        # Образ хэшируется при создании, а читается гостями позже: подмену файла не пропускаем.
+        try:
+            unchanged = self._base_identity() == self.base_identity
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            raise VMError("vm.image_changed")
         self.phase = "starting"
         try:
             for node, seed in zip(self.topology.nodes, self.seeds, strict=True):
@@ -384,16 +447,24 @@ class VMBackend(ExecutionBackend):
         return [pid for pid, start in self.identities.values() if alive((pid, start))]
 
     def stop(self) -> None:
+        # Каждый гость получает свою попытку остановки: отказ одного не оставляет остальных.
+        failed = False
+        self.ready = False
         for node_id, identity in list(self.identities.items()):
             if alive(identity) and self.socket_dir is not None:
                 with contextlib.suppress(VMError):
                     qmp.command(str(self.socket_dir / f"{node_id}.qmp"), "quit", timeout=2)
             if not terminate(identity, grace=3) and alive(identity):
-                raise VMError("vm.cleanup_failed")
+                failed = True
+        for identity in self.auxiliary_processes.values():
+            if not terminate(identity, grace=3) and alive(identity):
+                failed = True
         for launcher in self.launchers.values():
             if launcher.poll() is None:
                 stop_process_group(launcher, grace=1)
         self.launchers.clear()
+        if failed:
+            raise VMError("vm.cleanup_failed")
         if self.phase in ("started", "starting"):
             self.phase = "stopped"
 
@@ -417,6 +488,16 @@ class VMBackend(ExecutionBackend):
         for path in self.pidfiles.values():
             path.unlink(missing_ok=True)
         self.pidfiles.clear()
+        # Журналы QEMU принадлежат запуску; оставленные, они мешают повторному созданию.
+        for node in self.topology.nodes if self.topology else []:
+            (self.directory / f"{node.id}-qemu.log").unlink(missing_ok=True)
+        for path in self.auxiliary_files:
+            if path.parent != self.directory:
+                raise VMError("vm.state_invalid")
+            path.unlink(missing_ok=True)
+        self.auxiliary_files.clear()
+        self.auxiliary_processes.clear()
+        self.child_namespaces.clear()
         self.identities.clear()
         if self.socket_dir is not None:
             if self.socket_dir.exists():
@@ -438,13 +519,8 @@ class VMBackend(ExecutionBackend):
         host = str(ipaddress.IPv4Address(address))
         if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", path):
             raise VMError("vm.path_invalid")
-        command = (
-            [sys.executable, "--run-vm"]
-            if getattr(sys, "frozen", False)
-            else [sys.executable, "-m", "polmon_l1_vm.cli"]
-        )
         result = self.lab.run(
-            [*command, "probe-http", host, str(int(port)), path],
+            http_probe_command(host, port, path),
             as_owner=True,
             check=False,
             timeout=8,
@@ -475,6 +551,7 @@ class VMBackend(ExecutionBackend):
         if self.phase != "started" or self.topology is None:
             raise VMError("vm.not_started")
         deadline = time.monotonic() + self.limits.boot_timeout_seconds
+        self.ready = False
         pending = list(self.topology.nodes)
         while pending:
             for node in pending:
@@ -485,6 +562,12 @@ class VMBackend(ExecutionBackend):
                 raise VMError("vm.boot_timeout")
             if pending:
                 time.sleep(1)
+        self._additional_ready()
+        self.ready = True
+        self._journal()
+
+    def _additional_ready(self) -> None:
+        """Subclasses validate their peers before publishing all-lab readiness."""
 
     def sample(self) -> dict:
         """Измерения из /proc и ip; недоступное значение — null, а не выдуманное число."""

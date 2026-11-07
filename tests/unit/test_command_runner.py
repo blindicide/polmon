@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -45,3 +46,22 @@ def test_stop_reaps_child_without_posix_process_groups(monkeypatch) -> None:
         if process.poll() is None:
             process.kill()
         process.wait(timeout=3)
+
+
+def test_service_log_is_written_while_the_process_is_still_running(tmp_path) -> None:
+    # Короткий вывод не должен ждать полного блока: консоль гостя нужна, пока он жив.
+    log = tmp_path / "service.log"
+    process = CommandRunner().start(
+        [sys.executable, "-u", "-c", "import time; print('ready', flush=True); time.sleep(30)"],
+        log_path=log,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if log.exists() and "ready" in log.read_text(errors="replace"):
+                break
+            time.sleep(0.05)
+        assert "ready" in log.read_text()
+        assert process.poll() is None
+    finally:
+        stop_process_group(process, grace=1)

@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 from polmon.backends.namespace.runner import CommandRunner
-from polmon.topology.models import Node, Topology
+from polmon.topology.models import Node, NodeClass, Topology
 from polmon_l1_vm.images import VMError
 
 # Метка тома, по которой cloud-init находит источник NoCloud.
@@ -96,6 +96,25 @@ def seed_documents(node: Node, topology: Topology, *, peer_report: bool = False)
         report = (
             f"setsid python3 /usr/local/bin/polmon-peers.py {shlex.quote(json.dumps(peers))}"
             f" {PEER_REPORT_PATH} </dev/null >/dev/null 2>&1 &"
+        )
+        commands.append(["sh", "-c", report])
+    if peer_report and any(other.node_class == NodeClass.L0 for other in topology.nodes):
+        from polmon_l1_vm.mixed_guest import PING_REPORT_PATH, PING_SCRIPT
+
+        ping_peers = [
+            [other.id, str(interface.ipv4)]
+            for other in topology.nodes if other.id != node.id
+            for interface in other.interfaces if interface.network in mine
+        ]
+        files.append({
+            "path": "/usr/local/bin/polmon-pings.py",
+            "content": PING_SCRIPT,
+            "permissions": "0755",
+        })
+        report = (
+            "setsid python3 /usr/local/bin/polmon-pings.py "
+            f"{shlex.quote(json.dumps(ping_peers))} {PING_REPORT_PATH}"
+            " </dev/null >/dev/null 2>&1 &"
         )
         commands.append(["sh", "-c", report])
     user = {
