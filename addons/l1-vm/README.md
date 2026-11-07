@@ -31,6 +31,11 @@ fault and mixed suites; `scripts/vm-gate.py --mode both --image PATH` retains th
 Specific passing tests do not establish comprehensive VM/security acceptance:
 `integration_verified` remains **false**. Published historical release acceptance is unchanged.
 
+The expanded hosted gate at source `baae249` passed **11 tests per mode with zero skips**,
+including mixed communication, rollback and owner recovery. Clean-checkout logs, JUnit,
+measurements and provenance are retained in
+[`docs/evidence/vm-gate-20261107-pr4-expanded/`](../../docs/evidence/vm-gate-20261107-pr4-expanded/).
+
 ## Image
 
 The pinned Alpine 3.24.1 cloud image (`examples/vm/alpine-3.24.1-manifest.json`) ships

@@ -1,0 +1,23 @@
+{"version": "0.7.1", "backend": "l1-vm-addon", "ready": true, "runtime_implemented": true, "modes": {"userns": true, "netns": true}, "missing": [], "fidelity": "full Linux VM; namespace L1 remains unchanged", "integration_verified": false}
+============================= test session starts ==============================
+platform linux -- Python 3.12.16, pytest-9.1.1, pluggy-1.7.0
+rootdir: /home/runner/work/polmon/polmon
+configfile: pyproject.toml
+plugins: anyio-4.16.0, cov-7.1.0
+collected 22 items / 11 deselected / 11 selected
+
+tests/integration/test_vm_guest.py REAL-VM-EVIDENCE {"mode": "userns", "sample": {"nodes": {"alpha": {"pid": 3111, "cpu_seconds": 5.02, "rss_bytes": 259706880, "io": {"read_bytes": 499712, "write_bytes": 1888256}, "interfaces": {"eth0": {"rx_bytes": 4964, "rx_packets": 57, "tx_bytes": 6738, "tx_packets": 91}}, "overlay_allocated_bytes": 724992}, "bravo": {"pid": 3120, "cpu_seconds": 4.88, "rss_bytes": 259428352, "io": {"read_bytes": 0, "write_bytes": 2211840}, "interfaces": {"eth0": {"rx_bytes": 4708, "rx_packets": 53, "tx_bytes": 6624, "tx_packets": 90}}, "overlay_allocated_bytes": 659456}}, "guest_memory_mb_each": 256, "uptime_seconds": 28.247569381999995, "admission": {"requested_memory_mb": 640, "host_available_memory_mb": 15010, "worst_case_disk_mb": 400, "host_free_disk_mb": 87332}, "image": {"sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6", "distribution": "alpine-3.24.1-x86_64-bios-cloudinit", "virtual_bytes": 209715200}}}
+.
+tests/integration/test_vm_failures.py REAL-VM-EVIDENCE {"mode": "userns", "case": "guest_crash", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "readiness_timeout", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "partial_launch_failure", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "cancel", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "timeout", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "owner_crash", "cleanup": true}
+.REAL-VM-EVIDENCE {"mode": "userns", "case": "backend_crash_and_startup_recovery", "cleanup": true}
+.
+tests/integration/test_vm_mixed.py REAL-VM-EVIDENCE {"case": "mixed", "mode": "userns", "ready_seconds": 28.39, "sample": {"nodes": {"guest": {"pid": 3574, "cpu_seconds": 4.71, "rss_bytes": 261677056, "io": {"read_bytes": 0, "write_bytes": 1785856}, "interfaces": {"eth0": {"rx_bytes": 5213, "rx_packets": 60, "tx_bytes": 6425, "tx_packets": 87}}, "overlay_allocated_bytes": 724992}}, "guest_memory_mb_each": 256, "uptime_seconds": 27.365783601999965, "admission": {"requested_memory_mb": 320, "host_available_memory_mb": 15017, "worst_case_disk_mb": 200, "host_free_disk_mb": 87332}, "image": {"sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6", "distribution": "alpine-3.24.1-x86_64-bios-cloudinit", "virtual_bytes": 209715200}, "mixed": {"vm_nodes": ["guest"], "namespace_pids": {"namespace": 3557}, "l0": {"running": true, "stats": {"endpoint_count": 1, "network_count": 1, "scheduled_event_count": 0, "queued_packet_count": 0, "estimated_state_bytes": 1316}}, "answered_for_l0": {"lab": {"arp": 1, "icmp_echo": 3}}}}, "integration_verified": false}
+...
+
+- generated xml file: /home/runner/work/polmon/polmon/vm-gate-evidence/junit-userns.xml -
+================ 11 passed, 11 deselected in 184.42s (0:03:04) =================

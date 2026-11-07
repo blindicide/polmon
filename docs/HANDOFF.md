@@ -84,9 +84,16 @@ Local Linux results do not stand in for the next pushed head's Windows execution
   both communication reruns failed at BIOS boot with `KVM: entry failed, hardware error
   0x0`. Kernel VMREAD/VMWRITE warnings coincided with VirtualBox activity. The final outer
   cleanup/host-network guard passed. This failed rerun is not a gate pass or waiver.
-- Final clean-source expanded verification moves to hosted KVM; unrelated host VMs,
-  browsers and kernel settings are left untouched. No release, tag, acceptance-flag
-  promotion or merge is part of this work.
+- Final hosted verification at PR source head `baae249` passed **all six checks**:
+  [native CI](https://github.com/blindicide/polmon/actions/runs/42349649584) and
+  [expanded KVM gate](https://github.com/blindicide/polmon/actions/runs/42349649597).
+  The KVM artifact reports **11 passed per mode, no skips**, with `git_dirty: false`.
+  It tested GitHub's synthetic PR merge `2b1759c`, not an actual merge of this draft PR.
+  Raw logs, JUnit, measurements and full parent provenance are retained in
+  [evidence/vm-gate-20261107-pr4-expanded/](evidence/vm-gate-20261107-pr4-expanded/).
+  This resolves final expanded verification without waiving or erasing the earlier
+  local failure. Unrelated host VMs, browsers and kernel settings are left untouched.
+  No release, tag, acceptance-flag promotion or merge is part of this work.
 
 ## Other PR fixes retained
 

@@ -18,10 +18,11 @@ Those failures were diagnosed and fixed, not waived:
 
 The real-KVM lifecycle gate passed locally in **both userns and netns**, with two
 guests per mode and no skips; see [the retained evidence](docs/evidence/vm-gate-20261107-pr4/).
-All six GitHub checks at `ae31868` passed: Linux, Windows, both screenshot jobs,
-dependency audit and hosted two-mode KVM gate. The next changes add real fault/recovery
-and mixed-topology coverage and fix the pre-existing local dashboard layout failure;
-their final validation and pushed-head checks are recorded below as they complete.
+All six GitHub checks at implementation head `baae249` passed: Linux, Windows, both
+screenshot jobs, dependency audit and expanded two-mode KVM gate. These changes add
+real fault/recovery and mixed-topology coverage and fix the pre-existing local dashboard
+layout failure. [Hosted evidence](docs/evidence/vm-gate-20261107-pr4-expanded/) retains
+the clean checkout's logs, JUnit, measurements and synthetic-merge provenance.
 
 - Seven real-KVM fault cases passed in **each** of userns and netns: guest crash,
   readiness timeout, partial startup, API cancel/timeout, command SIGKILL, and backend
@@ -37,8 +38,10 @@ their final validation and pushed-head checks are recorded below as they complet
   rollback and pre-VM-start owner recovery in both modes (**4 passed**) but failed both
   communication tests during BIOS boot with KVM entry errors while VirtualBox was active.
   Its cleanup/host-network guard passed. This rerun is **not** passing guest acceptance.
-- The final expanded gate must be verified on the pushed source using hosted KVM;
-  local host applications were not stopped and kernel settings were not changed.
+- The hosted expanded gate passed **11 tests per mode, zero skips**, including lifecycle,
+  seven fault cases and three mixed-network/rollback/recovery cases. It ran from a clean
+  synthetic PR-merge checkout; PR #4 itself remains unmerged. Local host applications
+  were not stopped and kernel settings were not changed.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for causes, fixes, validation and remaining
 acceptance work. No check bypass, waiver or PR merge is authorized by this snapshot.
