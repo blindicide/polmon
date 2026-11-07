@@ -6,11 +6,20 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 Changes planned after the `0.7.1` development line.
 
-## [0.7.1] - Unreleased
+## [0.7.1] - 2026-11-07
 
-Core version `0.7.1`; optional experimental VM addon `0.1.1` pins that exact core.
-VM functionality and security acceptance remain experimental and are not promoted by
-this version metadata update. See the current handoff for validation boundaries.
+Stable core release `0.7.1`; the optional Linux QEMU/KVM addon is `0.1.1` and pins
+that exact core, but remains experimental. Ordinary local topologies remain L0-only
+on Windows and Linux; namespace L1/hybrid requires an authorized Linux lab backend.
+VM jobs and mixed VM/L0/namespace labs require Linux/KVM and remain experimental;
+`integration_verified` stays false. The expanded hosted gate passed 11 real-KVM tests
+in each of userns and netns, with no skips
+([evidence](https://github.com/blindicide/polmon/tree/main/docs/evidence/vm-gate-20261107-pr4-expanded/),
+[run](https://github.com/blindicide/polmon/actions/runs/42349649597)). Native Windows
+and Linux builds, including fresh-runner verification, passed
+([Windows](https://github.com/blindicide/polmon/actions/runs/42351089052),
+[Linux](https://github.com/blindicide/polmon/actions/runs/42351088944)). These results
+do not establish comprehensive VM functionality or security acceptance.
 
 ### Added
 
@@ -42,8 +51,8 @@ this version metadata update. See the current handoff for validation boundaries.
 
 ### Changed
 
-- Align core package/source/lock versions and the optional addon's core dependency for
-  the `0.7.1` development line.
+- Core package, source, and lock metadata are `0.7.1`; optional addon `0.1.1` pins
+  `polmon==0.7.1`.
 
 ## [0.7.0rc3] - 2026-10-23
 

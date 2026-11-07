@@ -1,8 +1,8 @@
 # Releases
 
-The current unreleased development line is core `0.7.1` with separate optional addon
-distribution `0.1.1` pinned to that core. The published experimental runtime candidate
-`v0.7.0-rc.3` remains historical and unchanged.
+The `v0.7.1` stable core release uses optional addon distribution `0.1.1`, pinned to
+`polmon==0.7.1`. The addon and VM functionality remain experimental; the published
+experimental runtime candidate `v0.7.0-rc.3` remains historical and unchanged.
 `scripts/release_metadata.py` validates tag/source/project/lock/addon consistency and
 extracts only the exact changelog section. Stable tags retain `vX.Y.Z`; previews use
 `vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rcN` to sort before
@@ -19,11 +19,12 @@ guest acceptance.
 Operator records, instructions,
 CI task, private host state and preserved L0 results must remain unpublished.
 
-Push the gated feature commit and annotated tag without merging main. `release.yml`
-validates the candidate, calls both native build/verification workflows and creates
-a GitHub **prerelease** with `--latest=false` for preview tags. It never generates
-whole-history notes; notes come from the version-scoped changelog. Optional manual
-repair notes are prepended explicitly. Assets are:
+After the release-preparation commit is on `main` and its required checks pass, push an
+annotated `v0.7.1` tag to that exact commit. The tag triggers `release.yml`, which
+validates metadata, calls both native build and fresh-runner verification workflows,
+and creates a stable GitHub release with version-scoped changelog notes. Preview tags
+create a prerelease with `--latest=false`. The workflow never generates whole-history
+notes; optional manual repair notes are prepended explicitly. Assets are:
 
 | Asset | Platform |
 |---|---|
