@@ -31,3 +31,4 @@ packaging/vm-image/
 # Instruction files for assistants: never repository content.
 CLAUDE.md
 AGENTS.md
+!/AGENTS.md

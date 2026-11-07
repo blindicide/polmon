@@ -699,8 +699,8 @@ class CounterTile(QFrame):
         self.setObjectName("tile")
         self.caption_key = caption
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.SPACE["md"], theme.SPACE["sm"], theme.SPACE["md"],
-                                  theme.SPACE["sm"])
+        layout.setContentsMargins(theme.SPACE["md"], theme.SPACE["xs"], theme.SPACE["md"],
+                                  theme.SPACE["xs"])
         layout.setSpacing(2)
         self.caption = label(caption, name="tileCaption")
         self.value = QLabel("—")

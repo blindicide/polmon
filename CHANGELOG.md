@@ -4,12 +4,24 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+Changes planned after the `0.7.1` development line.
+
+## [0.7.1] - Unreleased
+
+Core version `0.7.1`; optional experimental VM addon `0.1.1` pins that exact core.
+VM functionality and security acceptance remain experimental and are not promoted by
+this version metadata update. See the current handoff for validation boundaries.
+
 ### Added
 
 - Re-enabled Windows unit/integration and GUI testing alongside Linux CI.
 - Real-KVM gate with separate userns/netns results and retained guest-test evidence;
   skipped or unavailable runs are reported as NOT_RUN, not VM acceptance.
 - Fake-QEMU lifecycle tests for command hardening, shutdown escalation and early exit.
+- Real-KVM fault injection for guest crashes, probe timeouts, partial launch, API cancellation,
+  timeout, command SIGKILL and backend death/successor recovery in both lab modes.
+- Explicit mixed-addon VM selection with isolated L0/namespace peers and bounded API topology
+  and hold-time options; ordinary namespace dispatch is unchanged.
 
 ### Fixed
 
@@ -23,6 +35,15 @@ All notable changes are documented here. Versions follow Semantic Versioning.
   the regression test waits for asynchronous log creation on Windows.
 - VM-gate summaries retain measurements even when pytest prefixes the evidence line
   with its test-file progress output.
+- VM jobs watch their owning backend identity and stop after backend death, even if its
+  closed stderr pipe prevents diagnostic output.
+- Dashboard padding leaves room for taller system fonts at 1440×900 without shrinking text,
+  hiding content or relaxing layout checks.
+
+### Changed
+
+- Align core package/source/lock versions and the optional addon's core dependency for
+  the `0.7.1` development line.
 
 ## [0.7.0rc3] - 2026-10-23
 

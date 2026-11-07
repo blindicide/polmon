@@ -1,0 +1,151 @@
+--- guest-qemu.log
+
+SYSLINUX 6.04 6.04-pre1 Copyright (C) 1994-2015 H. Peter Anvin et al
+e%@)0(B[0;37;40m[?25l[2J[22;16H[0;37;40mAlpine will be booted automatically in [0;1;37;40m10[0;37;40m seconds.KVM: entry failed, hardware error 0x0
+EAX=00000000 EBX=00119564 ECX=001103f8 EDX=0036cd74
+ESI=00000000 EDI=000096f0 EBP=00000000 ESP=00000000
+EIP=00000000 EFL=00000000 [-------] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0000 00000000 00000000 00008000 DPL=0 Reserved
+CS =0000 00000000 00000000 00008000 DPL=0 Reserved
+SS =0000 00000000 00000000 00008000 DPL=0 Reserved
+DS =0000 00000000 00000000 00008000 DPL=0 Reserved
+FS =0000 00000000 00000000 00008000 DPL=0 Reserved
+GS =0000 00000000 00000000 00008000 DPL=0 Reserved
+LDT=0000 00000000 00000000 00008000 DPL=0 Reserved
+TR =0000 00000000 00000000 00008000 DPL=0 Reserved
+GDT=     00000000 00000000
+IDT=     00000000 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000
+DR6=00000000ffff0ff0 DR7=0000000000000400
+EFER=0000000000000000
+Code=<53> ff 00 f0 53 ff 00 f0 c3 e2 00 f0 53 ff 00 f0 53 ff 00 f0 54 ff 00 f0 53 ff 00 f0 53 ff 00 f0 a5 fe 00 f0 87 e9 00 f0 3d d4 00 f0 3d d4 00 f0 3d d4
+
+F--- guest-qemu.log
+
+SYSLINUX 6.04 6.04-pre1 Copyright (C) 1994-2015 H. Peter Anvin et al
+e%@)0(B[0;37;40m[?25l[2J[22;16H[0;37;40mAlpine will be booted automatically in [0;1;37;40m10[0;37;40m seconds.KVM: entry failed, hardware error 0x0
+EAX=00000000 EBX=00119564 ECX=001103f8 EDX=0036cd74
+ESI=00000000 EDI=000096f0 EBP=00000000 ESP=00000000
+EIP=00000000 EFL=00000000 [-------] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0000 00000000 00000000 00008000 DPL=0 Reserved
+CS =0000 00000000 00000000 00008000 DPL=0 Reserved
+SS =0000 00000000 00000000 00008000 DPL=0 Reserved
+DS =0000 00000000 00000000 00008000 DPL=0 Reserved
+FS =0000 00000000 00000000 00008000 DPL=0 Reserved
+GS =0000 00000000 00000000 00008000 DPL=0 Reserved
+LDT=0000 00000000 00000000 00008000 DPL=0 Reserved
+TR =0000 00000000 00000000 00008000 DPL=0 Reserved
+GDT=     00000000 00000000
+IDT=     00000000 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000
+DR6=00000000ffff0ff0 DR7=0000000000000400
+EFER=0000000000000000
+Code=<53> ff 00 f0 53 ff 00 f0 c3 e2 00 f0 53 ff 00 f0 53 ff 00 f0 54 ff 00 f0 53 ff 00 f0 53 ff 00 f0 a5 fe 00 f0 87 e9 00 f0 3d d4 00 f0 3d d4 00 f0 3d d4
+
+F....
+=================================== FAILURES ===================================
+_________ test_real_mixed_communication_isolation_and_cleanup[userns] __________
+
+tmp_path = PosixPath('/tmp/pytest-of-op/pytest-31/test_real_mixed_communication_0')
+mode = 'userns'
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize("mode", MODES)
+    def test_real_mixed_communication_isolation_and_cleanup(tmp_path, mode):
+        vm = configured_backend(tmp_path, mode)
+        topology = load_topology(ROOT / "examples/topologies/l1-vm-mixed.yml")
+        guest, namespace, synthetic = topology.nodes
+        before = host_network()
+        directory = None
+        holders = []
+        qemus = []
+        ready_at = time.monotonic()
+        try:
+            vm.create(topology)
+            directory = vm.socket_dir
+            holders = list(vm.holders.values())
+            if vm.lab.holder_identity:
+                holders.append(vm.lab.holder_identity)
+            vm.start()
+>           vm.wait_ready()
+
+tests/integration/test_vm_mixed.py:81:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+addons/l1-vm/src/polmon_l1_vm/mixed.py:382: in wait_ready
+    super().wait_ready()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <polmon_l1_vm.mixed.MixedBackend object at 0x77850e1d7bf0>
+
+    def wait_ready(self) -> None:
+        if self.phase != "started" or self.topology is None:
+            raise VMError("vm.not_started")
+        deadline = time.monotonic() + self.limits.boot_timeout_seconds
+        self.ready = False
+        pending = list(self.topology.nodes)
+        while pending:
+            for node in pending:
+                if not alive(self.identities[node.id]):
+                    raise VMError("vm.qemu_exited")
+            pending = [node for node in pending if not self._node_ready(node)]
+            if pending and time.monotonic() > deadline:
+>               raise VMError("vm.boot_timeout")
+E               polmon_l1_vm.images.VMError: vm.boot_timeout
+
+addons/l1-vm/src/polmon_l1_vm/backend.py:562: VMError
+__________ test_real_mixed_communication_isolation_and_cleanup[netns] __________
+
+tmp_path = PosixPath('/tmp/pytest-of-op/pytest-31/test_real_mixed_communication_1')
+mode = 'netns'
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize("mode", MODES)
+    def test_real_mixed_communication_isolation_and_cleanup(tmp_path, mode):
+        vm = configured_backend(tmp_path, mode)
+        topology = load_topology(ROOT / "examples/topologies/l1-vm-mixed.yml")
+        guest, namespace, synthetic = topology.nodes
+        before = host_network()
+        directory = None
+        holders = []
+        qemus = []
+        ready_at = time.monotonic()
+        try:
+            vm.create(topology)
+            directory = vm.socket_dir
+            holders = list(vm.holders.values())
+            if vm.lab.holder_identity:
+                holders.append(vm.lab.holder_identity)
+            vm.start()
+>           vm.wait_ready()
+
+tests/integration/test_vm_mixed.py:81:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+addons/l1-vm/src/polmon_l1_vm/mixed.py:382: in wait_ready
+    super().wait_ready()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <polmon_l1_vm.mixed.MixedBackend object at 0x77850d21f740>
+
+    def wait_ready(self) -> None:
+        if self.phase != "started" or self.topology is None:
+            raise VMError("vm.not_started")
+        deadline = time.monotonic() + self.limits.boot_timeout_seconds
+        self.ready = False
+        pending = list(self.topology.nodes)
+        while pending:
+            for node in pending:
+                if not alive(self.identities[node.id]):
+                    raise VMError("vm.qemu_exited")
+            pending = [node for node in pending if not self._node_ready(node)]
+            if pending and time.monotonic() > deadline:
+>               raise VMError("vm.boot_timeout")
+E               polmon_l1_vm.images.VMError: vm.boot_timeout
+
+addons/l1-vm/src/polmon_l1_vm/backend.py:562: VMError
+=========================== short test summary info ============================
+FAILED tests/integration/test_vm_mixed.py::test_real_mixed_communication_isolation_and_cleanup[userns]
+FAILED tests/integration/test_vm_mixed.py::test_real_mixed_communication_isolation_and_cleanup[netns]
+2 failed, 4 passed in 198.07s (0:03:18)
+host network unchanged; no platform lab resources or processes remain

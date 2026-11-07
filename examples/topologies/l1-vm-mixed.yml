@@ -1,0 +1,22 @@
+# Opt in explicitly: polmon-l1-vm run ... --vm-node guest
+# Without --vm-node this does NOT reinterpret ordinary L1 as virtual machines.
+id: vm-mixed
+networks:
+  - {id: lab, ipv4_subnet: 192.168.239.0/24}
+nodes:
+  - id: guest
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:50:4f:07:01:01', ipv4: 192.168.239.11}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}
+  - id: namespace
+    class: l1
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:50:4f:07:01:02', ipv4: 192.168.239.12}
+    services:
+      - {id: web, protocol: tcp, port: 8080, implementation: static_http}
+  - id: synthetic
+    class: l0
+    interfaces:
+      - {id: eth0, network: lab, mac: '02:50:4f:07:01:03', ipv4: 192.168.239.13}

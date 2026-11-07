@@ -3,23 +3,59 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.client
 import ipaddress
 import json
+import os
 import re
 import signal
 import sys
 import time
 from pathlib import Path
+from threading import Event, Thread
 
 from polmon.topology import load_topology
 from polmon.version import __version__
 from polmon_l1_vm.backend import VMBackend, readiness
+from polmon_l1_vm.host import alive
 from polmon_l1_vm.images import ImageManifest, VMError, acquire_image, verify_image
 from polmon_l1_vm.lab import MODES
 from polmon_l1_vm.recovery import inspect_run, recover
 
 MAX_HOLD_SECONDS = 600
+
+
+@contextlib.contextmanager
+def _parent_guard(pid: int | None, start: str | None):
+    """An API backend killed without shutdown must not orphan its VM command."""
+    if pid is None and start is None:
+        yield
+        return
+    if pid is None or pid <= 0 or start is None or not start.isdigit():
+        raise VMError("vm.state_invalid")
+    stopped = Event()
+
+    def watch() -> None:
+        while not stopped.is_set():
+            if not alive((pid, start)):
+                # The dead supervisor may also have closed our stderr pipe.
+                with contextlib.suppress(OSError):
+                    print(
+                        json.dumps({"error_code": "vm.parent_exited"}),
+                        file=sys.stderr, flush=True,
+                    )
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+            stopped.wait(0.25)
+
+    watcher = Thread(target=watch, name="polmon-vm-parent", daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        watcher.join(timeout=1)
 
 
 def _manifest(path: Path) -> ImageManifest:
@@ -28,15 +64,25 @@ def _manifest(path: Path) -> ImageManifest:
     return ImageManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _run(args: argparse.Namespace) -> dict:
-    """Создаёт гостей, ждёт готовности, снимает измерения и всегда всё удаляет."""
-    topology = load_topology(args.topology)
-    vm = VMBackend(
+def _backend(args: argparse.Namespace) -> VMBackend:
+    backend, extra = VMBackend, {}
+    if args.vm_node:
+        from polmon_l1_vm.mixed import MixedBackend
+
+        backend, extra = MixedBackend, {"vm_nodes": args.vm_node}
+    return backend(
         base=args.image,
         manifest=_manifest(args.manifest),
         directory=args.directory,
-        mode=args.mode,
+        mode=getattr(args, "mode", "userns"),
+        **extra,
     )
+
+
+def _run(args: argparse.Namespace) -> dict:
+    """Создаёт гостей, ждёт готовности, снимает измерения и всегда всё удаляет."""
+    topology = load_topology(args.topology)
+    vm = _backend(args)
     started = time.monotonic()
     try:
         vm.create(topology)
@@ -66,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("readiness")
     sub.add_parser("bundle-check")
+    helper = sub.add_parser("mixed-helper")
+    helper.add_argument("arguments", nargs=argparse.REMAINDER)
     probe = sub.add_parser("probe-http")
     probe.add_argument("address")
     probe.add_argument("port", type=int, choices=range(1, 65536), metavar="PORT")
@@ -76,12 +124,15 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("plan", "run"):
         commands[name].add_argument("--topology", type=Path, required=True)
         commands[name].add_argument("--directory", type=Path, required=True)
+        commands[name].add_argument("--vm-node", action="append", default=[])
     for name in ("plan", "run", "verify-image", "acquire-image"):
         commands[name].add_argument("--manifest", type=Path, required=True)
         commands[name].add_argument("--image", type=Path, required=True)
     for name in ("recover", "inspect"):
         commands[name].add_argument("--directory", type=Path, required=True)
     commands["run"].add_argument("--mode", choices=MODES, default="userns")
+    commands["run"].add_argument("--parent-pid", type=int)
+    commands["run"].add_argument("--parent-start")
     commands["run"].add_argument(
         "--hold-seconds", type=int, default=0, choices=range(MAX_HOLD_SECONDS + 1), metavar="N"
     )
@@ -89,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
     # SIGTERM проходит через блоки finally: иначе остались бы гости, пространство, частичный образ.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
+        if args.action == "mixed-helper":
+            from polmon_l1_vm.mixed import helper_main
+
+            return helper_main(args.arguments)
         if args.action == "probe-http":
             address = str(ipaddress.IPv4Address(args.address))
             if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", args.path):
@@ -139,11 +194,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "inspect":
             result = inspect_run(args.directory)
         elif args.action == "run":
-            result = _run(args)
+            with _parent_guard(args.parent_pid, args.parent_start):
+                result = _run(args)
         else:
-            backend = VMBackend(
-                base=args.image, manifest=_manifest(args.manifest), directory=args.directory
-            )
+            backend = _backend(args)
             result = backend.plan(load_topology(args.topology))
         print(json.dumps(result, default=list))
         return 0

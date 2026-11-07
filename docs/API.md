@@ -82,10 +82,16 @@ fetched only over HTTPS from the URL reported by `GET /v1/vm/status`.
 |---|---|
 | `GET /v1/vm/status` | `{available, as_root, image, running}`; `image` is `{present, name, size_bytes, sha256, source_url, distribution, license_notice}`; `running` is the active job id or `null`. |
 | `GET /v1/vm/readiness` | Add-on host readiness: `{ready, modes: {userns, netns}, missing, version, integration_verified}`. `missing` holds `vm.*` codes. |
-| `POST /v1/vm/jobs` | Starts one job (HTTP 202). Body: `action` (`acquire`, `verify`, `run`) and `mode` (`userns`, default, or `netns`). `run` boots two guests on an isolated lab network, probes their HTTP services, samples resources and always destroys the lab. |
+| `POST /v1/vm/jobs` | Starts one job (HTTP 202). Body: `action` (`acquire`, `verify`, `run`) and `mode` (`userns`, default, or `netns`). `run` defaults to two guests; optional `topology`, `vm_nodes` and `hold_seconds` select a bounded custom/mixed lab and hold it for 0–600 seconds after readiness. It probes services, samples resources and always destroys the lab. |
 | `GET /v1/vm/jobs`, `GET /v1/vm/jobs/{job_id}` | Job state `running`, `succeeded`, `failed` or `cancelled`, with `elapsed_seconds`, `limit_seconds`, `result`, `message_code` + `message_params`, `exit_code` and `stderr_tail`. The newest 20 jobs are kept. |
 | `POST /v1/vm/jobs/{job_id}/cancel` | SIGTERM to the job's process group; the add-on cleans up, then the backend removes the run directory before the job is reported `cancelled`. |
 | `POST /v1/vm/recover` | Releases and removes run directories left by a dead backend; HTTP 422 while a job runs. Also done at startup. |
+
+Run-only options are rejected for image jobs. Custom definitions are limited to 32 nodes and
+four networks; the addon applies its stricter VM/mixed limits before creating resources.
+`vm_nodes` contains at most four unique node IDs and explicitly selects the mixed addon path;
+it does not change ordinary namespace L1 dispatch. Cancellation and timeout trigger owned
+recovery, and a PID/start-time-pinned parent guard stops the command when its backend dies.
 
 Only one job runs at a time (`vm.job_running`). Each job has a time limit (acquire 1000 s, verify
 300 s, run 900 s) and fails with `vm.timeout` beyond it. Jobs are refused with `vm.running_as_root`

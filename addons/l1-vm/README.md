@@ -5,7 +5,7 @@ stays namespace-backed; local clients stay L0-only; L2 is still refused. The add
 a separate package (`polmon-l1-vm`) and the core backend never imports it: it runs
 the addon's CLI as a subprocess job (see [docs/API.md](../../docs/API.md), `/v1/vm`).
 
-## Implemented scope (real guest acceptance NOT RUN)
+## Implemented scope (experimental)
 
 - Two Alpine guests on an isolated network, no route out, no NAT, no host shares.
 - Per-guest QCOW2 overlays over a verified read-only base; the base is never written.
@@ -14,16 +14,22 @@ the addon's CLI as a subprocess job (see [docs/API.md](../../docs/API.md), `/v1/
   TAP bytes and packets, overlay allocation, boot time.
 - Teardown paths for success, failure and cancellation; identity-checked recovery refuses
   ambiguous ownership and preserves failed cleanup journals. Legacy journals require inspection.
+- Explicit mixed topology selection (`run --vm-node ID`, repeatable): selected L1 nodes become
+  VMs, remaining L1 nodes use nested Linux namespaces, and L0 peers use isolated TAP responders.
+  All links stay inside the owned lab; ordinary core L1 dispatch remains namespace-backed.
 - Two lab modes:
-  - `userns` — rootless, no sudo. Real guest acceptance NOT RUN here.
+  - `userns` — rootless, no sudo.
   - `netns` — named network namespace through passwordless `sudo -n`; QEMU drops to the
-    owner uid. Implemented, **not integration-verified** (needs `sudo -v` and
-    `POLMON_VM_TEST_IMAGE=<image> scripts/vm-tests.sh netns`).
+    owner uid. Needs authorized passwordless sudo and
+    `POLMON_VM_TEST_IMAGE=<image> scripts/vm-tests.sh netns`.
 
-Real guest boot, service networking, guest-written clone isolation, costs and failure cleanup
-are NOT RUN for this candidate. The release executor lacks `/dev/kvm`, QEMU system emulator
-and ISO tools, and denies user namespace creation. Unit/storage/bundle checks do not establish
-VM functionality or security acceptance; both network modes need independent real guest evidence.
+The original two-guest lifecycle gate passed in both modes; retained evidence is under
+[`docs/evidence/vm-gate-20261107-pr4/`](../../docs/evidence/vm-gate-20261107-pr4/).
+Real fault tests also cover crashes, partial startup, probe timeout, API cancel/timeout,
+command SIGKILL and backend death/successor recovery. `scripts/vm-tests.sh` now runs lifecycle,
+fault and mixed suites; `scripts/vm-gate.py --mode both --image PATH` retains their evidence.
+Specific passing tests do not establish comprehensive VM/security acceptance:
+`integration_verified` remains **false**. Published historical release acceptance is unchanged.
 
 ## Image
 
@@ -56,6 +62,11 @@ For source use set `PYTHONPATH=addons/l1-vm/src` and run
 
 Errors print `{"error_code": "vm.…"}` to stderr and exit 2.
 
+For a mixed lab, pass `--topology examples/topologies/l1-vm-mixed.yml --vm-node guest`
+with the usual `--manifest`, `--image` and `--directory` arguments. `--hold-seconds` keeps
+the ready lab alive for a bounded interval (up to 600 seconds), then destroys it. Namespace
+peers expose only declared static HTTP services; L0 supports ARP/ICMP, not TCP emulation.
+
 ## Limits
 
 Two guests, one vCPU and 256 MiB each, an estimated 64 MiB emulator allowance per guest,
@@ -64,5 +75,4 @@ Disk needs the full overlay capacity plus a 512 MiB reserve.
 
 ## Not done
 
-Attaching guests to L0/namespace nodes in one topology, scenarios, SSH/VNC to guests,
-guest-side metrics and a persistent VM time series.
+Guest scenarios, SSH/VNC to guests, guest-side metrics and a persistent VM time series.
