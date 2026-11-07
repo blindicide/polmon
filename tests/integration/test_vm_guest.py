@@ -5,12 +5,11 @@ import json
 import os
 import socket
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
-from polmon_l1_vm.backend import VMBackend, readiness
+from polmon_l1_vm.backend import VMBackend, http_probe_command, readiness
 from polmon_l1_vm.images import ImageManifest
 
 from polmon.backends.namespace.runner import CommandRunner
@@ -45,9 +44,7 @@ def diagnose(vm, topology) -> None:
     for node in topology.nodes:
         address = str(node.interfaces[0].ipv4)
         probes.append(["ping", "-c", "1", "-W", "1", address])
-        probes.append(
-            [sys.executable, "-m", "polmon_l1_vm.cli", "probe-http", address, "8080", "/"]
-        )
+        probes.append(http_probe_command(address, 8080))
     for command in probes:
         try:
             result = vm.lab.run(command, as_owner=True, check=False, timeout=15)

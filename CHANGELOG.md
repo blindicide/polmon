@@ -4,6 +4,26 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Re-enabled Windows unit/integration and GUI testing alongside Linux CI.
+- Real-KVM gate with separate userns/netns results and retained guest-test evidence;
+  skipped or unavailable runs are reported as NOT_RUN, not VM acceptance.
+- Fake-QEMU lifecycle tests for command hardening, shutdown escalation and early exit.
+
+### Fixed
+
+- VM HTTP probes preserve the exact response body instead of appending a newline that
+  made valid guest identities fail readiness checks. Source-mode probes locate the addon
+  explicitly after privilege dropping, without relying on sudo retaining `PYTHONPATH`.
+- VM shutdown attempts every guest even when one fails to stop; destruction and recovery
+  reclaim owned QEMU logs so run directories can be reused.
+- VM startup rechecks the base-image file identity, and QMP paths reject option separators.
+- Service and guest-console logs stream short output while processes are still running;
+  the regression test waits for asynchronous log creation on Windows.
+- VM-gate summaries retain measurements even when pytest prefixes the evidence line
+  with its test-file progress output.
+
 ## [0.7.0rc3] - 2026-10-23
 
 Experimental prerelease `v0.7.0-rc.3`, core `0.7.0rc3`, optional addon `0.1.0rc3`.
