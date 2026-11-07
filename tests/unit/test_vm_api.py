@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from polmon.api import vm as vm_module
 from polmon.api.control import ControlPlane
-from polmon.api.vm import MANIFEST, TOPOLOGY, VMJobs, VMRequest
+from polmon.api.vm import MANIFEST, TOPOLOGY, VMJob, VMJobs, VMRequest
 from polmon.backend import create_app
 from polmon.core.errors import ConfigurationError
 from polmon.topology import load_topology
@@ -251,3 +251,53 @@ def test_recovery_preserves_unjournaled_files(fake):
     foreign.write_text("keep")
     assert jobs.recover() == {"directories": 1, "recovered": 0, "failed": 1}
     assert foreign.read_text() == "keep"
+
+
+@pytest.mark.parametrize("options", [
+    {"hold_seconds": -1}, {"hold_seconds": 601},
+    {"vm_nodes": ["--help"]}, {"vm_nodes": ["alpha", "alpha"]},
+])
+def test_run_request_rejects_unbounded_or_invalid_options(options):
+    with pytest.raises(ValueError):
+        VMRequest(action="run", **options)
+
+
+def test_non_run_actions_reject_run_only_options():
+    with pytest.raises(ValueError):
+        VMRequest(action="verify", hold_seconds=1)
+    with pytest.raises(ValueError):
+        VMRequest(action="acquire", vm_nodes=["alpha"])
+
+
+def test_custom_topology_is_bounded_before_job_preparation():
+    topology = load_topology(ROOT / "examples/topologies/l1-vm-addon.yml")
+    network = topology.networks[0].model_dump(mode="json")
+    topology.networks.extend([
+        type(topology.networks[0]).model_validate({
+            **network, "id": f"extra-{index}", "ipv4_subnet": f"192.168.{230 + index}.0/24"
+        })
+        for index in range(4)
+    ])
+    with pytest.raises(ValueError, match="bounded lab size"):
+        VMRequest(action="run", topology=topology)
+
+
+def test_custom_topology_selection_hold_and_parent_identity_are_forwarded(fake):
+    jobs = fake()
+    topology = load_topology(ROOT / "examples/topologies/l1-vm-addon.yml")
+    request = VMRequest(action="run", topology=topology, vm_nodes=["alpha"], hold_seconds=60)
+    jobs._prepare(request)
+    stored = load_topology(jobs.directory / "topology.yml")
+    assert stored == topology
+    arguments = jobs._arguments(VMJob("example", request, jobs.directory / "runs/example"))
+    assert arguments[arguments.index("--vm-node") + 1] == "alpha"
+    assert arguments[arguments.index("--hold-seconds") + 1] == "60"
+    if vm_module.process_start_ticks(os.getpid()) is not None:
+        assert arguments[arguments.index("--parent-pid") + 1] == str(os.getpid())
+        assert arguments[arguments.index("--parent-start") + 1].isdigit()
+
+
+def test_child_source_path_is_explicit_even_when_parent_imports_addon(tmp_path, monkeypatch):
+    monkeypatch.setattr(vm_module, "addon_source", lambda: tmp_path)
+    monkeypatch.setattr(vm_module, "addon_importable", lambda: True)
+    assert vm_module.addon_environment()["PYTHONPATH"].split(os.pathsep)[0] == str(tmp_path)

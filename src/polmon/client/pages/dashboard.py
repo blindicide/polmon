@@ -245,6 +245,14 @@ class DashboardPage(Page):
         recent.add(self.recent_state, 1)
         self.root.addWidget(recent, 1)
 
+        # Three stacked sections must leave room for the banner and log dock with
+        # taller system fonts too. Keep all content and sparklines; trim chrome,
+        # rather than shrinking text or relaxing the supported window size.
+        for card in (identity, limits, counters, recent):
+            card.layout().setContentsMargins(
+                theme.SPACE["md"], theme.SPACE["sm"], theme.SPACE["md"], theme.SPACE["sm"]
+            )
+
         self.session.connection_changed.connect(self.refresh)
         self.session.resources_changed.connect(self.refresh)
         self.session.experiments_changed.connect(self._fill_recent)

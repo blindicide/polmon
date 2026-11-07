@@ -12,7 +12,7 @@ recovery all refuse with `vm.scaffold_only`, including on capable hosts.
 
 TESTS EXECUTED / TEST RESULTS: exact final commands, exit codes, local evidence,
 commit/tag/Actions results and full inventories are maintained in the authoritative
-[handoff](../../HANDOFF-PHASE-VI-ASTRA.md). Historical raw evidence remains in
+[handoff](../history/HANDOFF-PHASE-VI-ASTRA.md). Historical raw evidence remains in
 `docs/evidence/phase-vi-astra/`; the previous 491 rootless and 23 privileged passes
 are historical, not final-candidate evidence. VM integration is NOT RUN.
 

@@ -1395,6 +1395,7 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.host_disk": "На хосте недостаточно места на диске.",
     "backend.vm.host_memory": "На хосте недостаточно свободной памяти для гостей.",
     "backend.vm.image_checksum": "Контрольная сумма образа не совпадает с закреплённой.",
+    "backend.vm.image_changed": "Базовый образ изменился после проверки.",
     "backend.vm.image_download": "Не удалось скачать образ.",
     "backend.vm.image_format": "Образ имеет недопустимый формат.",
     "backend.vm.image_redirect": "Источник образа перенаправил запрос на недопустимый адрес.",
@@ -1426,6 +1427,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.service_unsupported": "Тип службы не поддерживается.",
     "backend.vm.cleanup_failed": "Очистка ВМ не завершена. Журнал восстановления сохранён.",
     "backend.vm.state_invalid": "Журнал состояния запуска повреждён.",
+    "backend.vm.parent_exited": "Управляющий сервер завершился; его задание ВМ остановлено.",
+    "backend.vm.mixed_unsupported": "Смешанная топология или выбранный набор ВМ не поддерживается.",
+    "backend.vm.mixed_start_failed": "Не удалось запустить компонент смешанной топологии.",
     "backend.vm.use_addon_limits": "Запрошенные ресурсы выходят за пределы, заданные дополнением.",
     "backend.vm.userns_unavailable": "Непривилегированные пространства имён недоступны на этом "
     "узле.",

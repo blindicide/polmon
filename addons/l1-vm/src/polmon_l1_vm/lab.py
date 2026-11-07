@@ -95,6 +95,8 @@ class Lab:
         self.holder_identity: tuple[int, str] | None = None
         self.created = False
         self.namespace_identity: list[int] | None = None
+        # Subclasses may create additional links, but only inside this owned lab.
+        self.extra_links: set[str] = set()
         self.on_created = lambda: None
 
     # -- команды внутри пространства ------------------------------------------------------
@@ -209,7 +211,11 @@ class Lab:
         owner = f" user {self.owner_uid} group {self.owner_gid}" if self.mode == "netns" else ""
         for node in self.topology.nodes:
             for interface in node.interfaces:
-                tap = self.names.taps[(node.id, interface.id)]
+                # A mixed lab reserves addresses against its full topology, but
+                # only selected VM interfaces are backed by per-node TAPs.
+                tap = self.names.taps.get((node.id, interface.id))
+                if tap is None:
+                    continue
                 bridge = self.names.bridges[interface.network]
                 lines += [
                     f"tuntap add dev {tap} mode tap{owner}",
@@ -248,6 +254,7 @@ class Lab:
             "lo",
             *self.names.bridges.values(),
             *self.names.taps.values(),
+            *self.extra_links,
         }
         links = self.run(["ip", "-o", "link", "show"]).stdout
         found = {

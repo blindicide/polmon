@@ -1,0 +1,132 @@
+[
+  {
+    "case": "mixed",
+    "mode": "userns",
+    "ready_seconds": 44.15,
+    "sample": {
+      "nodes": {
+        "guest": {
+          "pid": 117070,
+          "cpu_seconds": 15.29,
+          "rss_bytes": 258002944,
+          "io": {
+            "read_bytes": 4096,
+            "write_bytes": 3170304
+          },
+          "interfaces": {
+            "eth0": {
+              "rx_bytes": 5387,
+              "rx_packets": 63,
+              "tx_bytes": 6558,
+              "tx_packets": 90
+            }
+          },
+          "overlay_allocated_bytes": 1708032
+        }
+      },
+      "guest_memory_mb_each": 256,
+      "uptime_seconds": 41.036328041999695,
+      "admission": {
+        "requested_memory_mb": 320,
+        "host_available_memory_mb": 6697,
+        "worst_case_disk_mb": 200,
+        "host_free_disk_mb": 98624
+      },
+      "image": {
+        "sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6",
+        "distribution": "alpine-3.24.1-x86_64-bios-cloudinit",
+        "virtual_bytes": 209715200
+      },
+      "mixed": {
+        "vm_nodes": [
+          "guest"
+        ],
+        "namespace_pids": {
+          "namespace": 117024
+        },
+        "l0": {
+          "running": true,
+          "stats": {
+            "endpoint_count": 1,
+            "network_count": 1,
+            "scheduled_event_count": 0,
+            "queued_packet_count": 0,
+            "estimated_state_bytes": 1316
+          }
+        },
+        "answered_for_l0": {
+          "lab": {
+            "arp": 2,
+            "icmp_echo": 3
+          }
+        }
+      }
+    },
+    "integration_verified": false
+  },
+  {
+    "case": "mixed",
+    "mode": "netns",
+    "ready_seconds": 42.77,
+    "sample": {
+      "nodes": {
+        "guest": {
+          "pid": 118184,
+          "cpu_seconds": 12.73,
+          "rss_bytes": 258834432,
+          "io": {
+            "read_bytes": 0,
+            "write_bytes": 3096576
+          },
+          "interfaces": {
+            "eth0": {
+              "rx_bytes": 5333,
+              "rx_packets": 62,
+              "tx_bytes": 6218,
+              "tx_packets": 86
+            }
+          },
+          "overlay_allocated_bytes": 1642496
+        }
+      },
+      "guest_memory_mb_each": 256,
+      "uptime_seconds": 38.37961814800019,
+      "admission": {
+        "requested_memory_mb": 320,
+        "host_available_memory_mb": 6742,
+        "worst_case_disk_mb": 200,
+        "host_free_disk_mb": 98655
+      },
+      "image": {
+        "sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6",
+        "distribution": "alpine-3.24.1-x86_64-bios-cloudinit",
+        "virtual_bytes": 209715200
+      },
+      "mixed": {
+        "vm_nodes": [
+          "guest"
+        ],
+        "namespace_pids": {
+          "namespace": 118117
+        },
+        "l0": {
+          "running": true,
+          "stats": {
+            "endpoint_count": 1,
+            "network_count": 1,
+            "scheduled_event_count": 0,
+            "queued_packet_count": 0,
+            "estimated_state_bytes": 1316
+          }
+        },
+        "answered_for_l0": {
+          "lab": {
+            "arp": 2,
+            "icmp_echo": 3
+          }
+        }
+      }
+    },
+    "integration_verified": false
+  }
+]

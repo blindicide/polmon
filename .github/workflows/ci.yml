@@ -22,9 +22,8 @@ jobs:
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
-      # Temporarily suspend Windows unit/integration tests; the real-render Windows screenshot job remains below.
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
