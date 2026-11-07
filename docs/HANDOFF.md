@@ -52,8 +52,41 @@ against the pinned manifest; the original image was not modified.
   This is a pre-existing local layout failure, not a VM-fix regression; no GUI code,
   assertion or test selection was changed to hide it.
 
-Native Windows and updated hosted-KVM checks must be verified on the pushed PR
-head. Local Linux results do not stand in for Windows execution.
+All six hosted checks at `ae31868` subsequently passed, including native Windows and
+hosted KVM: [CI](https://github.com/blindicide/polmon/actions/runs/42346378937),
+[VM gate](https://github.com/blindicide/polmon/actions/runs/42346378915).
+Local Linux results do not stand in for the next pushed head's Windows execution.
+
+## Follow-up implementation
+
+- Dashboard cards/counter tiles trim vertical padding without reducing fonts, removing
+  content or changing assertions; the original language/layout file now has **5 passing tests**.
+  Both complete GUI selections passed: **67 Russian, 67 English**.
+- Both userns and netns passed seven real fault cases each: guest SIGKILL, readiness
+  probe outage/timeout, failed second QEMU launch, API cancel, API timeout, command
+  SIGKILL and backend SIGKILL followed by startup recovery. Every scenario asserts
+  process, namespace, socket and run-file cleanup and preserved host interfaces.
+- A PID/start-time-pinned CLI parent guard handles backend death even after its stderr
+  pipe closes. API source children receive an explicit known addon path.
+- Explicit `--vm-node` selection on addon `plan`/`run` supports isolated mixed labs;
+  API run requests accept bounded custom definitions, VM selection and hold time.
+  Auxiliary processes/files and nested namespace identities are journaled for recovery.
+- `scripts/vm-tests.sh` and hosted path filters now cover lifecycle, failures and mixed
+  integration tests. Rootless: **546 passed, 11 skipped** without a VM image configured.
+  Ruff, both translation gates and the Qt client self-test passed.
+- The final rootless run used `TMPDIR=/tmp/opencode`; an earlier concurrent run hit two
+  global temporary-directory snapshot races with the mixed worker's KVM tests. Every
+  test assertion passed, and rerunning in a separate temporary root passed all teardowns.
+  Test cleanup assertions were not relaxed.
+- Mixed communication/rollback first passed in both modes (**4 passed**). The outer guard
+  rejected newly created Firefox sandbox processes, not lab resources. A later expanded
+  run passed rollback and nested-owner crash recovery in both modes (**4 passed**) but
+  both communication reruns failed at BIOS boot with `KVM: entry failed, hardware error
+  0x0`. Kernel VMREAD/VMWRITE warnings coincided with VirtualBox activity. The final outer
+  cleanup/host-network guard passed. This failed rerun is not a gate pass or waiver.
+- Final clean-source expanded verification moves to hosted KVM; unrelated host VMs,
+  browsers and kernel settings are left untouched. No release, tag, acceptance-flag
+  promotion or merge is part of this work.
 
 ## Other PR fixes retained
 
@@ -69,13 +102,14 @@ head. Local Linux results do not stand in for Windows execution.
 ## Evidence boundaries and follow-up
 
 - Keep `integration_verified: false` and experimental release wording. A successful
-  two-guest lifecycle gate is not complete failure/recovery or security acceptance;
-  real-guest crash/cancel/recovery and exhaustive hardening validation remain open.
-- Mixed VM/L0/namespace topologies, guest scenarios, SSH/VNC integration, guest-side
-  metrics and persistent VM time series remain unfinished. Ordinary local topology
+  lifecycle/fault gate is not comprehensive security acceptance; exhaustive hardening
+  validation remains open.
+- Guest scenarios, SSH/VNC integration, guest-side metrics and persistent VM time
+  series remain unfinished. Ordinary local topology
   execution remains L0-only; namespace L1 needs an authorized Linux lab backend.
-- No version bump, release, merge or waiver is part of these fixes. No branch pruning
-  or unrelated operator-file cleanup was performed.
+- Core/addon development metadata was updated by the dedicated version steward; no
+  release, merge or waiver is authorized. No branch pruning or unrelated operator-file
+  cleanup was performed. All commits/version edits use the dedicated model in `AGENTS.md`.
 - Low-severity review notes remain: slow image reads can overrun the aggregate
   acquisition deadline; the pinned image URL uses `latest-stable`; process termination
   has a small PID-reuse window; QMP trickling responses lack a total read deadline.

@@ -109,8 +109,8 @@ def readiness() -> dict:
     }
 
 
-def http_probe_command(address: str, port: int, path: str = "/") -> list[str]:
-    """Use the same probe dispatch for readiness and failure diagnostics."""
+def addon_command(*arguments: str) -> list[str]:
+    """Dispatch addon helpers without depending on inherited Python environment."""
     if getattr(sys, "frozen", False):
         command = [sys.executable, "--run-vm"]
     else:
@@ -124,7 +124,12 @@ def http_probe_command(address: str, port: int, path: str = "/") -> list[str]:
             "runpy.run_module('polmon_l1_vm.cli', run_name='__main__')",
             str(Path(__file__).resolve().parent.parent),
         ]
-    return [*command, "probe-http", address, str(int(port)), path]
+    return [*command, *arguments]
+
+
+def http_probe_command(address: str, port: int, path: str = "/") -> list[str]:
+    """Use the same probe dispatch for readiness and failure diagnostics."""
+    return addon_command("probe-http", address, str(int(port)), path)
 
 
 class VMBackend(ExecutionBackend):
@@ -160,6 +165,9 @@ class VMBackend(ExecutionBackend):
         self.socket_dir: Path | None = None
         self.launchers: dict[str, subprocess.Popen[bytes]] = {}
         self.identities: dict[str, tuple[int, str]] = {}
+        self.auxiliary_processes: dict[str, tuple[int, str]] = {}
+        self.auxiliary_files: set[Path] = set()
+        self.child_namespaces: list[dict] = []
         self.pidfiles: dict[str, Path] = {}
         self.owner = LabOwner.current()
         self.socket_identity = None
@@ -168,6 +176,7 @@ class VMBackend(ExecutionBackend):
         self.base_identity: tuple[int, ...] | None = None
         self.admission: dict = {}
         self.started_at: float | None = None
+        self.ready = False
 
     def validate(self, topology: Topology) -> None:
         if not 1 <= len(topology.nodes) <= self.limits.max_vms:
@@ -218,6 +227,12 @@ class VMBackend(ExecutionBackend):
 
     # -- жизненный цикл -------------------------------------------------------------------
 
+    def _make_lab(self, topology: Topology) -> Lab:
+        return Lab(topology, self.runner, mode=self.mode)
+
+    def _seed_topology(self, topology: Topology) -> Topology:
+        return topology
+
     def _journal(self) -> None:
         # Journal intended filenames before creation; the run directory was admitted empty.
         files = sorted(
@@ -233,10 +248,17 @@ class VMBackend(ExecutionBackend):
                 "mode": self.mode,
                 "topology": self.topology.id if self.topology else None,
                 **(self.lab.state() if self.lab else {}),
-                "files": files,
+                "files": [*files, *sorted(path.name for path in self.auxiliary_files)],
                 "pidfiles": sorted(path.name for path in self.pidfiles.values()),
                 "socket_dir": str(self.socket_dir) if self.socket_dir else None,
-                "processes": {node: list(identity) for node, identity in self.identities.items()},
+                "processes": {
+                    node: list(identity)
+                    for node, identity in {
+                        **self.identities, **self.auxiliary_processes
+                    }.items()
+                },
+                "child_namespaces": self.child_namespaces,
+                "ready": self.ready,
             },
         )
 
@@ -276,7 +298,7 @@ class VMBackend(ExecutionBackend):
             if any(c in str(self.socket_dir) for c in ",\n\r"):
                 raise VMError("vm.path_invalid")
             self._journal()
-            self.lab = Lab(topology, self.runner, mode=self.mode)
+            self.lab = self._make_lab(topology)
             self.lab.on_created = self._journal
             self.lab.create()
             self._journal()
@@ -285,7 +307,8 @@ class VMBackend(ExecutionBackend):
                 self._journal()
                 self.seeds.append(
                     create_seed(
-                        self.directory, node, topology, self.runner, peer_report=self.peer_report
+                        self.directory, node, self._seed_topology(topology), self.runner,
+                        peer_report=self.peer_report
                     )
                 )
                 self._journal()
@@ -305,6 +328,11 @@ class VMBackend(ExecutionBackend):
         found |= {
             f"qemu:{pid}:{start}" for pid, start in self.identities.values() if alive((pid, start))
         }
+        found |= {
+            f"process:{pid}:{start}"
+            for pid, start in self.auxiliary_processes.values() if alive((pid, start))
+        }
+        found |= {f"file:{path}" for path in self.auxiliary_files if path.exists()}
         if self.socket_dir is not None and self.socket_dir.exists():
             found.add(f"dir:{self.socket_dir}")
         return found
@@ -365,6 +393,7 @@ class VMBackend(ExecutionBackend):
         if self.phase != "created" or self.topology is None or self.lab is None:
             raise VMError("vm.not_created")
         assert self.overlays is not None
+        self.ready = False
         # Образ хэшируется при создании, а читается гостями позже: подмену файла не пропускаем.
         try:
             unchanged = self._base_identity() == self.base_identity
@@ -420,10 +449,14 @@ class VMBackend(ExecutionBackend):
     def stop(self) -> None:
         # Каждый гость получает свою попытку остановки: отказ одного не оставляет остальных.
         failed = False
+        self.ready = False
         for node_id, identity in list(self.identities.items()):
             if alive(identity) and self.socket_dir is not None:
                 with contextlib.suppress(VMError):
                     qmp.command(str(self.socket_dir / f"{node_id}.qmp"), "quit", timeout=2)
+            if not terminate(identity, grace=3) and alive(identity):
+                failed = True
+        for identity in self.auxiliary_processes.values():
             if not terminate(identity, grace=3) and alive(identity):
                 failed = True
         for launcher in self.launchers.values():
@@ -458,6 +491,13 @@ class VMBackend(ExecutionBackend):
         # Журналы QEMU принадлежат запуску; оставленные, они мешают повторному созданию.
         for node in self.topology.nodes if self.topology else []:
             (self.directory / f"{node.id}-qemu.log").unlink(missing_ok=True)
+        for path in self.auxiliary_files:
+            if path.parent != self.directory:
+                raise VMError("vm.state_invalid")
+            path.unlink(missing_ok=True)
+        self.auxiliary_files.clear()
+        self.auxiliary_processes.clear()
+        self.child_namespaces.clear()
         self.identities.clear()
         if self.socket_dir is not None:
             if self.socket_dir.exists():
@@ -511,6 +551,7 @@ class VMBackend(ExecutionBackend):
         if self.phase != "started" or self.topology is None:
             raise VMError("vm.not_started")
         deadline = time.monotonic() + self.limits.boot_timeout_seconds
+        self.ready = False
         pending = list(self.topology.nodes)
         while pending:
             for node in pending:
@@ -521,6 +562,12 @@ class VMBackend(ExecutionBackend):
                 raise VMError("vm.boot_timeout")
             if pending:
                 time.sleep(1)
+        self._additional_ready()
+        self.ready = True
+        self._journal()
+
+    def _additional_ready(self) -> None:
+        """Subclasses validate their peers before publishing all-lab readiness."""
 
     def sample(self) -> dict:
         """Измерения из /proc и ip; недоступное значение — null, а не выдуманное число."""

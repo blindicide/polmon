@@ -7,7 +7,8 @@ on:
     paths:
       - "addons/l1-vm/**"
       - "scripts/vm-*"
-      - "tests/integration/test_vm_guest.py"
+      - "tests/integration/test_vm_*.py"
+      - "examples/topologies/l1-vm*.yml"
       - "src/polmon/api/vm.py"
       - ".github/workflows/vm-gate.yml"
   workflow_dispatch:

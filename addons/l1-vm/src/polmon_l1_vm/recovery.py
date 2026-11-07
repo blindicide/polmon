@@ -14,12 +14,14 @@ from polmon.backends.namespace.journal import LabOwner, boot_id
 from polmon.backends.namespace.runner import CommandRunner
 from polmon_l1_vm.host import alive, terminate
 from polmon_l1_vm.images import VMError
-from polmon_l1_vm.lab import file_identity, release, validate_release
+from polmon_l1_vm.lab import _stop_members, file_identity, release, validate_release
 
 STATE_NAME = "state.json"
 STATE_VERSION = 2
 SOCKET_PREFIX = "pmvm-"
-OWNED_FILE = re.compile(r"[a-z][a-z0-9-]{0,31}(\.qcow2|-seed\.iso|-qemu\.log)")
+OWNED_FILE = re.compile(
+    r"[a-z][a-z0-9-]{0,31}(\.qcow2|-seed\.iso|-qemu\.log|-peer\.log|-go|-ready)"
+)
 
 
 def write_state(directory: Path, state: dict) -> None:
@@ -92,6 +94,31 @@ def inspect_run(directory: Path) -> dict:
     }
 
 
+def _child_namespaces(state: dict) -> list[list[int]]:
+    """Validate every nested namespace before any cleanup operation is allowed."""
+    entries = state.get("child_namespaces", [])
+    if not isinstance(entries, list):
+        raise VMError("vm.state_invalid")
+    namespaces = []
+    host = file_identity(Path("/proc/self/ns/net"))
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise VMError("vm.state_invalid")
+        holder, namespace = entry.get("holder"), entry.get("namespace_identity")
+        if (
+            not isinstance(holder, list) or len(holder) != 2
+            or holder not in state.get("processes", {}).values()
+            or not isinstance(namespace, list) or len(namespace) != 2
+            or not all(isinstance(value, int) and value > 0 for value in namespace)
+            or namespace == host
+        ):
+            raise VMError("vm.state_invalid")
+        if alive(holder) and file_identity(Path(f"/proc/{holder[0]}/ns/net")) != namespace:
+            raise VMError("vm.state_invalid")
+        namespaces.append(namespace)
+    return namespaces
+
+
 def recover(directory: Path, runner: CommandRunner | None = None) -> dict:
     """Останавливает записанные процессы, снимает пространство, удаляет файлы запуска."""
     directory = directory.resolve()
@@ -111,6 +138,7 @@ def recover(directory: Path, runner: CommandRunner | None = None) -> dict:
         raise VMError("vm.lab_exists")
     socket_dir = _socket_dir(state)
     validate_release(state)
+    children = _child_namespaces(state)
     stopped = [
         node
         for node, identity in state.get("processes", {}).items()
@@ -118,6 +146,8 @@ def recover(directory: Path, runner: CommandRunner | None = None) -> dict:
     ]
     if any(alive(identity) for identity in state.get("processes", {}).values()):
         raise VMError("vm.cleanup_failed")
+    for namespace in children:
+        _stop_members(namespace)
     released = release(state, runner)
     removed = []
     for path in _owned_files(directory, state):

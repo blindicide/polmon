@@ -279,7 +279,10 @@ def test_recover_stops_recorded_processes_and_removes_only_owned_files(tmp_path,
     outside = tmp_path / "evil"
     outside.write_text("keep")
     (run / "operator.txt").write_text("keep")
-    owned = ["alpha.qcow2", "alpha-seed.iso", "alpha-qemu.log"]
+    owned = [
+        "alpha.qcow2", "alpha-seed.iso", "alpha-qemu.log",
+        "peer-go", "peer-ready", "peer-peer.log",
+    ]
     for name in owned:
         (run / name).write_text("x")
     socket_dir = Path(tempfile.mkdtemp(prefix="pmvm-"))
@@ -505,3 +508,99 @@ def test_http_probe_uses_fixed_frozen_dispatch(tmp_path, monkeypatch):
     assert vm.fetch_http("192.168.240.11", 8080) == (200, "alpha")
     assert calls[0][0] == [sys.executable, "--run-vm", "probe-http", "192.168.240.11", "8080", "/"]
     assert calls[0][1]["as_owner"] and calls[0][1]["timeout"] == 8
+
+
+def test_mixed_helper_uses_fixed_frozen_dispatch(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert module.addon_command("mixed-helper", "ports", "private.sock") == [
+        sys.executable, "--run-vm", "mixed-helper", "ports", "private.sock"
+    ]
+
+
+@pytest.mark.parametrize("peer_ready", [True, False])
+def test_readiness_is_published_only_after_additional_peers_pass(tmp_path, monkeypatch, peer_ready):
+    vm = VMBackend(base=tmp_path / "base", manifest=MANIFEST, directory=tmp_path / "run")
+    vm.topology = load_topology(EXAMPLE)
+    vm.phase = "started"
+    vm.identities = {node.id: (123, "1") for node in vm.topology.nodes}
+    published = []
+    monkeypatch.setattr(module, "alive", lambda identity: True)
+    monkeypatch.setattr(vm, "_node_ready", lambda node: True)
+    monkeypatch.setattr(vm, "_journal", lambda: published.append(vm.ready))
+
+    def check_peers():
+        assert not vm.ready and not published
+        if not peer_ready:
+            raise VMError("vm.mixed_start_failed")
+
+    monkeypatch.setattr(vm, "_additional_ready", check_peers)
+    if peer_ready:
+        vm.wait_ready()
+        assert vm.ready and published == [True]
+    else:
+        with pytest.raises(VMError, match="vm.mixed_start_failed"):
+            vm.wait_ready()
+        assert not vm.ready and not published
+
+
+def test_parent_guard_still_signals_when_dead_supervisor_closed_stderr(monkeypatch):
+    signalled = threading.Event()
+
+    class BrokenPipe:
+        def write(self, text):
+            raise BrokenPipeError("supervisor exited")
+
+    monkeypatch.setattr(cli, "alive", lambda identity: False)
+    monkeypatch.setattr(cli.os, "kill", lambda *args: signalled.set())
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stderr", BrokenPipe())
+        with cli._parent_guard(123, "1"):
+            assert signalled.wait(timeout=3)
+
+
+@pytest.mark.parametrize(("pid", "start"), [(0, "1"), (1, None), (None, "1"), (1, "bad")])
+def test_parent_guard_refuses_incomplete_identity(pid, start):
+    with pytest.raises(VMError, match="vm.state_invalid"), cli._parent_guard(pid, start):
+        pass
+
+
+def test_nested_namespace_ownership_is_validated_before_cleanup(tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    calls = []
+    monkeypatch.setattr(recovery, "file_identity", lambda path: [1, 99])
+    monkeypatch.setattr(recovery, "terminate", lambda *a, **kw: calls.append(a))
+    monkeypatch.setattr(recovery, "_stop_members", lambda *a: calls.append(a))
+    monkeypatch.setattr(recovery, "validate_release", lambda state: None)
+    state = {
+        "owner": _dead_owner(), "mode": "userns", "processes": {"peer": [123, "5"]},
+        "child_namespaces": [{"holder": [123, "5"], "namespace_identity": [1, 99]}],
+    }
+    write_state(run, state)
+    with pytest.raises(VMError, match="vm.state_invalid"):
+        recover(run)
+    assert not calls and read_state(run)
+    state["child_namespaces"][0]["namespace_identity"] = [1, 100]
+    monkeypatch.setattr(recovery, "alive", lambda identity: True)
+    write_state(run, state)
+    with pytest.raises(VMError, match="vm.state_invalid"):
+        recover(run)
+    assert not calls and read_state(run)
+
+
+def test_recovery_reclaims_recorded_nested_namespace_members(tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    calls = []
+    monkeypatch.setattr(recovery, "file_identity", lambda path: [1, 99])
+    monkeypatch.setattr(recovery, "alive", lambda identity: False)
+    monkeypatch.setattr(recovery, "terminate", lambda *a, **kw: True)
+    monkeypatch.setattr(recovery, "validate_release", lambda state: None)
+    monkeypatch.setattr(recovery, "release", lambda *args: [])
+    monkeypatch.setattr(recovery, "_stop_members", lambda ns: calls.append(ns))
+    write_state(run, {
+        "owner": _dead_owner(), "mode": "userns", "processes": {"peer": [123, "5"]},
+        "child_namespaces": [{"holder": [123, "5"], "namespace_identity": [1, 100]}],
+    })
+    assert recover(run)["recovered"]
+    assert calls == [[1, 100]]

@@ -1427,6 +1427,9 @@ MESSAGES: dict[str, str | dict[str, str]] = {
     "backend.vm.service_unsupported": "Тип службы не поддерживается.",
     "backend.vm.cleanup_failed": "Очистка ВМ не завершена. Журнал восстановления сохранён.",
     "backend.vm.state_invalid": "Журнал состояния запуска повреждён.",
+    "backend.vm.parent_exited": "Управляющий сервер завершился; его задание ВМ остановлено.",
+    "backend.vm.mixed_unsupported": "Смешанная топология или выбранный набор ВМ не поддерживается.",
+    "backend.vm.mixed_start_failed": "Не удалось запустить компонент смешанной топологии.",
     "backend.vm.use_addon_limits": "Запрошенные ресурсы выходят за пределы, заданные дополнением.",
     "backend.vm.userns_unavailable": "Непривилегированные пространства имён недоступны на этом "
     "узле.",
