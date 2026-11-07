@@ -18,6 +18,7 @@ release acceptance is unchanged, and `integration_verified` remains false.
   errors during BIOS boot. Its host-network/cleanup guard passed. Kernel diagnostics
   coincided with VirtualBox activity; unrelated host applications were not stopped.
 
-The final committed implementation still requires the expanded hosted KVM gate. Do not
-replace that result with earlier partial successes or reinterpret the failed rerun as PASS.
+The final committed implementation subsequently passed the expanded hosted KVM gate:
+see [`../vm-gate-20261107-pr4-expanded/`](../vm-gate-20261107-pr4-expanded/).
+Do not replace that result with earlier partial successes or reinterpret this failed rerun as PASS.
 Raw host/kernel diagnostics are intentionally not published with these test results.
