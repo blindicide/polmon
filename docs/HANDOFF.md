@@ -1,80 +1,81 @@
-# Handoff — VM-backed L1 after the merge (2026-10-24)
+# PR #4 fixes and validation — 2026-11-07
 
-Supersedes the Phase VI closeout in [history/HANDOFF-PHASE-VI-ASTRA.md](history/HANDOFF-PHASE-VI-ASTRA.md).
+This replaces the October 24 investigation notes. PR #4 remains experimental and
+draft; no merge, waiver, release or acceptance-flag change is authorized here.
 
-## State
+## Diagnosed failures
 
-- `main` = `108c06a` (PR #3, the experimental QEMU/KVM L1 runtime, version `0.7.0rc3`). CI on `main` was green.
-- Working branch `dev/no-kvm-hardening` = draft **PR #4**. Not merged. Its last CI run (head `d619316`) was still pending when this was written; check it first.
-- Untracked operator files (`CI-EXE-TASK.md`, `INSTRUCTION-*.md`, `docs/evidence/intermediate-20261022/`, `docs/evidence/phase-vi-astra/`, `benchmarks/results/l0-20261022T070800Z.*`) are untouched and still protected.
+The failing hosted checks at `1a99d08` are preserved:
+[CI](https://github.com/blindicide/polmon/actions/runs/40130947922),
+[VM gate](https://github.com/blindicide/polmon/actions/runs/40130948058).
 
-## Key discovery: GitHub-hosted runners have working KVM
+1. **Windows:** `test_service_log_is_written_while_the_process_is_still_running`
+   read its log before the background drain thread created it. The test now waits
+   for creation and output, and still requires the child to be alive.
+2. **Userns VM readiness:** the raw artifact already showed successful ping and
+   HTTP identity responses from both guests. `probe-http` appended a newline to
+   the body, so exact identity comparison failed. It now preserves the body,
+   including empty, absent, single and multiple trailing newlines.
+3. **Netns VM readiness:** `sudo` removed `PYTHONPATH`, and the source addon was not
+   installed. The probe now supplies its known addon location explicitly inside
+   the owner-privileged command. It does not preserve Python environment variables
+   across sudo. Frozen dispatch remains `--run-vm probe-http`.
+4. **Evidence reporting:** pytest can prefix `REAL-VM-EVIDENCE` with the test-file
+   name on the same line. The gate now retains those measurements in its summary.
 
-This server has no `/dev/kvm`, but `ubuntu-latest` does (`/dev/kvm` accessible, `readiness` ready in both `userns` and `netns`). The real VM gate can therefore run in CI.
-`.github/workflows/vm-gate.yml` runs `scripts/vm-gate.py --mode both` and uploads `vm-gate-evidence` (summary.json, junit, full pytest output with the guest consoles). It triggers on PRs that touch VM code, and by hand.
-`NOT_RUN` (exit 2) is a warning, never a pass.
+Regression tests first reproduced both probe bugs and the evidence-parser bug,
+then passed after the fixes. Failure diagnostics use the same probe command as
+readiness, including the netns import fix.
 
-### Where the real-VM gate stands: FAIL, cause not yet found
+## Local validation
 
-Both modes fail the same way: `vm.boot_timeout` in `wait_ready()` (tests/integration/test_vm_guest.py).
+The current executor is a Linux laptop, not the earlier VM-hosted server. It has
+Python 3.12, the project virtual environment, QEMU 8.2.2 and working KVM/userns/netns.
+The existing guest image was copied to a read-only temporary base and verified
+against the pinned manifest; the original image was not modified.
 
-- Works: QEMU/KVM launches, TAPs and bridges come up, cleanup leaves the host network unchanged, no leaked resources.
-- Works: both guests boot to a login prompt in about 1.6 s. The hostname is `alpha` / `bravo`, so cloud-init read the seed. The image's initramfs supports virtio, so a plain boot with this drive layout is fine.
-- Fails: the lab-side HTTP probe never gets the identity page (`POLMON <id> <uuid>` on port 8080) within 90 s.
+- Real-KVM gate: **PASS in both userns and netns**, with no skipped guest tests.
+  Two guests per mode passed exact identity and wrong-identity rejection,
+  guest-to-guest HTTP, host/egress isolation, process/network/disk measurements,
+  guest-written overlay differences, unchanged base digest and deterministic cleanup.
+- Final rootless unit/integration run: **494 passed, 1 skipped**. The VM test in
+  that selection had no image configured; it ran separately in the real-KVM gate.
+- Focused probe, runner and gate regression tests: **38 passed** after the final
+  probe-dispatch refactor and evidence-parser fix.
+- Ruff and both translation gates passed.
+- Russian-default GUI run: **64 passed, 3 failed** in dashboard layout assertions.
+  Both language variants of the standalone layout test reproduce unchanged on an
+  archived `1a99d08` checkout (927 px required height versus the 900 px contract).
+  This is a pre-existing local layout failure, not a VM-fix regression; no GUI code,
+  assertion or test selection was changed to hide it.
 
-Open hypotheses, not yet tested:
+Native Windows and updated hosted-KVM checks must be verified on the pushed PR
+head. Local Linux results do not stand in for Windows execution.
 
-1. `netns` mode: `sudo` strips `PYTHONPATH`, so `python -m polmon_l1_vm.cli probe-http` cannot import the addon inside the namespace. This would not explain `userns`.
-2. The guest network or `runcmd` does not come up (cloud-init `network-config` v1 with `mac_address`, or `python3 -m http.server --bind <ip>` not starting).
-3. The probe itself fails inside `nsenter` (python path or venv symlink).
+## Other PR fixes retained
 
-**Next step.** Commit `d619316` makes the test print, on failure, the lab's `ip addr`, `ip neigh`, link counters, a `ping` to each guest and the raw `probe-http` output. Download the artifact from the latest `VM gate` run, then read `pytest-userns.txt` and `pytest-netns.txt`:
+- Shutdown attempts every guest even if one cannot be stopped.
+- Destroy/recovery removes owned QEMU logs, permitting run-directory reuse.
+- Start rechecks base-image identity; QMP paths reject option separators.
+- Service/guest output drains short chunks immediately instead of waiting for 8 KiB.
+- Fake-QEMU lifecycle tests exercise real launch/shutdown code without claiming guest
+  acceptance. Gate classification tests distinguish PASS, FAIL and NOT_RUN.
+- Finished Phase V/VI records are archived under `docs/history/`.
+- `CHANGELOG.md` and `CI.md` describe the fixes and re-enabled Windows matrix.
 
-    gh run list --workflow=vm-gate.yml --branch dev/no-kvm-hardening --limit 1
-    gh run download <run-id> -n vm-gate-evidence -D /tmp/gate
+## Evidence boundaries and follow-up
 
-If `ping` works but the probe does not, it is hypothesis 1 or 3. If `ping` fails, look at the guest network.
-After the gate passes: run it on `main`, store the evidence under `docs/evidence/`, and only then change `integration_verified` and the "experimental" wording.
-
-## What PR #4 contains
-
-| Commit | What |
-|---|---|
-| `ci: re-enable the Windows test job` | Windows unit/integration tests **pass** (the four known failures were already fixed). Keep the job on. |
-| `test(vm): … fake QEMU` | `tests/fixtures/fake_qemu.py` plus `tests/unit/test_vm_fake_qemu.py`: real `VMBackend` start/stop/destroy against a stand-in QEMU. It validates the real command line (KVM only, sandbox, no user networking) and QMP shutdown, and covers ignore-quit, ignore-term and early exit. Runs on POSIX, no KVM needed. |
-| `feat(vm): … gate harness` | `scripts/vm-gate.py` (PASS / FAIL / NOT_RUN plus evidence directory). `scripts/vm-tests.sh` forwards `POLMON_VM_PYTEST_ARGS`. |
-| `fix(vm): stop every guest …` | See bugs below. |
-| `fix(runner): write service output as it arrives` | See bugs below. |
-| `docs: archive finished process documents` | `HANDOFF-PHASE-VI-ASTRA.md`, `INSTRUCTION-PHASE-V.md`, `PHASE-V-PROGRESS.md` moved to `docs/history/`. |
-| `ci: … vm-gate`, `test(vm): print …` | The KVM workflow and failure diagnostics. |
-
-### Real bugs found and fixed
-
-1. `stop()` raised on the first guest it could not kill and never signalled the rest. It now tries all guests, then raises `vm.cleanup_failed`.
-2. QEMU logs were never removed, so re-creating in the same directory failed with `vm.directory_not_empty`. `destroy()` removes them and the journal lists them. Recovery now accepts `-qemu.log` (the `OWNED_FILE` regex).
-3. The base image was hashed only at `create()`. `start()` now re-checks its file identity (`vm.image_changed`; EN and RU messages added).
-4. A comma in the QMP socket directory would inject QEMU options. It is now refused (`vm.path_invalid`).
-5. `CommandRunner.start` log drain used `read(8192)`, which withholds output until 8 KiB arrive. Console and service logs lagged, and the end of a guest console was invisible. Fixed with `read1`; regression test added (it fails without the fix).
-
-### Checked, not fixed (low severity)
-
-- `acquire_image`'s 900 s deadline is only checked between 1 MiB reads, so a very slow server can exceed it.
-- The pinned manifest URL uses `alpine/latest-stable/…`. If Alpine moves that path, the download fails (digest-pinned, so safe, but stale). `build-linux.yml` fetches the same image.
-- `host.terminate` has a tiny pid-reuse window between the identity check and `kill`.
-- QMP `readline` total time is not bounded against a trickling peer (QEMU's own socket).
-- `ruff format --check` reports 76 files; only `ruff check` is enforced. Not touched.
-
-## Not done / needs you
-
-- **Branch pruning was denied by the auto-mode classifier**, so nothing was deleted. All of these are fully merged into `main`; SHAs are listed so any can be restored (`git push origin <sha>:refs/heads/<name>`):
-  `ci/release-windows-test-waiver 98762da`, `ci/self-hosted-windows 6851611`, `feat/l1-vm-runtime f1bc912`, `frontier/2026-10-polmon 3764af0`, `phase-iii-self-contained 331ca65`, `phase-iv-ru-ui 099edd2`, `phase-v-studio 43f87a9`, `phase-vi-packaging-packet-lab ada84ad`, `wave/data-dir 4e855c3`, `wave/linux-local 4bcab53`, `wave/screenshots c1bd541`, `wave/windows-memory 422c7d3`.
-  Local-only: `codex/test-minimization-20261022 ac1bb6b`, `integrate-v0.6.0 225318b` (has a worktree at `~/projects/polmon-phase-vi`), and a stale local `main`.
-- The TCG smoke test was **not built**: the code is deliberately KVM-only. The hosted-runner KVM gate replaces it.
-- **CHANGELOG.md** has no entries for the fixes above. Add them under `[Unreleased]`.
-- PR #4 is still a draft: remove it from draft and merge once CI is green, the gate passes or is understood, and the CHANGELOG is updated.
-- `docs/evidence/` has no VM-gate evidence yet.
-
-## Done in this session, for reference
-
-- Opened and merged PR #3; CI on `main` green.
-- Fast-forwarding local `main` and deleting branches were attempted in the same command and denied; nothing ran. The `main` branch ref is therefore still stale.
+- Keep `integration_verified: false` and experimental release wording. A successful
+  two-guest lifecycle gate is not complete failure/recovery or security acceptance;
+  real-guest crash/cancel/recovery and exhaustive hardening validation remain open.
+- Mixed VM/L0/namespace topologies, guest scenarios, SSH/VNC integration, guest-side
+  metrics and persistent VM time series remain unfinished. Ordinary local topology
+  execution remains L0-only; namespace L1 needs an authorized Linux lab backend.
+- No version bump, release, merge or waiver is part of these fixes. No branch pruning
+  or unrelated operator-file cleanup was performed.
+- Low-severity review notes remain: slow image reads can overrun the aggregate
+  acquisition deadline; the pinned image URL uses `latest-stable`; process termination
+  has a small PID-reuse window; QMP trickling responses lack a total read deadline.
+- The old Phase VI closeout is historical:
+  [history/HANDOFF-PHASE-VI-ASTRA.md](history/HANDOFF-PHASE-VI-ASTRA.md).
+  Host-networking privileges remain root-equivalent; see [SECURITY.md](../SECURITY.md).
