@@ -57,8 +57,11 @@ def test_service_log_is_written_while_the_process_is_still_running(tmp_path) -> 
     )
     try:
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline and "ready" not in log.read_text(errors="replace"):
+        while time.monotonic() < deadline:
+            if log.exists() and "ready" in log.read_text(errors="replace"):
+                break
             time.sleep(0.05)
         assert "ready" in log.read_text()
+        assert process.poll() is None
     finally:
         stop_process_group(process, grace=1)

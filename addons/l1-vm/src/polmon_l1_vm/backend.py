@@ -109,6 +109,24 @@ def readiness() -> dict:
     }
 
 
+def http_probe_command(address: str, port: int, path: str = "/") -> list[str]:
+    """Use the same probe dispatch for readiness and failure diagnostics."""
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, "--run-vm"]
+    else:
+        # sudo strips PYTHONPATH in netns mode. Pass this addon's source location
+        # explicitly, after Lab.wrap has dropped privileges; never preserve the
+        # caller's Python environment across sudo.
+        command = [
+            sys.executable,
+            "-c",
+            "import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); "
+            "runpy.run_module('polmon_l1_vm.cli', run_name='__main__')",
+            str(Path(__file__).resolve().parent.parent),
+        ]
+    return [*command, "probe-http", address, str(int(port)), path]
+
+
 class VMBackend(ExecutionBackend):
     """Гости QEMU/KVM в отдельной лабораторной сети; владеет только созданными им ресурсами."""
 
@@ -461,13 +479,8 @@ class VMBackend(ExecutionBackend):
         host = str(ipaddress.IPv4Address(address))
         if not re.fullmatch(r"/[A-Za-z0-9._/-]{0,64}", path):
             raise VMError("vm.path_invalid")
-        command = (
-            [sys.executable, "--run-vm"]
-            if getattr(sys, "frozen", False)
-            else [sys.executable, "-m", "polmon_l1_vm.cli"]
-        )
         result = self.lab.run(
-            [*command, "probe-http", host, str(int(port)), path],
+            http_probe_command(host, port, path),
             as_owner=True,
             check=False,
             timeout=8,

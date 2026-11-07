@@ -54,8 +54,10 @@ def overall(statuses: list[str]) -> str:
 def evidence_lines(text: str) -> list[dict]:
     found = []
     for line in text.splitlines():
-        if line.startswith(EVIDENCE_PREFIX):
-            found.append(json.loads(line[len(EVIDENCE_PREFIX) :]))
+        # pytest -s can print its test-file progress prefix on the same line.
+        _, marker, payload = line.partition(EVIDENCE_PREFIX)
+        if marker:
+            found.append(json.loads(payload))
     return found
 
 

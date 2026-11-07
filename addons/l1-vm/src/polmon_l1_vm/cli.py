@@ -97,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 connection.request("GET", args.path)
                 response = connection.getresponse()
-                print(str(response.status) + " " + response.read(512).decode("utf-8", "replace"))
+                print(
+                    str(response.status) + " " + response.read(512).decode("utf-8", "replace"),
+                    end="",
+                )
             finally:
                 connection.close()
             return 0

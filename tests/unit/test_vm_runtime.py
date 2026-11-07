@@ -7,11 +7,12 @@ import sys
 import tempfile
 import threading
 from collections import namedtuple
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 from polmon_l1_vm import backend as module
-from polmon_l1_vm import host, qmp, recovery
+from polmon_l1_vm import cli, host, qmp, recovery
 from polmon_l1_vm import lab as lab_module
 from polmon_l1_vm.backend import VMBackend
 from polmon_l1_vm.images import ImageManifest, VMError
@@ -425,6 +426,68 @@ def test_recovery_refuses_live_owner_and_retains_failed_cleanup(tmp_path, monkey
     assert read_state(run) is not None
     monkeypatch.setattr(host, "process_start", lambda _: None)
     assert not host.alive([123, None])
+
+
+@pytest.fixture
+def http_guest():
+    body = b""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def respond(text):
+        nonlocal body
+        body = text.encode("utf-8")
+        return server.server_port
+
+    try:
+        yield respond
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+@pytest.mark.parametrize("body", ["", "no newline", "identity\n", "peers\n\n"])
+def test_http_probe_cli_preserves_exact_body(http_guest, body, capsys):
+    port = http_guest(body)
+    assert cli.main(["probe-http", "127.0.0.1", str(port), "/"]) == 0
+    assert capsys.readouterr().out == f"200 {body}"
+
+
+def test_source_http_probe_works_without_pythonpath(tmp_path, monkeypatch, http_guest):
+    class ProbeLab:
+        def run(self, argv, **kwargs):
+            # Like sudo in netns mode: no inherited source path, and no repository cwd.
+            env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+            result = subprocess.run(
+                argv, env=env, cwd=tmp_path, capture_output=True, text=True, timeout=8
+            )
+            assert result.returncode == 0, result.stderr
+            assert kwargs["as_owner"]
+            return CommandResult(result.stdout, result.stderr, result.returncode)
+
+    vm = VMBackend(base=tmp_path / "base", manifest=MANIFEST, directory=tmp_path / "run")
+    vm.topology = load_topology(EXAMPLE)
+    vm.lab = ProbeLab()
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    node = vm.topology.nodes[0]
+    body = f"POLMON {node.id} {node.uuid}\n"
+    port = http_guest(body)
+    assert vm.fetch_http("127.0.0.1", port) == (200, body)
+    assert vm.probe_http("127.0.0.1", port, node.id)
+    assert not vm.probe_http("127.0.0.1", port, vm.topology.nodes[1].id)
 
 
 def test_http_probe_uses_fixed_frozen_dispatch(tmp_path, monkeypatch):
