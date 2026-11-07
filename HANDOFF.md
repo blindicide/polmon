@@ -1,12 +1,13 @@
-# Current state and PR #4 fixes
+# Current state and PR #4 release preparation
 
 Last checked: 2026-11-07. This is a status snapshot, not a merge waiver or a
 complete VM functional/security acceptance report.
 
 ## PR #4
 
-[PR #4](https://github.com/blindicide/polmon/pull/4), `dev/no-kvm-hardening`, remains
-draft and unmerged. The previous failing head was `1a99d08`:
+[PR #4](https://github.com/blindicide/polmon/pull/4), `dev/no-kvm-hardening`, was
+merged to `main` on 2026-11-07 as `fd40fe265447a71742b303687a86bc24141193b4`.
+The previous failing head was `1a99d08`:
 [CI](https://github.com/blindicide/polmon/actions/runs/40130947922),
 [VM gate](https://github.com/blindicide/polmon/actions/runs/40130948058).
 Those failures were diagnosed and fixed, not waived:
@@ -40,17 +41,17 @@ the clean checkout's logs, JUnit, measurements and synthetic-merge provenance.
   Its cleanup/host-network guard passed. This rerun is **not** passing guest acceptance.
 - The hosted expanded gate passed **11 tests per mode, zero skips**, including lifecycle,
   seven fault cases and three mixed-network/rollback/recovery cases. It ran from a clean
-  synthetic PR-merge checkout; PR #4 itself remains unmerged. Local host applications
-  were not stopped and kernel settings were not changed.
+  synthetic PR-merge checkout; the PR merge itself is recorded above. Local host
+  applications were not stopped and kernel settings were not changed.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for causes, fixes, validation and remaining
-acceptance work. No check bypass, waiver or PR merge is authorized by this snapshot.
+acceptance work. No check bypass, waiver or acceptance-flag promotion was used.
 
 ## Releases and runtime boundaries
 
-- Core development metadata is `0.7.1`, with optional addon `0.1.1` pinned to that core;
-  this is not a release. Stable release remains `v0.6.0`; published experimental
-  `v0.7.0-rc.3` artifacts and their acceptance status are unchanged.
+- Release preparation targets core `0.7.1`, with optional addon `0.1.1` pinned to that
+  core. The stable release remains `v0.6.0` until the `v0.7.1` release workflow succeeds;
+  published experimental `v0.7.0-rc.3` artifacts and their acceptance status are unchanged.
 - Ordinary local client topologies remain L0-only on Windows and Linux. Namespace
   L1/hybrid execution needs an authorized Linux lab backend; L2 remains unsupported.
 - The optional QEMU/KVM addon, `/v1/vm/*` jobs and VM page remain experimental, with
@@ -70,9 +71,9 @@ acceptance work. No check bypass, waiver or PR merge is authorized by this snaps
 
 ## Next actions
 
-1. Verify checks at the updated PR head; do not substitute this snapshot for live CI.
-2. Preserve and review expanded raw VM evidence before broadening acceptance claims;
-   selected fault tests do not establish comprehensive security acceptance.
+1. Gate the release-preparation commit on `main` before creating the annotated `v0.7.1` tag.
+2. Preserve expanded raw VM evidence; selected fault tests do not establish comprehensive
+   VM functionality or security acceptance.
 3. Keep the 1440×900 layout contract and verify both GUI language suites on native CI.
 4. The archived [Phase VI handoff](docs/history/HANDOFF-PHASE-VI-ASTRA.md) and Phase V
    progress are historical; their scaffold-only claims do not describe this runtime.

@@ -1,7 +1,9 @@
 # PR #4 fixes and validation — 2026-11-07
 
-This replaces the October 24 investigation notes. PR #4 remains experimental and
-draft; no merge, waiver, release or acceptance-flag change is authorized here.
+This replaces the October 24 investigation notes. PR #4 was merged to `main` on
+2026-11-07 as `fd40fe265447a71742b303687a86bc24141193b4`. The runtime remains
+experimental; no waiver or acceptance-flag change was made. The `v0.7.1` release is
+being prepared separately and is not published by this handoff.
 
 ## Diagnosed failures
 
@@ -88,12 +90,12 @@ Local Linux results do not stand in for the next pushed head's Windows execution
   [native CI](https://github.com/blindicide/polmon/actions/runs/42349649584) and
   [expanded KVM gate](https://github.com/blindicide/polmon/actions/runs/42349649597).
   The KVM artifact reports **11 passed per mode, no skips**, with `git_dirty: false`.
-  It tested GitHub's synthetic PR merge `2b1759c`, not an actual merge of this draft PR.
+  It tested GitHub's synthetic PR merge `2b1759c`; the later main merge is recorded above.
   Raw logs, JUnit, measurements and full parent provenance are retained in
   [evidence/vm-gate-20261107-pr4-expanded/](evidence/vm-gate-20261107-pr4-expanded/).
   This resolves final expanded verification without waiving or erasing the earlier
   local failure. Unrelated host VMs, browsers and kernel settings are left untouched.
-  No release, tag, acceptance-flag promotion or merge is part of this work.
+  No release, tag or acceptance-flag promotion was part of this implementation work.
 
 ## Other PR fixes retained
 
@@ -108,15 +110,15 @@ Local Linux results do not stand in for the next pushed head's Windows execution
 
 ## Evidence boundaries and follow-up
 
-- Keep `integration_verified: false` and experimental release wording. A successful
+- Keep `integration_verified: false` and experimental addon wording. A successful
   lifecycle/fault gate is not comprehensive security acceptance; exhaustive hardening
   validation remains open.
 - Guest scenarios, SSH/VNC integration, guest-side metrics and persistent VM time
   series remain unfinished. Ordinary local topology
   execution remains L0-only; namespace L1 needs an authorized Linux lab backend.
-- Core/addon development metadata was updated by the dedicated version steward; no
-  release, merge or waiver is authorized. No branch pruning or unrelated operator-file
-  cleanup was performed. All commits/version edits use the dedicated model in `AGENTS.md`.
+- Core/addon release metadata is `0.7.1`/`0.1.1`; publication is pending the gated tag
+  workflow. No waiver was used. No branch pruning or unrelated operator-file cleanup was
+  performed. All commits/version edits use the dedicated model in `AGENTS.md`.
 - Low-severity review notes remain: slow image reads can overrun the aggregate
   acquisition deadline; the pinned image URL uses `latest-stable`; process termination
   has a small PID-reuse window; QMP trickling responses lack a total read deadline.
