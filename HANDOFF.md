@@ -17,7 +17,8 @@ Those failures were diagnosed and fixed, not waived:
 - Gate summaries lost measurements when pytest prefixed evidence with progress text.
 
 The real-KVM lifecycle gate passed locally in **both userns and netns**, with two
-guests per mode and no skips. Linux rootless unit/integration tests: **494 passed,
+guests per mode and no skips; see [the retained evidence](docs/evidence/vm-gate-20261107-pr4/).
+Linux rootless unit/integration tests: **494 passed,
 1 skipped** (the unconfigured VM test ran separately in the KVM gate). Ruff and
 translation gates passed. Three local GUI dashboard-layout assertions failed;
 the same layout failure reproduces on the unchanged PR head. Native Windows and

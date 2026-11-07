@@ -1,0 +1,14 @@
+{"version": "0.7.0rc3", "backend": "l1-vm-addon", "ready": true, "runtime_implemented": true, "modes": {"userns": true, "netns": true}, "missing": [], "fidelity": "full Linux VM; namespace L1 remains unchanged", "integration_verified": false}
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0
+PySide6 6.11.2 -- Qt runtime 6.11.2 -- Qt compiled 6.11.2
+rootdir: /home/op/Documents/projects/polmon
+configfile: pyproject.toml
+plugins: cov-7.1.0, qt-4.5.0, anyio-4.15.1
+collected 2 items / 1 deselected / 1 selected
+
+tests/integration/test_vm_guest.py REAL-VM-EVIDENCE {"mode": "userns", "sample": {"nodes": {"alpha": {"pid": 74265, "cpu_seconds": 15.47, "rss_bytes": 258367488, "io": {"read_bytes": 0, "write_bytes": 3555328}, "interfaces": {"eth0": {"rx_bytes": 5130, "rx_packets": 60, "tx_bytes": 6924, "tx_packets": 94}}, "overlay_allocated_bytes": 1708032}, "bravo": {"pid": 74274, "cpu_seconds": 14.33, "rss_bytes": 259100672, "io": {"read_bytes": 0, "write_bytes": 3555328}, "interfaces": {"eth0": {"rx_bytes": 5062, "rx_packets": 58, "tx_bytes": 6626, "tx_packets": 91}}, "overlay_allocated_bytes": 1773568}}, "guest_memory_mb_each": 256, "uptime_seconds": 41.13774991799983, "admission": {"requested_memory_mb": 640, "host_available_memory_mb": 8449, "worst_case_disk_mb": 400, "host_free_disk_mb": 99054}, "image": {"sha256": "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6", "distribution": "alpine-3.24.1-x86_64-bios-cloudinit", "virtual_bytes": 209715200}}}
+.
+
+- generated xml file: /tmp/opencode/polmon-pr4-vm-gate-final/junit-userns.xml --
+======================= 1 passed, 1 deselected in 44.02s =======================

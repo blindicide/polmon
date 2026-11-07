@@ -38,12 +38,15 @@ against the pinned manifest; the original image was not modified.
   Two guests per mode passed exact identity and wrong-identity rejection,
   guest-to-guest HTTP, host/egress isolation, process/network/disk measurements,
   guest-written overlay differences, unchanged base digest and deterministic cleanup.
+  The final rerun at clean source commit `4a3f5fe` retained measurements for both
+  modes; raw evidence is in [evidence/vm-gate-20261107-pr4/](evidence/vm-gate-20261107-pr4/).
 - Final rootless unit/integration run: **494 passed, 1 skipped**. The VM test in
   that selection had no image configured; it ran separately in the real-KVM gate.
 - Focused probe, runner and gate regression tests: **38 passed** after the final
   probe-dispatch refactor and evidence-parser fix.
 - Ruff and both translation gates passed.
-- Russian-default GUI run: **64 passed, 3 failed** in dashboard layout assertions.
+- Russian-default and English GUI runs: **64 passed, 3 failed each** in dashboard
+  layout assertions.
   Both language variants of the standalone layout test reproduce unchanged on an
   archived `1a99d08` checkout (927 px required height versus the 900 px contract).
   This is a pre-existing local layout failure, not a VM-fix regression; no GUI code,
