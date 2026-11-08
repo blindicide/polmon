@@ -3,10 +3,14 @@
 The `v0.7.1` stable core release uses optional addon distribution `0.1.1`, pinned to
 `polmon==0.7.1`. The addon and VM functionality remain experimental; the published
 experimental runtime candidate `v0.7.0-rc.3` remains historical and unchanged.
+The separate `v0.7.1-beta.1` candidate uses core `0.7.1b1` and addon `0.1.1b1`;
+prepare it on its release branch, wait for branch CI, then create its annotated tag on
+that exact commit. Its release workflow publishes downloadable prerelease binaries and
+packages; do not move or reuse the stable `v0.7.1` tag.
 `scripts/release_metadata.py` validates tag/source/project/lock/addon consistency and
 extracts only the exact changelog section. Stable tags retain `vX.Y.Z`; previews use
-`vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rcN` to sort before
-stable; downloadable filenames use the canonical Python version.
+`vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~alphaN`, `~betaN` or
+`~rcN` to sort before stable; downloadable filenames use the canonical Python version.
 
 Before tagging, run the complete rootless, applicable isolated privileged,
 localization/format, shell syntax, wheel and version gates. The optional VM runtime is

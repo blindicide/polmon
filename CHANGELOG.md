@@ -4,7 +4,22 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 ## [Unreleased]
 
-Changes planned after the `0.7.1` development line.
+Changes planned after the `0.7.1` release line.
+
+## [0.7.1b1] - 2026-11-08
+
+Beta candidate `v0.7.1-beta.1` publishes downloadable Windows and Linux client builds,
+the core Python wheel, native Debian/RPM packages, and the optional Linux QEMU/KVM addon.
+The addon pins this exact beta core and remains experimental. Ordinary local topologies
+remain L0-only on Windows and Linux; namespace L1/hybrid requires an authorized Linux lab
+backend. VM jobs and mixed VM/L0/namespace labs require Linux/KVM and remain experimental;
+`integration_verified` stays false. This beta does not claim new VM acceptance or security
+acceptance; consult the stable `0.7.1` record below for its separately scoped evidence.
+
+### Changed
+
+- Core package, source, and lock metadata are `0.7.1b1`; optional addon `0.1.1b1` pins
+  `polmon==0.7.1b1`.
 
 ## [0.7.1] - 2026-11-08
 
