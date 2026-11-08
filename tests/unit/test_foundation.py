@@ -62,3 +62,31 @@ def test_lock_file_names_the_current_version() -> None:
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     # uv.lock sat at 0.2.3 through v0.3.1: refresh it with `uv lock --offline` on every bump.
     assert locked["polmon"]["version"] == project["version"] == __version__
+
+
+def test_release_metadata_rejects_mismatched_tags_and_scopes_notes():
+    import runpy
+    from pathlib import Path
+
+    root = Path(__file__).parents[2]
+    release = runpy.run_path(str(root / "scripts/release_metadata.py"))
+    result = release["metadata"](root, "v0.7.1")
+    notes = result["notes"]
+    assert result["version"] == __version__
+    assert result["prerelease"] is False
+    assert result["addon_version"] == "0.1.1"
+    assert result["native_version"] == "0.7.1"
+    assert "Stable core release `0.7.1`" in notes
+    assert "optional Linux QEMU/KVM addon is `0.1.1`" in notes
+    assert "that exact core, but remains experimental" in notes
+    assert "`integration_verified` stays false" in notes
+    assert "Ordinary local topologies remain L0-only" in notes
+    assert "on Windows and Linux" in notes
+    assert "do not establish comprehensive VM functionality or security acceptance" in notes
+    assert "## [0.6.0]" not in notes
+    assert "Experimental prerelease `v0.7.0-rc.3`" not in notes
+    assert release["tag_version"]("v0.6.0") == ("0.6.0", False)
+    with pytest.raises(ValueError, match="disagree"):
+        release["metadata"](root, "v0.7.0-rc.3")
+    with pytest.raises(ValueError, match="expected"):
+        release["tag_version"]("v0.7.0rc1")
