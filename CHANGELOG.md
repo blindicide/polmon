@@ -6,7 +6,7 @@ All notable changes are documented here. Versions follow Semantic Versioning.
 
 Changes planned after the `0.7.1` development line.
 
-## [0.7.1] - 2026-11-07
+## [0.7.1] - 2026-11-08
 
 Stable core release `0.7.1`; the optional Linux QEMU/KVM addon is `0.1.1` and pins
 that exact core, but remains experimental. Ordinary local topologies remain L0-only
