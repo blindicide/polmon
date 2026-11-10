@@ -107,8 +107,8 @@ laboratory (tools, `/dev/net/tun`, ping's `cap_net_raw`, passwordless `sudo ip`)
 not ready. The backend emits structured JSON startup and shutdown logs.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
-[docs/LOGS.md](docs/LOGS.md), and [SECURITY.md](SECURITY.md). No license has been granted; a license file will be added only after
-the repository owner makes an explicit licensing decision.
+[docs/LOGS.md](docs/LOGS.md), and [SECURITY.md](SECURITY.md). This project is not open-source licensed; the root [LICENSE](LICENSE)
+reserves all rights.
 
 An experimental [optional VM-backed L1 runtime](addons/l1-vm/README.md) provides separate
 Linux QEMU/KVM jobs through the API and desktop VM page. Linux client bundles include the
