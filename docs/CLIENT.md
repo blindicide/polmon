@@ -7,22 +7,22 @@ laboratory networking itself. Screenshots of every page, rendered from the runni
 
 ## Install and start
 
-The latest published release is v0.6.0 (Phase VI).
+The planned stable release is v0.7.2; it has not been published yet.
 
 | Platform | Get it from the release | Start |
 |---|---|---|
 | Windows, single file | `polmon-<version>-windows-x64.exe` | double-click; the L0 backend is embedded (unpacks itself on every start) |
 | Windows, portable | `polmon-<version>-windows-x64-portable.zip` | unzip and run `polmon-client.exe`; the L0 backend is embedded, no `polmon-backend.exe` |
-| Linux | `polmon-<version>-linux-x64.tar.gz` | extract, run `polmon-client`; `--install-desktop-entry` adds a menu entry |
-| Debian/Ubuntu, Fedora/RHEL | `polmon-client_<version>_amd64.deb`, `polmon-client-<version>-1.x86_64.rpm` | install with the package manager; `polmon-client` |
+| Linux | `polmon-<version>-linux-x64.tar.gz` | extract; run `./polmon-backend` and `./polmon-client` in separate terminals; `--install-desktop-entry` adds a menu entry |
+| Debian/Ubuntu, Fedora/RHEL | `polmon-client_<version>_amd64.deb`, `polmon-client-<version>-1.x86_64.rpm` | install with the package manager; run `polmon-backend` and `polmon-client` |
 | Any, from source | `pip install "polmon[gui]"` | `polmon-client` |
 
-Since v0.6.0, Windows single-file and portable clients both contain the L0
-backend and SQLite in the client executable. The Linux tarball and native `.deb`/`.rpm` packages
-do likewise; they have no sibling backend executable. The native packages install the client in
-`/opt/polmon`, a `/usr/bin/polmon-client` launcher, a desktop entry, and an icon. They install no
-service or maintainer script. Uninstalling does not remove results or settings in the user's home
-directory.
+Windows single-file and portable clients contain the L0 backend and SQLite in the client
+executable. The Linux tarball and native `.deb`/`.rpm` packages include the frozen backend module
+graph and a separate `polmon-backend` launcher; no Python installation or source checkout is
+needed. Native packages install the client and backend under `/opt/polmon`, `/usr/bin/polmon-client`
+and `/usr/bin/polmon-backend` launchers, a desktop entry, and an icon. They install no service or
+maintainer script. Uninstalling does not remove results or settings in the user's home directory.
 
 Verify downloads against `SHA256SUMS.txt` (`scripts/verify-release.sh vX.Y.Z`, or `Get-FileHash`
 on Windows). Linux needs glibc 2.35+ and, for X11, `libxcb-cursor0` (see
@@ -64,7 +64,8 @@ Choose a connection type and press **Connect** (Ctrl+Return):
 - **Remote Linux backend** enables the URL/token fields. The URL drop-down remembers eight
   backends. This is required for L1 namespace and hybrid TAP topologies. Remote backends are best
   reached through an SSH tunnel (`ssh -N -L 8080:127.0.0.1:8080 operator@lab-host`, then
-  `http://127.0.0.1:8080`); see [OPERATIONS.md](OPERATIONS.md). The token is held in memory only.
+  `http://127.0.0.1:8080`); on the same Linux host, start its packaged `polmon-backend` and use
+  `http://127.0.0.1:8080` directly. See [OPERATIONS.md](OPERATIONS.md). The token is held in memory only.
 
 The local backend never silently lowers fidelity. Deploying a topology containing L1 or L2 shows
 the same actionable refusal in the UI and API: “Local backend supports L0 synthetic nodes only;
@@ -101,6 +102,22 @@ Long operations run in the background: the status bar shows what is running with
 elapsed time, ETA and a Cancel button, and the window stays responsive. When an experiment or a
 benchmark finishes while you are on another page (or in another window) the status bar says so
 and the task bar flashes. The *Activity* dock (Ctrl+Shift+L) logs every operation and its result.
+
+## Редактор топологии
+
+В разделе **Топологии** откройте YAML или начните с пустого черновика. Нажмите
+**Открыть схему**: редактор откроется поверх главного окна и впишет устройства в холст.
+
+1. В меню **Добавить устройство** выберите узел L0/L1 или **Концентратор Ethernet**.
+   Концентратор — видимый на схеме общий Ethernet-сегмент, а не отдельный узел лаборатории.
+2. Нажмите **Добавить связь**. Щёлкните по первому устройству и выберите свободный
+   порт, затем сделайте то же на втором устройстве. `Esc` выключает режим соединения.
+   У синтетического узла L0 один порт; для соединения нескольких узлов используйте концентратор.
+3. Выделите устройство или линию и нажмите **Удалить**. Удаление концентратора убирает его
+   сегмент и связанные порты. **Очистить схему** удаляет все устройства, связи и сети из
+   черновика. Обе операции можно отменить; они не останавливают запущенную лабораторию.
+
+Изменения схемы обновляют YAML. Закройте окно редактора и сохраните черновик через `Ctrl+S`.
 
 ## Keyboard shortcuts
 

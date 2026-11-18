@@ -64,29 +64,62 @@ def test_lock_file_names_the_current_version() -> None:
     assert locked["polmon"]["version"] == project["version"] == __version__
 
 
-def test_release_metadata_rejects_mismatched_tags_and_scopes_notes():
+def test_release_metadata_checks_scoped_notes_versions_and_addon_pin(tmp_path):
+    import re
     import runpy
+    import shutil
     from pathlib import Path
 
     root = Path(__file__).parents[2]
     release = runpy.run_path(str(root / "scripts/release_metadata.py"))
-    result = release["metadata"](root, "v0.7.1")
+    version = "0.7.2"
+    result = release["metadata"](root, f"v{version}")
     notes = result["notes"]
-    assert result["version"] == __version__
+    assert result["version"] == __version__ == version
     assert result["prerelease"] is False
     assert result["addon_version"] == "0.1.1"
-    assert result["native_version"] == "0.7.1"
-    assert "Stable core release `0.7.1`" in notes
-    assert "optional Linux QEMU/KVM addon is `0.1.1`" in notes
-    assert "that exact core, but remains experimental" in notes
-    assert "`integration_verified` stays false" in notes
-    assert "Ordinary local topologies remain L0-only" in notes
-    assert "on Windows and Linux" in notes
-    assert "do not establish comprehensive VM functionality or security acceptance" in notes
-    assert "## [0.6.0]" not in notes
-    assert "Experimental prerelease `v0.7.0-rc.3`" not in notes
-    assert release["tag_version"]("v0.6.0") == ("0.6.0", False)
+    assert result["native_version"] == version
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    section = re.search(
+        rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
+        changelog,
+        flags=re.M | re.S,
+    )
+    assert section is not None
+    assert notes == section[1].strip() + "\n"
+    assert f"## [{version}]" not in notes
+    assert "integration_verified" in notes
+
+    assert release["tag_version"](f"v{version}") == (version, False)
+    assert release["tag_version"](f"v{version}-rc.1") == (f"{version}rc1", True)
+    assert release["native_version"](f"{version}rc1") == f"{version}~rc1"
     with pytest.raises(ValueError, match="disagree"):
-        release["metadata"](root, "v0.7.0-rc.3")
+        release["metadata"](root, f"v{version}-rc.1")
+    with pytest.raises(ValueError, match="disagree"):
+        release["metadata"](root, "v0.7.1")
+    assert release["tag_version"]("v0.6.0") == ("0.6.0", False)
     with pytest.raises(ValueError, match="expected"):
-        release["tag_version"]("v0.7.0rc1")
+        release["tag_version"](f"v{version}rc1")
+
+    altered = tmp_path / "project"
+    required = (
+        "pyproject.toml",
+        "uv.lock",
+        "src/polmon/version.py",
+        "addons/l1-vm/pyproject.toml",
+        "CHANGELOG.md",
+    )
+    for relative in required:
+        source = root / relative
+        target = altered / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    addon = altered / "addons/l1-vm/pyproject.toml"
+    addon.write_text(
+        addon.read_text(encoding="utf-8").replace(
+            f"polmon=={version}", "polmon==0.7.1"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="addon must pin"):
+        release["metadata"](altered, f"v{version}")

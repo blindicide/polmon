@@ -1,8 +1,9 @@
 # Releases
 
-The `v0.7.1` stable core release uses optional addon distribution `0.1.1`, pinned to
-`polmon==0.7.1`. The addon and VM functionality remain experimental; the published
-experimental runtime candidate `v0.7.0-rc.3` remains historical and unchanged.
+The planned `v0.7.2` stable core release uses optional addon distribution `0.1.1`, pinned to
+`polmon==0.7.2`; this release has not been published yet. The addon and VM functionality remain
+experimental and `integration_verified` stays false; the published experimental runtime candidate
+`v0.7.0-rc.3` remains historical and unchanged.
 `scripts/release_metadata.py` validates tag/source/project/lock/addon consistency and
 extracts only the exact changelog section. Stable tags retain `vX.Y.Z`; previews use
 `vX.Y.Z-alpha.N`, `-beta.N` or `-rc.N`. Debian/RPM metadata uses `~rcN` to sort before
@@ -20,7 +21,7 @@ Operator records, instructions,
 CI task, private host state and preserved L0 results must remain unpublished.
 
 After the release-preparation commit is on `main` and its required checks pass, push an
-annotated `v0.7.1` tag to that exact commit. The tag triggers `release.yml`, which
+annotated `v0.7.2` tag to that exact commit. The tag triggers `release.yml`, which
 validates metadata, calls both native build and fresh-runner verification workflows,
 and creates a stable GitHub release with version-scoped changelog notes. Preview tags
 create a prerelease with `--latest=false`. The workflow never generates whole-history
@@ -30,10 +31,10 @@ notes; optional manual repair notes are prepended explicitly. Assets are:
 |---|---|
 | `polmon-<version>-windows-x64.exe` | Windows client (one file) |
 | `polmon-<version>-windows-x64-portable.zip` | Windows client, one folder: faster start (from v0.2.1) |
-| `polmon-<version>-linux-x64.tar.gz` | Linux client bundle (see [BUILD-LINUX.md](BUILD-LINUX.md)) |
+| `polmon-<version>-linux-x64.tar.gz` | Linux client bundle and `polmon-backend` launcher (see [BUILD-LINUX.md](BUILD-LINUX.md)) |
 | `polmon-<version>-py3-none-any.whl` | Python package: backend, CLI tools, client (with `[gui]`) |
-| `polmon-client_<version>_amd64.deb` | Debian desktop client with embedded L0 and SQLite |
-| `polmon-client-<version>-1.x86_64.rpm` | RPM desktop client with embedded L0 and SQLite |
+| `polmon-client_<version>_amd64.deb` | Debian desktop client and Linux backend launcher |
+| `polmon-client-<version>-1.x86_64.rpm` | RPM desktop client and Linux backend launcher |
 | `package-manifest.json`, `SHA256SUMS-packages.txt` | Package metadata, limits, and build checksums |
 | `polmon_l1_vm-<addon-version>-py3-none-any.whl` | Optional experimental Linux QEMU/KVM runtime |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
@@ -41,11 +42,13 @@ notes; optional manual repair notes are prepended explicitly. Assets are:
 Before publishing, the release job checks every file name against the tag version and each
 platform artifact against the checksum its build job recorded after smoke-testing it. After
 publishing, `verify-release` downloads the assets from the release itself on Windows and Linux,
-checks `SHA256SUMS.txt`, runs each embedded client and its L0 self-test. Release notes say that
-ordinary local topology execution is L0-only on both platforms. Namespace L1/hybrid
-requires a configured Linux lab backend. Independent VM jobs are Linux-only and require
+checks `SHA256SUMS.txt`, runs each embedded client and its L0 self-test, and clean-environment
+smokes the Linux backend launcher. The desktop's default local backend remains L0-only; the Linux
+bundle's separate `polmon-backend` command provides L1/hybrid only when the host already has the
+required namespace tools and authorized privileges. Independent VM jobs are Linux-only and require
 KVM, QEMU, ISO tools and an authorized isolated lab; bundling does not grant those capabilities.
-Linux artifacts contain the addon and pinned read-only guest image; Windows artifacts do not.
+Linux artifacts contain the experimental addon and pinned read-only guest image; `integration_verified`
+remains false and no full VM acceptance is claimed. Windows artifacts do not contain the addon/image.
 
 Verify a download yourself:
 

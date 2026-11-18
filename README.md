@@ -49,9 +49,10 @@ workbench for sending exact Ethernet frames from a deployed node.
 
 ## Which download?
 
-The table below describes v0.6.0, the latest published release. v0.5.0 is tagged but has no
-GitHub release (its release jobs could not start: GitHub Actions billing block); v0.4.1 is the
-last release with standalone backend bundles. Releases carry `SHA256SUMS.txt`
+The table below describes the planned v0.7.2 downloads; this release has not been published yet.
+v0.5.0 is tagged but has no GitHub release (its release jobs could not start: GitHub Actions
+billing block); v0.4.1 is the last release with standalone backend bundles. Releases carry
+`SHA256SUMS.txt`
 (`sha256sum --check --ignore-missing SHA256SUMS.txt`, or `scripts/verify-release.sh vX.Y.Z`):
 
 | You want | Download | Fidelity | Needs |
@@ -175,9 +176,10 @@ Windows нет сетевых пространств имён Linux, поэто�
 
 ### Что скачать?
 
-Таблица описывает v0.6.0 — последний опубликованный выпуск. Тег v0.5.0 существует, но выпуска на
-GitHub у него нет (задания выпуска не смогли запуститься из-за блокировки оплаты GitHub Actions);
-v0.4.1 — последний выпуск с отдельными сборками бэкенда. К выпускам приложен `SHA256SUMS.txt`
+Таблица описывает файлы, запланированные для v0.7.2; этот выпуск ещё не опубликован. Тег v0.5.0
+существует, но выпуска на GitHub у него нет (задания выпуска не смогли запуститься из-за блокировки
+оплаты GitHub Actions); v0.4.1 — последний выпуск с отдельными сборками бэкенда. К выпускам
+приложен `SHA256SUMS.txt`
 (`sha256sum --check --ignore-missing SHA256SUMS.txt` или `scripts/verify-release.sh vX.Y.Z`):
 
 | Задача | Файл | Уровень эмуляции | Требования |
