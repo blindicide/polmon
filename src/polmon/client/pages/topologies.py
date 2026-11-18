@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 from pathlib import Path
 
+import yaml
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -45,6 +47,44 @@ from polmon.client.widgets import (
 from polmon.client.yamlmap import document_id, locate, reason_line
 
 MAX_DOCUMENT_BYTES = 2_000_000
+
+
+class TopologyEditorDialog(QDialog):
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("topologyEditorWindow")
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint)
+        self.studio = TopologyStudio(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.studio)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        self.setWindowTitle(tr("studio.window"))
+        self.studio.retranslate()
+
+    def open_centered(self) -> None:
+        parent = self.parentWidget()
+        available = parent.screen().availableGeometry()
+        frame = parent.frameGeometry()
+        self.resize(
+            min(available.width() - 32, max(950, frame.width() * 9 // 10)),
+            min(available.height() - 72, max(620, frame.height() * 9 // 10)),
+        )
+        self.move(
+            max(available.left(), min(frame.center().x() - self.width() // 2,
+                                      available.right() - self.width())),
+            max(available.top(), min(frame.center().y() - self.height() // 2,
+                                     available.bottom() - self.height())),
+        )
+        self.open()
+        QTimer.singleShot(0, self.studio, self.studio.fit)
+
+    def reject(self) -> None:
+        if not self.studio.cancel_link():
+            super().reject()
 
 
 def problem_rows(source: str, error: ApiClientError) -> list[tuple[object, object, object]]:
@@ -152,6 +192,7 @@ class TopologiesPage(Page):
         self.result: dict[str, object] | None = None
         self.validated_source: str | None = None
         self.problem_rows: list[tuple[object, object, object]] = []
+        self._canvas_source: str | None = None
         self._auto = QTimer(self)
         self._auto.setSingleShot(True)
         self._auto.setInterval(700)
@@ -190,6 +231,9 @@ class TopologiesPage(Page):
         self.document_name: str | None = None
         self.badge = StatusBadge()
         header.addWidget(self.document_label, 1)
+        self.canvas_button = button("studio.open", name="openTopologyCanvas")
+        self.canvas_button.clicked.connect(self.open_canvas)
+        header.addWidget(self.canvas_button)
         self.save_button = button(
             "editor.save_as", "quiet", tip="editor.save_as.tip", name="saveAs"
         )
@@ -198,12 +242,8 @@ class TopologiesPage(Page):
         editor_card.body.addLayout(header)
         self.editor = YamlEditor()
         self.editor.setObjectName("topologyEditor")
-        self.studio = TopologyStudio()
-        self.document_tabs = QTabWidget()
-        self.document_tabs.setObjectName("topologyDocumentTabs")
-        self.document_tabs.addTab(self.studio, tr("studio.tab.canvas"))
-        self.document_tabs.addTab(self.editor, tr("studio.tab.yaml"))
-        editor_card.add(self.document_tabs, 1)
+        self.canvas_dialog: TopologyEditorDialog | None = None
+        editor_card.add(self.editor, 1)
         actions = QHBoxLayout()
         actions.setSpacing(theme.SPACE["sm"])
         self.validate_button = button(
@@ -284,13 +324,10 @@ class TopologiesPage(Page):
         self.refresh_actions()
         # Connected last: the editor signals while the page is still being built.
         self.editor.textChanged.connect(self._edited)
-        self.studio.source_changed.connect(self._studio_edited)
 
     def retranslate(self) -> None:
-        if hasattr(self, "studio"):
-            self.studio.retranslate()
-            self.document_tabs.setTabText(0, tr("studio.tab.canvas"))
-            self.document_tabs.setTabText(1, tr("studio.tab.yaml"))
+        if self.canvas_dialog is not None:
+            self.canvas_dialog.retranslate()
         count = len(self.problem_rows)
         titles = (
             tr("topologies.tab.summary"),
@@ -351,11 +388,26 @@ class TopologiesPage(Page):
 
     def set_source(self, text: str, name: str | None) -> None:
         self.document_name = name
+        self._canvas_source = None
         self.editor.setPlainText(text)
-        with suppress(ValueError, TypeError):
-            self.studio.set_source(text)
         self._update_label()
         self.validate(quiet=True)
+
+    def open_canvas(self) -> None:
+        if self.canvas_dialog is None:
+            self.canvas_dialog = TopologyEditorDialog(self.window())
+            self.canvas_dialog.studio.source_changed.connect(self._studio_edited)
+        current = self.source()
+        if current != self._canvas_source:
+            try:
+                self.canvas_dialog.studio.set_source(current)
+            except (ValueError, TypeError, yaml.YAMLError):
+                self.banner.show_message(
+                    Msg("studio.window"), Msg("studio.error.yaml"), "warning"
+                )
+                return
+            self._canvas_source = current
+        self.canvas_dialog.open_centered()
 
     def source(self) -> str:
         return self.editor.toPlainText()
@@ -439,6 +491,7 @@ class TopologiesPage(Page):
         self.refresh_actions()
 
     def _studio_edited(self, source: str) -> None:
+        self._canvas_source = source
         if source != self.source():
             self.editor.setPlainText(source)
 

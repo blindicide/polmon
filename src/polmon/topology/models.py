@@ -6,6 +6,7 @@ import re
 import unicodedata
 from enum import StrEnum
 from ipaddress import IPv4Address, IPv4Network
+from typing import Literal
 from uuid import RFC_4122, UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -78,6 +79,8 @@ class ServiceDefinition(StrictModel):
 class Network(StrictModel):
     id: str
     ipv4_subnet: IPv4Network
+    kind: Literal["hub", "direct"] | None = None
+    layout: LayoutPosition | None = None
 
     _validate_id = field_validator("id")(_identifier)
 
