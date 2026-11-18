@@ -68,7 +68,8 @@ jq -n \
     extracted_bundle_bytes: $bundle,
     search_path: $search_path
   }' > "$prefix-measurements.json"
-jq '{readiness: {l1_ready: .readiness.l1_ready}, experiment_status, telemetry_events,
-     report_status, l1_outcome, l1_state: .l1_result.state, l1_error: .l1_result.error}' \
+jq '{readiness: {l1_ready: .readiness.l1_ready, hybrid_ready: .readiness.hybrid_ready},
+     experiment_status, telemetry_events, report_status, l1_outcome,
+     hybrid_outcome, l1_state: .l1_result.state, l1_error: .l1_result.error}' \
   "$prefix-e2e.json"
 cat "$prefix-measurements.json"

@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec "$(dirname -- "$0")/polmon-client" --polmon-run-embedded-backend "$@"

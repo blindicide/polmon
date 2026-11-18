@@ -51,8 +51,10 @@ jobs:
           python scripts/fetch-vm-image.py
           pyinstaller --clean --noconfirm packaging/linux/polmon-client.spec \
             2>&1 | tee linux-pyinstaller-build.txt
+          install -m 0755 packaging/linux/polmon-backend "dist/$name/polmon-backend"
           QT_QPA_PLATFORM=offscreen python -m polmon.client.icon dist/polmon.png
           python scripts/build-linux-packages.py --bundle "dist/$name" --icon dist/polmon.png \
+            --backend-launcher packaging/linux/polmon-backend \
             --output dist --version "$version" --epoch "$epoch" \
             2>&1 | tee linux-native-package-build.txt
           tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" \
@@ -71,7 +73,10 @@ jobs:
           scratch="$(mktemp -d)"
           tar -xzf "dist/polmon-$version-linux-x64.tar.gz" -C "$scratch"
           client="$scratch/polmon-$version-linux-x64/polmon-client"
-          test ! -e "$scratch/polmon-$version-linux-x64/polmon-backend"
+          backend="$scratch/polmon-$version-linux-x64/polmon-backend"
+          test -x "$backend"
+          "$backend" --version
+          "$backend" --diagnostics > linux-backend-diagnostics.json
           env -i PATH=/usr/bin:/bin HOME="$scratch" LANG=C.UTF-8 "$client" \
             --run-vm bundle-check | tee linux-vm-bundle.json
           env -i PATH=/usr/bin:/bin HOME="$scratch" LANG=C.UTF-8 "$client" \
@@ -92,6 +97,8 @@ jobs:
             polmon-client --run-vm bundle-check
             polmon-client --self-test
             polmon-client --local-backend-self-test
+            test -x /usr/bin/polmon-backend
+            test "$(polmon-backend --version)" = "$(polmon-client --version)"
             mkdir -p /home/operator/polmon-data /home/operator/.config/polmon
             printf keep > /home/operator/polmon-data/result
             printf keep > /home/operator/.config/polmon/settings
@@ -108,6 +115,8 @@ jobs:
             polmon-client --run-vm bundle-check
             polmon-client --self-test
             polmon-client --local-backend-self-test
+            test -x /usr/bin/polmon-backend
+            test "$(polmon-backend --version)" = "$(polmon-client --version)"
             mkdir -p /home/operator/polmon-data /home/operator/.config/polmon
             printf keep > /home/operator/polmon-data/result
             printf keep > /home/operator/.config/polmon/settings
@@ -140,6 +149,7 @@ jobs:
             deb-install-evidence.txt
             rpm-install-evidence.txt
             linux-vm-bundle.json
+            linux-backend-diagnostics.json
             linux-embedded-diagnostics.json
             linux-local-backend.txt
             linux-client-selftest.txt
@@ -152,21 +162,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+      - name: Install namespace lifecycle test utilities
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            curl jq iproute2 iputils-ping util-linux libcap2-bin
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: polmon-linux-x64
           path: artifact
-      - name: Verify downloaded hashes and embedded backend on a fresh runner
+      - name: Verify downloaded hashes and run packaged L1 ping lifecycle on a fresh runner
         working-directory: artifact
         run: |
           sha256sum --check --strict SHA256SUMS-packages.txt
           sha256sum --check --strict polmon-*-linux-x64.tar.gz.sha256
           tarball="$(ls polmon-[0-9]*-linux-x64.tar.gz)"
           tar -xzf "$tarball"
-          client="./$(basename "$tarball" .tar.gz)/polmon-client"
+          bundle="./$(basename "$tarball" .tar.gz)"
+          client="$bundle/polmon-client"
+          backend="$bundle/polmon-backend"
+          test -x "$backend"
+          "$backend" --version
+          "$backend" --diagnostics
           "$client" --run-vm bundle-check
           "$client" --polmon-run-embedded-backend --diagnostics
           "$client" --local-backend-self-test
+          POLMON_REQUIRE_L1=1 POLMON_REQUIRE_HYBRID=1 \
+            "$GITHUB_WORKSPACE/scripts/packaged-backend-e2e.sh" "$backend" \
+            "$RUNNER_TEMP/polmon-downloaded-backend" \
+            /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           for file in *.deb *.rpm; do
             echo "$file $(stat -c %s "$file") $(sha256sum "$file" | cut -d' ' -f1)"
           done >> "$GITHUB_STEP_SUMMARY"

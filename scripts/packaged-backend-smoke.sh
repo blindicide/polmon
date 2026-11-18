@@ -13,6 +13,18 @@ output=$4
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 
+if [[ ${POLMON_REQUIRE_L1:-0} == 1 ]] && ! jq -e '.l1_ready == true' "$readiness" >/dev/null; then
+  echo "L1 namespace capability gate blocked the required packaged lifecycle test" >&2
+  cat "$readiness" >&2
+  exit 1
+fi
+if [[ ${POLMON_REQUIRE_HYBRID:-0} == 1 ]] \
+  && ! jq -e '.hybrid_ready == true' "$readiness" >/dev/null; then
+  echo "Hybrid TAP capability gate blocked the required packaged lifecycle test" >&2
+  cat "$readiness" >&2
+  exit 1
+fi
+
 request() {
   local method=$1 path=$2 data=${3:-}
   local args=(-fsS -X "$method" -H "Authorization: Bearer $token" -H 'Accept: application/json')
@@ -53,6 +65,26 @@ request POST /v1/topologies "$scratch/l1-request.json" > "$scratch/l1-load.json"
 if jq -e '.l1_ready' "$readiness" >/dev/null; then
   request POST /v1/deployments/l1-two-node > "$scratch/l1-result.json"
   jq -e '.state == "running" and .backend == "namespace"' "$scratch/l1-result.json" >/dev/null
+  jq -n --rawfile scenario <(cat <<'SCENARIO'
+id: packaged-linux-ping
+required_topology: l1-two-node
+initial_conditions: [topology_deployed]
+permitted_actions: [icmp_probe]
+sequence:
+  - {id: ping, kind: icmp_probe, source: client, target: server}
+timeout_seconds: 10
+success_conditions:
+  - {action: ping, field: success, equals: true}
+cleanup_policy: always
+SCENARIO
+) '{
+  experiment_id: "packaged-linux-ping",
+  topology_id: "l1-two-node",
+  scenario_yaml: $scenario
+}' > "$scratch/l1-experiment-request.json"
+  request POST /v1/experiments "$scratch/l1-experiment-request.json" \
+    > "$scratch/l1-experiment.json"
+  jq -e '.status == "succeeded"' "$scratch/l1-experiment.json" >/dev/null
   request DELETE /v1/deployments/l1-two-node > "$scratch/l1-cleanup.json"
   jq -e '.state == "destroyed"' "$scratch/l1-cleanup.json" >/dev/null
   l1_outcome=passed
@@ -64,6 +96,27 @@ else
   l1_outcome="NOT RUN - environment unavailable"
 fi
 
+if jq -e '.hybrid_ready == true' "$readiness" >/dev/null; then
+  jq -Rs '{yaml: .}' examples/topologies/hybrid-tap.yml \
+    > "$scratch/hybrid-request.json"
+  request POST /v1/topologies "$scratch/hybrid-request.json" > "$scratch/hybrid-load.json"
+  request POST /v1/deployments/hybrid-tap > "$scratch/hybrid-deployment.json"
+  jq -e '.state == "running" and .backend == "hybrid"' \
+    "$scratch/hybrid-deployment.json" >/dev/null
+  jq -n '{experiment_id: "packaged-linux-hybrid-ping",
+          topology_id: "hybrid-tap",
+          scenario_yaml: "id: packaged-linux-hybrid-ping\nrequired_topology: hybrid-tap\ninitial_conditions: [topology_deployed]\npermitted_actions: [icmp_probe]\nsequence:\n  - {id: l0-to-l1, kind: icmp_probe, source: synthetic, target: linux}\n  - {id: l1-to-l0, kind: icmp_probe, source: linux, target: synthetic}\ntimeout_seconds: 20\nsuccess_conditions:\n  - {action: l0-to-l1, field: success, equals: true}\n  - {action: l1-to-l0, field: success, equals: true}\ncleanup_policy: never\n"}' \
+    > "$scratch/hybrid-experiment-request.json"
+  request POST /v1/experiments "$scratch/hybrid-experiment-request.json" \
+    > "$scratch/hybrid-experiment.json"
+  jq -e '.status == "succeeded"' "$scratch/hybrid-experiment.json" >/dev/null
+  request DELETE /v1/deployments/hybrid-tap > "$scratch/hybrid-cleanup.json"
+  jq -e '.state == "destroyed"' "$scratch/hybrid-cleanup.json" >/dev/null
+  hybrid_outcome=passed
+else
+  hybrid_outcome="NOT RUN - environment unavailable"
+fi
+
 jq -n \
   --slurpfile health "$scratch/health.json" \
   --slurpfile deployment "$scratch/deployment.json" \
@@ -73,7 +126,8 @@ jq -n \
   --slurpfile reset "$scratch/reset.json" \
   --slurpfile resources "$scratch/resources.json" \
   --slurpfile readiness "$readiness" \
-  --slurpfile l1 "$scratch/l1-result.json" \
+   --slurpfile l1 "$scratch/l1-result.json" \
+   --arg hybrid_outcome "${hybrid_outcome:-NOT RUN - environment unavailable}" \
   --arg l1_outcome "$l1_outcome" '{
     health: $health[0],
     deployment: $deployment[0],
@@ -83,8 +137,9 @@ jq -n \
     reset: $reset[0],
     backend_rss_bytes: $resources[0].snapshot.process_rss_bytes,
     capabilities: $resources[0].capabilities,
-    readiness: $readiness[0],
-    l1_outcome: $l1_outcome,
-    l1_result: $l1[0]
-  }' > "$output"
+     readiness: $readiness[0],
+     l1_outcome: $l1_outcome,
+     l1_result: $l1[0],
+     hybrid_outcome: $hybrid_outcome
+   }' > "$output"
 cat "$output"

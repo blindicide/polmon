@@ -57,8 +57,8 @@ last release with standalone backend bundles. Releases carry `SHA256SUMS.txt`
 | You want | Download | Fidelity | Needs |
 |---|---|---|---|
 | Try polmon on Windows | `polmon-<version>-windows-x64.exe` (one file) or `…-portable.zip` (unzip; starts faster) | L0 via the embedded local backend; **Remote Linux backend** for L1/hybrid | Nothing. Unsigned: SmartScreen warns on first run |
-| The desktop client on Linux | `polmon-<version>-linux-x64.tar.gz`, `polmon-client_<version>_amd64.deb` or `polmon-client-<version>-1.x86_64.rpm` | L0 via the embedded local backend; connects to any backend | glibc 2.35+, Qt's xcb libraries ([BUILD-LINUX.md](BUILD-LINUX.md)) |
-| A Linux lab backend (L1, hybrid) | `polmon-<version>-py3-none-any.whl` (+ `packaging/linux/polmon-backend.service` from the source tree) | L0; L1 and hybrid TAP when the host permits | Python 3.12; for L1/hybrid `iproute2`, `setpriv`, `/dev/net/tun`, passwordless `sudo` for `ip` (check with `polmon-diagnostics --lab`) |
+| The desktop client on Linux | `polmon-<version>-linux-x64.tar.gz`, `polmon-client_<version>_amd64.deb` or `polmon-client-<version>-1.x86_64.rpm` | L0 GUI plus a bundled Linux backend launcher for L0/L1/hybrid when the host permits | glibc 2.35+, Qt's xcb libraries; L1/hybrid also need configured namespace tools and privileges ([BUILD-LINUX.md](BUILD-LINUX.md)) |
+| A Linux lab backend (L1, hybrid) | `polmon-backend` in the Linux tarball or native package | L0; L1 and hybrid TAP when the host permits | `iproute2`, `setpriv`, `/dev/net/tun`, passwordless `sudo` for the required `ip` operations (check with `polmon-backend --lab-readiness`) |
 | The client from Python | the same wheel with the `gui` extra (`polmon-client`) | Connects to any backend; its local backend is the installed `polmon-backend` | Python 3.12 |
 
 Since v0.1.0 (see [CHANGELOG.md](CHANGELOG.md)): hybrid traffic works in both directions (L1
@@ -183,8 +183,8 @@ v0.4.1 — последний выпуск с отдельными сборка�
 | Задача | Файл | Уровень эмуляции | Требования |
 |---|---|---|---|
 | Попробовать polmon в Windows | `polmon-<version>-windows-x64.exe` (один файл) или `…-portable.zip` (распаковать; запускается быстрее) | L0 через встроенный локальный бэкенд; **Удалённый Linux** для L1 и гибрида | Ничего. Файл не подписан: SmartScreen предупредит при первом запуске |
-| Настольный клиент в Linux | `polmon-<version>-linux-x64.tar.gz`, `polmon-client_<version>_amd64.deb` или `polmon-client-<version>-1.x86_64.rpm` | L0 через встроенный локальный бэкенд; подключается к любому бэкенду | glibc 2.35+, библиотеки xcb для Qt ([BUILD-LINUX.md](BUILD-LINUX.md)) |
-| Лабораторный бэкенд в Linux (L1, гибрид) | `polmon-<version>-py3-none-any.whl` (+ `packaging/linux/polmon-backend.service` из исходного дерева) | L0; L1 и гибридный TAP, если хост позволяет | Python 3.12; для L1 и гибрида `iproute2`, `setpriv`, `/dev/net/tun`, `sudo` без пароля для `ip` (проверка: `polmon-diagnostics --lab`) |
+| Настольный клиент в Linux | `polmon-<version>-linux-x64.tar.gz`, `polmon-client_<version>_amd64.deb` или `polmon-client-<version>-1.x86_64.rpm` | GUI L0 и отдельная команда бэкенда для L0/L1/гибрида, если это позволяет хост | glibc 2.35+, библиотеки xcb для Qt; для L1/гибрида нужны настроенные инструменты пространств имён и привилегии ([BUILD-LINUX.md](BUILD-LINUX.md)) |
+| Лабораторный бэкенд в Linux (L1, гибрид) | `polmon-backend` из Linux tarball или нативного пакета | L0; L1 и гибридный TAP, если хост позволяет | `iproute2`, `setpriv`, `/dev/net/tun`, настроенный `sudo` для необходимых операций `ip` (проверка: `polmon-backend --lab-readiness`) |
 | Клиент из Python | тот же wheel с дополнением `gui` (`polmon-client`) | Подключается к любому бэкенду; локальный бэкенд — установленный `polmon-backend` | Python 3.12 |
 
 С v0.1.0 (см. [CHANGELOG.md](CHANGELOG.md)) появились: гибридный трафик в обе стороны
@@ -196,9 +196,18 @@ v0.4.1 — последний выпуск с отдельными сборка�
 
 ### Быстрый старт
 
+Готовые сборки Linux включают клиент и самостоятельную команду бэкенда; Python и исходный код не
+нужны. После установки `.deb`/`.rpm` используйте `polmon-backend`. Для tarball распакуйте архив и
+запустите `./polmon-backend` из каталога сборки. По умолчанию бэкенд слушает только `127.0.0.1`;
+для доступа с другого компьютера задайте API-токен и используйте существующие правила запуска
+для удалённого адреса. Возможности L1/гибрида доступны только при уже настроенных инструментах
+пространств имён и привилегиях хоста; пакет сам не выдаёт права и не меняет настройки хоста.
+Подробная инструкция: [BUILD-LINUX.md](BUILD-LINUX.md). Команды и ограничения также указаны в
+заметках выпуска перед `SHA256SUMS.txt`.
+
 Для разработки из исходников нужны Linux, `/usr/bin/python3.12` и `uv`. Привилегированной
 лаборатории (L1 и гибрид) дополнительно нужны `iproute2`, `setpriv`, `/dev/net/tun` и `sudo` без
-пароля для `ip`; проверка — `.venv/bin/polmon-diagnostics --lab`.
+пароля для необходимых операций `ip`; проверка — `.venv/bin/polmon-backend --lab-readiness`.
 
 ```bash
 uv venv --python /usr/bin/python3.12

@@ -59,7 +59,7 @@ jobs:
     with:
       ref: ${{ inputs.tag || github.ref }}
       pytest-deselect: ${{ inputs.pytest-deselect }}
-      skip-tests: ${{ inputs.skip-windows-tests }}
+      skip-tests: ${{ inputs.skip-windows-tests == true }}
 
   linux:
     needs: candidate
@@ -123,6 +123,39 @@ jobs:
         run: |
           version="${{ needs.candidate.outputs.version }}"
           python scripts/release_metadata.py "$RELEASE_TAG" --notes-file release-notes.md
+          tarball="dist/polmon-${version}-linux-x64.tar.gz"
+          if tar -tzf "$tarball" | grep -Eq '/polmon-backend$'; then
+            cat > linux-launch.md <<'LINUX'
+          ### Linux: запуск клиента и бэкенда
+
+          Сборки Linux содержат `polmon-backend`; Python и исходный код не нужны.
+
+          Установка и запуск из `.deb`:
+          ```bash
+          sudo apt install ./polmon-client_<version>_amd64.deb
+          polmon-backend --host 127.0.0.1 --port 8080
+          ```
+
+          Для RPM используйте `sudo dnf install ./polmon-client-<version>-1.x86_64.rpm`, затем
+          запустите ту же команду `polmon-backend`. Для tarball:
+          ```bash
+          tar -xzf polmon-<version>-linux-x64.tar.gz
+          cd polmon-<version>-linux-x64
+          ./polmon-backend --host 127.0.0.1 --port 8080
+          ```
+
+          Чтобы подключить GUI на этом же компьютере, запустите `polmon-client` (из распакованного
+          каталога — `./polmon-client`), выберите профиль «Удалённый Linux» и укажите URL
+          `http://127.0.0.1:8080`. Для L1/гибрида заранее настройте namespace-инструменты и необходимые
+          права; приложение не выдаёт sudo и не меняет конфигурацию хоста. Подробные требования и
+          команды проверки:
+          LINUX
+            sed "s/<version>/${version}/g" linux-launch.md > release-linux-launch.md
+            printf '[BUILD-LINUX.md](https://github.com/blindicide/polmon/blob/%s/BUILD-LINUX.md)\n\n' \
+              "$RELEASE_TAG" >> release-linux-launch.md
+            cat release-linux-launch.md release-notes.md > combined-notes.md
+            mv combined-notes.md release-notes.md
+          fi
           if [[ -n "$RELEASE_NOTES" ]]; then
             printf '%s\n\n' "$RELEASE_NOTES" > repair-notes.md
             cat release-notes.md >> repair-notes.md
@@ -190,6 +223,7 @@ jobs:
           else
             tar -xzf "polmon-${version}-linux-x64.tar.gz"
             client="./polmon-${version}-linux-x64/polmon-client"
+            backend="./polmon-${version}-linux-x64/polmon-backend"
             launch=(xvfb-run -a)
             platform=xcb
           fi
@@ -215,10 +249,19 @@ jobs:
             "$client" --local-backend-gui-probe gui-probe.json | tee gui-probe.txt
             grep -q "local-backend GUI probe: PASS" gui-probe.txt
           else
-            test ! -e "polmon-${version}-linux-x64/polmon-backend"
             "$client" --run-vm bundle-check
             env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$client" \
               --polmon-run-embedded-backend --diagnostics > published-embedded-diagnostics.json
+            if [[ -x "$backend" ]]; then
+              env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --version \
+                | tee published-backend-version.txt
+              test "$(cat published-backend-version.txt)" = "polmon ${version}"
+              env -i PATH=/usr/bin:/bin LANG=C.UTF-8 HOME="$PWD" "$backend" --diagnostics \
+                > published-backend-diagnostics.json
+            else
+              echo "Older release has no standalone polmon-backend launcher; skipping launcher smoke." \
+                >> "$GITHUB_STEP_SUMMARY"
+            fi
             "$client" --local-backend-self-test | tee published-local-backend.txt
             grep -q "local-backend self-test: PASS" published-local-backend.txt
           fi

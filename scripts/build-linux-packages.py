@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Debian and RPM packages from the frozen, embedded-L0 Linux client."""
+"""Build Debian and RPM packages from the frozen Linux client and backend launcher."""
 
 from __future__ import annotations
 
@@ -71,19 +71,22 @@ def touch_tree(root: Path, epoch: int) -> None:
     os.utime(root, (epoch, epoch))
 
 
-def stage(bundle: Path, root: Path, epoch: int, icon: Path) -> None:
+def stage(bundle: Path, root: Path, epoch: int, icon: Path, launcher: Path) -> None:
     files = root / "opt/polmon"
     shutil.copytree(bundle, files, symlinks=True)
     if not (files / "polmon-client").is_file():
         raise SystemExit("bundle lacks polmon-client")
-    if any(path.name.startswith("polmon-backend") for path in files.rglob("*")):
-        raise SystemExit("bundle contains a separate backend executable")
+    if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        raise SystemExit("backend launcher is missing or not executable")
+    shutil.copy2(launcher, files / "polmon-backend")
+    (files / "polmon-backend").chmod(0o755)
     if not any(
         path.name.startswith("_sqlite3") and path.suffix == ".so" for path in files.rglob("*")
     ):
         raise SystemExit("bundle lacks the embedded _sqlite3 extension")
     (root / "usr/bin").mkdir(parents=True)
     (root / "usr/bin/polmon-client").symlink_to("/opt/polmon/polmon-client")
+    (root / "usr/bin/polmon-backend").symlink_to("/opt/polmon/polmon-backend")
     desktop = root / "usr/share/applications/polmon-client.desktop"
     desktop.parent.mkdir(parents=True)
     desktop.write_text(DESKTOP, encoding="utf-8")
@@ -114,8 +117,8 @@ def make_deb(root: Path, output: Path, version: str, arch: str, epoch: int) -> P
         "Maintainer: polmon contributors\n"
         f"Depends: {DEB_DEPENDS}\n"
         "Section: science\nPriority: optional\n"
-        "Description: POLMON isolated network laboratory desktop client\n"
-        " Self-contained Qt client with embedded L0 backend and SQLite runtime.\n",
+        "Description: POLMON isolated network laboratory desktop client and Linux backend\n"
+        " Self-contained Qt client with embedded backend, namespace runtime and SQLite.\n",
         encoding="utf-8",
     )
     control.parent.chmod(0o755)
@@ -163,7 +166,7 @@ def make_rpm(root: Path, output: Path, version: str, arch: str, epoch: int, work
         f"""Name: polmon-client
 Version: {native_version(version)}
 Release: 1
-Summary: POLMON isolated network laboratory desktop client
+Summary: POLMON isolated network laboratory desktop client and Linux backend
 License: Proprietary
 URL: https://github.com/blindicide/polmon
 Source0: payload.tar.gz
@@ -172,7 +175,7 @@ AutoReqProv: no
 Requires: {RPM_REQUIRES}
 
 %description
-Self-contained Qt client with embedded L0 backend and SQLite runtime.
+Self-contained Qt client with embedded backend, namespace runtime and SQLite.
 
 %prep
 %setup -q -n polmon-client-{version}
@@ -189,6 +192,7 @@ chmod 0444 %{{buildroot}}/opt/polmon/_internal/vm/*.qcow2
 %defattr(-,root,root,-)
 /opt/polmon
 /usr/bin/polmon-client
+/usr/bin/polmon-backend
 /usr/share/applications/polmon-client.desktop
 /usr/share/icons/hicolor/256x256/apps/polmon.png
 /usr/share/doc/polmon/copyright
@@ -224,6 +228,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--icon", type=Path, required=True)
+    parser.add_argument("--backend-launcher", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--epoch", type=int, required=True)
@@ -237,7 +242,13 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="polmon-packages-") as temporary:
         work = Path(temporary)
         root = work / "root"
-        stage(args.bundle.resolve(), root, args.epoch, args.icon.resolve())
+        stage(
+            args.bundle.resolve(),
+            root,
+            args.epoch,
+            args.icon.resolve(),
+            args.backend_launcher.resolve(),
+        )
         deb = make_deb(root, args.output, args.version, deb_arch, args.epoch)
         rpm = make_rpm(root, args.output, args.version, rpm_arch, args.epoch, work)
     packages = [deb, rpm]
@@ -252,8 +263,9 @@ def main() -> None:
         "architectures": {"deb": deb_arch, "rpm": rpm_arch},
         "source_date_epoch": args.epoch,
         "contents": [
-            "/opt/polmon (single client with embedded L0 and _sqlite3)",
+            "/opt/polmon (client, backend launcher, namespace runtime and _sqlite3)",
             "/usr/bin/polmon-client",
+            "/usr/bin/polmon-backend",
             "/usr/share/applications/polmon-client.desktop",
             "/usr/share/icons/hicolor/256x256/apps/polmon.png",
             "/usr/share/doc/polmon/copyright",
@@ -267,7 +279,8 @@ def main() -> None:
             "No maintainer scripts; removal leaves home directories, results and settings intact."
         ),
         "platform_limits": "Linux glibc 2.35+; GUI requires X11/Qt xcb libraries. "
-        "L1/L2 require a separately configured Linux laboratory backend.",
+        "L1 and hybrid require Linux namespace tools and explicitly configured privileges; "
+        "L2 still requires separate VM prerequisites.",
         "packages": [
             {"name": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)}
             for path in packages
